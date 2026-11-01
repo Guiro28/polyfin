@@ -44,7 +44,10 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	return migrate(ctx, pool, migrations)
+	if err := migrate(ctx, pool, migrations); err != nil {
+		return err
+	}
+	return migrateAurora(ctx, pool)
 }
 
 // Fingerprint identifies the schema Migrate brings a database to: it
@@ -58,6 +61,13 @@ func Fingerprint() (string, error) {
 	sum := sha256.New()
 	for _, m := range migrations {
 		fmt.Fprintf(sum, "%d %s %s\n", m.version, m.name, m.checksum)
+	}
+	aurora, err := auroraMigrations()
+	if err != nil {
+		return "", err
+	}
+	for _, m := range aurora {
+		fmt.Fprintf(sum, "aurora %s %s\n", m.name, m.checksum)
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
