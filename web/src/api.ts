@@ -103,6 +103,11 @@ export type User = {
   imageTag: string | null
   /** The tallest video the user is offered, in lines (480 to 2160); 0 for Original, no limit. */
   qualityGroup: QualityGroup
+  /**
+   * Whether the user is offered the versions of local folders and network shares before the
+   * others, whatever the version order's criteria.
+   */
+  localFirst: boolean
   /** The date the account ends, YYYY-MM-DD in the server's time zone; null for never. */
   endsOn: string | null
   /** Whether the end date has come: the account is refused as a disabled one is. */
@@ -145,6 +150,7 @@ export type GroupLimits = Pick<
   | 'maxPlaybacks'
   | 'maxBitrate'
   | 'qualityGroup'
+  | 'localFirst'
   | 'syncPlay'
   | 'liveTv'
   | 'remoteControl'
@@ -957,6 +963,7 @@ export type UserPatch = Partial<{
   remoteAccess: boolean
   liveTvChannels: ChannelRule
   qualityGroup: QualityGroup
+  localFirst: boolean
   /** YYYY-MM-DD, or null for never. */
   endsOn: string | null
   /** Joins this group and takes its values; '' leaves the group, keeping them as own settings. */
@@ -1640,6 +1647,16 @@ export type Library = {
    */
   hideInMenus: boolean
   /**
+   * Whether the library leaves out the movies and series a local folder's library lists, for the
+   * users who see that library. False for a catalog that is not an enabled library.
+   */
+  skipLocal: boolean
+  /**
+   * Whether the library takes `skipLocal`: a catalog of movies or series of an addon, not of a
+   * local folder, an IPTV source or a music addon.
+   */
+  skippable: boolean
+  /**
    * Whether an enabled library of the server's has its descriptions read again on request: a movie
    * or series library of a Stremio addon or a local folder. False in the users' own scopes.
    */
@@ -1761,7 +1778,7 @@ export const MAX_LIBRARY_ITEMS = 20000
 
 /** One enabled library in the list sent to PUT /scopes/{scope}/libraries. */
 export type LibrarySelection = Pick<Library, 'addonId' | 'catalogType' | 'catalogId' | 'name'> &
-  Partial<Pick<Library, 'genre' | 'maxItems' | 'hideInMenus'>>
+  Partial<Pick<Library, 'genre' | 'maxItems' | 'hideInMenus' | 'skipLocal'>>
 
 export type LibraryImageChoice = 'none' | 'automatic' | 'generated' | 'custom'
 

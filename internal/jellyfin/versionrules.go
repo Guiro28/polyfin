@@ -194,10 +194,10 @@ func elsewhere(version library.Version) bool {
 
 // reordered reports whether the versions a user is offered may be ordered
 // otherwise than by the addons, or some hidden: with the user's quality
-// group or the version rules (see offered).
+// group, Play local files first or the version rules (see offered).
 func (h *Handler) reordered(user accounts.User) bool {
 	rules := newVersionRules(h.Accounts.Settings())
-	return user.QualityGroup > 0 || len(rules.order) > 0 || rules.hides() || rules.qualities
+	return user.QualityGroup > 0 || user.LocalFirst || len(rules.order) > 0 || rules.hides() || rules.qualities
 }
 
 // hiddenVersion reports whether the hide rules hide a version among its
@@ -594,7 +594,8 @@ func rangeRank(hdr, first library.DynamicRange) int {
 // or has an unknown height, else keeping them all, the closest to the
 // group first; then the criteria, ties keeping the addons' order. With
 // criteria, a page of the title open keeps the versions it shows in place
-// (see keptInPlace).
+// (see keptInPlace). Last, Play local files first puts the local files
+// before the others for the users given it (see localFirst).
 func (h *Handler) ordered(ctx context.Context, user accounts.User, versions []library.Version) []library.Version {
 	rules := h.rulesFor(ctx, user)
 	var sources map[accounts.ID]int
@@ -647,6 +648,8 @@ func (h *Handler) ordered(ctx context.Context, user accounts.User, versions []li
 			kept = keptInPlace(kept, shown, compare)
 		}
 	}
+	// Local files first, then, by quality, the best of each among them.
+	kept = localFirst(user, kept)
 	if rules.qualities {
 		heights := make(map[accounts.ID]int, len(kept))
 		for _, version := range kept {
