@@ -1,13 +1,19 @@
 import { useId, type ReactNode } from 'react'
 import { cx, Field, Switch } from '@/ui'
 
-/** A titled group of settings in a section, like « Passer l'intro et le générique ». */
+/**
+ * A titled group of settings in a section, like « Passer l'intro et le générique », in a card as
+ * Stremfin's settings are.
+ */
 export function SettingsGroup({ title, children }: { title?: string; children: ReactNode }) {
   const id = useId()
   return (
-    <section aria-labelledby={title === undefined ? undefined : id} className="mt-11 first:mt-8">
+    <section
+      aria-labelledby={title === undefined ? undefined : id}
+      className="mt-6 rounded-panel border border-line-2 bg-s1 px-6 py-1 first:mt-8 max-sm:px-4"
+    >
       {title !== undefined && (
-        <h3 id={id} className="border-b border-line-2 pb-2.5 text-small font-medium text-ink-3">
+        <h3 id={id} className="border-b border-line-2 pt-5 pb-3 text-h3 text-ink">
           {title}
         </h3>
       )}

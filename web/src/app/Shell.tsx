@@ -1,11 +1,12 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { SessionUser } from '@/api'
 import { useI18n } from '@/i18n'
 import { Brand, LanguageSwitch } from './Brand'
 import { CommandPaletteProvider } from './palette/CommandPalette'
 import { SessionContext } from './session'
+import { Sidebar } from './Sidebar'
 import { ThemeToggle } from './ThemeToggle'
-import { TopBar } from './TopBar'
+import { TopBar, useWebClient } from './TopBar'
 
 function SkipLink() {
   const { t } = useI18n()
@@ -20,22 +21,44 @@ function SkipLink() {
 }
 
 /**
- * The signed-in frame: the TopBar, the page in a 1232 px column, and the command palette. It
- * provides the session to `useSessionUser`.
+ * The signed-in frame, as Stremfin's: the sidebar on the left, and beside it the top bar over the
+ * page, in a column of 1320 px at most, and the command palette. Below 1024 px the sidebar
+ * slides in from the top bar's menu button; Escape closes it. It provides the session to
+ * `useSessionUser`.
  */
 export function AppShell({ user, children }: { user: SessionUser; children: ReactNode }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const webClient = useWebClient()
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [menuOpen])
   return (
     <SessionContext value={user}>
       <CommandPaletteProvider>
         <SkipLink />
-        <TopBar user={user} />
-        <main
-          id="main"
-          tabIndex={-1}
-          className="mx-auto w-full max-w-page px-14 pt-11 pb-24 outline-none max-xl:px-8 max-md:px-5 max-md:pt-7 max-md:pb-16"
-        >
-          {children}
-        </main>
+        <div className="aurora-shell">
+          <Sidebar
+            user={user}
+            webClient={webClient}
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+          />
+          <div className="min-w-0">
+            <TopBar user={user} menuOpen={menuOpen} onMenu={() => setMenuOpen((open) => !open)} />
+            <main
+              id="main"
+              tabIndex={-1}
+              className="w-full max-w-[1320px] px-9 pt-8 pb-24 outline-none max-xl:px-7 max-md:px-4 max-md:pt-6 max-md:pb-16"
+            >
+              {children}
+            </main>
+          </div>
+        </div>
       </CommandPaletteProvider>
     </SessionContext>
   )

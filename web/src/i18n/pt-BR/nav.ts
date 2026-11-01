@@ -61,6 +61,8 @@ const nav: typeof en = {
     signOut: 'Sair',
     signingOut: 'Saindo…',
     menu: 'Menu',
+    adminArea: 'Administração',
+    memberArea: 'Meu espaço',
     skipToContent: 'Pular para o conteúdo',
   },
   palette: {

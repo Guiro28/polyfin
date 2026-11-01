@@ -61,6 +61,8 @@ const nav = {
     signOut: 'Sign out',
     signingOut: 'Signing out…',
     menu: 'Menu',
+    adminArea: 'Administration',
+    memberArea: 'My space',
     skipToContent: 'Skip to content',
   },
   palette: {

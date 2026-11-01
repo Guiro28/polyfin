@@ -1,28 +1,10 @@
 import { Outlet } from 'react-router'
-import { useI18n } from '@/i18n'
-import { Tabs } from '@/ui'
-import { contentPages, systemPages } from './navigation'
-import { useSessionUser } from './session'
 
 /**
- * The tabs of a TopBar section (Content: Sources, Libraries, Live TV; System:
- * Health, Schedule, Logs, API keys) above the page of the route. A layout route: the router nests
- * the section's pages under it. Members, who reach a source page of theirs here, see no tabs.
+ * The layout route of a section's pages (Content: Sources, Libraries, Live TV, Versions;
+ * System: Health, Statistics, Schedule, Logs, API keys). The sidebar lists the pages under their
+ * section, as Stremfin's does, so the page shows no tabs of them.
  */
-export function SectionTabs({ section }: { section: 'content' | 'system' }) {
-  const { t } = useI18n()
-  const user = useSessionUser()
-  const pages = section === 'content' ? contentPages : systemPages
-  return (
-    <>
-      {user.isAdministrator && (
-        <Tabs
-          label={section === 'content' ? t.nav.contentTabs : t.nav.systemTabs}
-          items={pages.map((page) => ({ id: page.id, label: page.label(t), to: page.to }))}
-          className="mb-8 max-md:mb-6"
-        />
-      )}
-      <Outlet />
-    </>
-  )
+export function SectionTabs(_props: { section: 'content' | 'system' }) {
+  return <Outlet />
 }

@@ -80,7 +80,7 @@
 
   /* Spacing beyond the 4 px grid: between page blocks, and the top bar's height. */
   --spacing-block: 52px;
-  --spacing-topbar: 60px;
+  --spacing-topbar: 64px;
   --container-page: 1232px;
 
   /* The one shadow, for floating surfaces only (menus, palette, dialogs). */
@@ -237,6 +237,251 @@
 }
 [class~='shadow-pop']:is([class~='bg-s1'], [class~='bg-s2']) {
   background-color: var(--color-pop);
+}
+
+/*
+ * The frame of Stremfin and Nuvio Manager: a 264 px sidebar with its glows, sections and pages
+ * lit by a gradient, and beside it a translucent top bar over the page. Below 1024 px the
+ * sidebar slides in over the page, behind a scrim.
+ */
+@layer components {
+  .aurora-shell {
+    min-height: 100dvh;
+    @media (width >= 64rem) {
+      display: grid;
+      grid-template-columns: 264px minmax(0, 1fr);
+    }
+  }
+
+  .aurora-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 20px 14px 16px;
+    overflow: hidden auto;
+    scrollbar-width: none;
+    border-right: 1px solid rgb(99 130 179 / 0.22);
+    background:
+      radial-gradient(440px 260px at 28% 88%, rgb(42 172 213 / 0.16), transparent 58%),
+      radial-gradient(390px 300px at 72% 100%, rgb(107 61 224 / 0.28), transparent 62%),
+      linear-gradient(180deg, rgb(8 14 27 / 0.98), rgb(8 15 29 / 0.96));
+    box-shadow: 16px 0 50px rgb(0 4 14 / 0.14);
+    transform: translateX(-100%);
+    transition: transform 200ms var(--ease-nuit);
+    &::-webkit-scrollbar {
+      display: none;
+    }
+    &.is-open {
+      transform: none;
+    }
+    @media (width >= 64rem) {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      width: auto;
+      height: 100dvh;
+      transform: none;
+      transition: none;
+    }
+  }
+  :root[data-theme='light'] .aurora-sidebar {
+    background:
+      radial-gradient(440px 260px at 28% 88%, rgb(68 190 212 / 0.12), transparent 58%),
+      radial-gradient(390px 300px at 72% 100%, rgb(122 86 218 / 0.13), transparent 62%),
+      rgb(249 251 255 / 0.97);
+    box-shadow: 14px 0 40px rgb(70 85 122 / 0.08);
+  }
+
+  .aurora-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: var(--color-scrim);
+    backdrop-filter: blur(4px);
+    transition: opacity 200ms var(--ease-nuit);
+  }
+
+  .aurora-brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 2px 10px 16px;
+    border-radius: var(--radius-field);
+    & img {
+      width: 36px;
+      height: 36px;
+      flex: none;
+      border-radius: 9px;
+      box-shadow: 0 8px 22px rgb(107 69 236 / 0.38);
+    }
+  }
+
+  .aurora-nav-group {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 4px;
+    padding: 2px 12px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+    cursor: pointer;
+    &:hover:not(:disabled) {
+      color: var(--color-ink-2);
+    }
+    &:disabled {
+      cursor: default;
+    }
+  }
+
+  .aurora-nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--color-ink-2);
+    font-size: 14px;
+    transition:
+      background-color 160ms var(--ease-nuit),
+      color 160ms var(--ease-nuit),
+      border-color 160ms var(--ease-nuit);
+    & > svg:first-child {
+      flex: none;
+      color: var(--color-ink-3);
+    }
+    &::before {
+      position: absolute;
+      top: 10px;
+      bottom: 10px;
+      left: -1px;
+      width: 2px;
+      border-radius: 4px;
+      content: '';
+    }
+    &:hover {
+      background: rgb(111 139 189 / 0.09);
+      color: var(--color-ink);
+    }
+    &[aria-current='page'] {
+      color: var(--color-link-hover);
+      border-color: rgb(132 101 255 / 0.2);
+      background: linear-gradient(90deg, rgb(119 82 234 / 0.22), rgb(74 64 132 / 0.1));
+      & > svg:first-child {
+        color: var(--color-link-hover);
+      }
+      &::before {
+        background: linear-gradient(180deg, var(--color-accent), var(--color-brand-5));
+        box-shadow: 0 0 14px rgb(132 101 255 / 0.6);
+      }
+    }
+  }
+  :root[data-theme='light'] .aurora-nav-item[aria-current='page'] {
+    color: var(--color-accent-press);
+    & > svg:first-child {
+      color: var(--color-accent-press);
+    }
+  }
+
+  .aurora-side-foot {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 4px 0;
+  }
+
+  .aurora-social {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    color: var(--color-ink-3);
+    background: rgb(121 82 255 / 0.17);
+    transition:
+      color 160ms var(--ease-nuit),
+      background-color 160ms var(--ease-nuit);
+    &:hover {
+      color: var(--color-link);
+      background: var(--color-line-2);
+    }
+  }
+
+  .aurora-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: var(--spacing-topbar);
+    padding: 0 36px;
+    border-bottom: 1px solid var(--color-line);
+    background: linear-gradient(90deg, rgb(8 14 27 / 0.76), rgb(12 23 44 / 0.66));
+    box-shadow: 0 8px 30px rgb(0 5 18 / 0.08);
+    backdrop-filter: blur(18px) saturate(1.15);
+    @media (width < 80rem) {
+      padding: 0 28px;
+    }
+    @media (width < 48rem) {
+      gap: 12px;
+      padding: 0 12px 0 10px;
+    }
+  }
+  :root[data-theme='light'] .aurora-header {
+    background: rgb(248 250 255 / 0.8);
+  }
+
+  .aurora-trail {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--color-ink-3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    & > span + span::before {
+      margin: 0 10px;
+      content: '/';
+      color: var(--color-ink-3);
+      opacity: 0.7;
+    }
+    & > span:last-child {
+      color: var(--color-ink);
+      font-weight: 650;
+    }
+    @media (width < 48rem) {
+      & > span:not(:last-child) {
+        display: none;
+      }
+      & > span:last-child::before {
+        content: none;
+      }
+    }
+  }
+
+  /* Panels wear Stremfin's cards' shadow. */
+  [class~='rounded-panel'][class~='bg-s1'] {
+    box-shadow:
+      0 12px 32px rgb(0 5 18 / 0.18),
+      inset 0 1px rgb(255 255 255 / 0.03);
+  }
+  :root[data-theme='light'] [class~='rounded-panel'][class~='bg-s1'] {
+    box-shadow:
+      0 10px 28px rgb(54 67 104 / 0.08),
+      inset 0 1px #fff;
+  }
 }
 
 @layer base {

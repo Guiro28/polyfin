@@ -42,4 +42,4 @@ export function LanguageSwitch({ className }: { className?: string }) {
   )
 }
 
-export const repositoryUrl = 'https://github.com/moodiness/polyfin'
+export const repositoryUrl = 'https://github.com/Guiro28/polyfin'

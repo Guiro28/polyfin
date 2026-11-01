@@ -171,3 +171,54 @@ export function isCurrent(section: NavSection, pathname: string): boolean {
   if (section.match.length === 0) return pathname === section.to
   return section.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
+
+/** The sections of Settings as pages, for the sidebar. */
+export const settingsPages: readonly NavPage[] = settingsSections.map((section) => ({
+  id: `settings-${section.id}`,
+  to: settingsPath(section.id),
+  label: (t: Messages) => t.nav.settingsSections[section.key],
+  icon: section.icon,
+}))
+
+const adminSection = (id: string) => adminSections.find((section) => section.id === id)!
+
+/**
+ * What an administrator's sidebar shows, in order, as Stremfin's does: the pages that stand
+ * alone, then each section with its pages under it, the user's own pages last.
+ */
+export const adminSidebar: readonly NavSection[] = [
+  adminSection('home'),
+  adminSection('users'),
+  adminSection('content'),
+  adminSection('system'),
+  { ...adminSection('settings'), pages: settingsPages },
+  {
+    id: 'my-space',
+    to: '/me/account',
+    match: ['/me'],
+    label: (t) => t.nav.memberArea,
+    icon: UserCircleIcon,
+    pages: accountPages,
+  },
+]
+
+/** What a member's sidebar shows: their own pages, each alone. */
+export const memberSidebar: readonly NavSection[] = memberSections
+
+/** Whether a page of a section is the current one: its address or one under it. */
+export function isCurrentPage(page: NavPage, pathname: string): boolean {
+  const path = page.to.split('#')[0]
+  return pathname === path || pathname.startsWith(`${path}/`)
+}
+
+/**
+ * Where an address is, for the trail of the top bar: its sidebar section, and its page in that
+ * section when the section has pages.
+ */
+export function whereIs(
+  sections: readonly NavSection[],
+  pathname: string,
+): { section?: NavSection; page?: NavPage } {
+  const section = sections.find((entry) => isCurrent(entry, pathname))
+  return { section, page: section?.pages?.find((page) => isCurrentPage(page, pathname)) }
+}

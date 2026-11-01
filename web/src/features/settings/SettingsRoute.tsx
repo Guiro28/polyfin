@@ -19,7 +19,7 @@ import {
   Row,
   RowList,
   searchable,
-  SectionNav,
+  TextInput,
   Skeleton,
   SkeletonText,
 } from '@/ui'
@@ -81,22 +81,24 @@ function SettingsPage({ section }: { section: SettingsSectionId }) {
     <PageLayout
       title={t.settings.title}
       lede={t.settings.description}
-      nav={
-        <SectionNav
-          label={t.nav.settingsSectionsLabel}
-          items={settingsSections.map((item) => ({
-            id: item.id,
-            label: t.nav.settingsSections[item.key],
-            icon: item.icon,
-            to: settingsPath(item.id),
-          }))}
-          search={{
-            value: search,
-            onChange: setSearch,
-            placeholder: text.searchPlaceholder,
-            hint: text.searchHint,
-          }}
-        />
+      actions={
+        // The sidebar lists the sections, as Stremfin's does: the page keeps their search.
+        <div className="w-[300px] max-md:w-full">
+          <TextInput
+            type="search"
+            size="sm"
+            icon={MagnifyingGlassIcon}
+            value={search}
+            onValue={setSearch}
+            placeholder={text.searchPlaceholder}
+            aria-label={text.searchPlaceholder}
+            aria-describedby="settings-search-hint"
+            className="h-9"
+          />
+          <p id="settings-search-hint" className="sr-only">
+            {text.searchHint}
+          </p>
+        </div>
       }
     >
       {search.trim() !== '' && (

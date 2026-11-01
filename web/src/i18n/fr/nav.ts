@@ -61,6 +61,8 @@ const nav: typeof en = {
     signOut: 'Se déconnecter',
     signingOut: 'Déconnexion…',
     menu: 'Menu',
+    adminArea: 'Administration',
+    memberArea: 'Mon espace',
     skipToContent: 'Aller au contenu',
   },
   palette: {

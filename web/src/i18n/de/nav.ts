@@ -61,6 +61,8 @@ const nav: typeof en = {
     signOut: 'Abmelden',
     signingOut: 'Wird abgemeldet…',
     menu: 'Menü',
+    adminArea: 'Administration',
+    memberArea: 'Mein Bereich',
     skipToContent: 'Zum Inhalt springen',
   },
   palette: {

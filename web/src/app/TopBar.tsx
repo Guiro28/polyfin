@@ -1,13 +1,13 @@
 import {
   ArrowLeftIcon,
-  ArrowSquareOutIcon,
   CaretDownIcon,
   GithubLogoIcon,
+  ListIcon,
   MagnifyingGlassIcon,
   SignOutIcon,
 } from '@phosphor-icons/react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
 import { fetchStatus, queryKeys, userImageUrl, type SessionUser } from '@/api'
 import { languages, useI18n } from '@/i18n'
 import { webPlayerInPlace, webPlayerLink } from '@/jellyfinApps'
@@ -23,10 +23,9 @@ import {
   MenuSeparator,
   modKey,
 } from '@/ui'
-import { Brand, repositoryUrl } from './Brand'
-import { MobileMenu } from './MobileMenu'
+import { repositoryUrl } from './Brand'
 import { ThemeToggle } from './ThemeToggle'
-import { accountPages, adminSections, isCurrent, memberSections } from './navigation'
+import { accountPages, adminSidebar, memberSidebar, whereIs } from './navigation'
 import { useOpenPalette } from './palette/CommandPalette'
 import { useSignOut } from './session'
 
@@ -41,107 +40,88 @@ export function useWebClient(): boolean {
 }
 
 /**
- * The 60 px bar on top of every signed-in page: the logo, the sections (or a member's own
- * pages), search, the web player and the account menu. Below 768 px it keeps the logo, search
- * and a menu button that opens the same entries in a sheet. `data-top-bar` marks it for the
- * lists of `Select` and `SuggestInput`, which stay under it.
- *
- * Opened from the web player or inside a Jellyfin app, the web player opens in place, and a
- * phone shows a back arrow to it before the logo, where jellyfin-web's dashboard has its own.
+ * The bar on top of every signed-in page, beside the sidebar, as in Stremfin: below 1024 px the
+ * button that opens the sidebar, the trail of the page (Administration / Content / Sources),
+ * then search, the way back to the web player when opened from it, the theme and the account
+ * menu. `data-top-bar` marks it for the lists of `Select` and `SuggestInput`, which stay under it.
  */
-export function TopBar({ user }: { user: SessionUser }) {
+export function TopBar({
+  user,
+  menuOpen,
+  onMenu,
+}: {
+  user: SessionUser
+  menuOpen: boolean
+  onMenu: () => void
+}) {
   const { t } = useI18n()
   const { pathname } = useLocation()
   const openPalette = useOpenPalette()
   const webClient = useWebClient()
   const inPlace = webPlayerInPlace()
-  const sections = user.isAdministrator ? adminSections : memberSections
+  const { section, page } = whereIs(user.isAdministrator ? adminSidebar : memberSidebar, pathname)
+  const trail = [
+    user.isAdministrator ? t.nav.adminArea : t.nav.memberArea,
+    section?.label(t),
+    page?.label(t),
+  ].filter((part): part is string => part !== undefined)
 
   return (
-    <header
-      data-top-bar
-      className="sticky top-0 z-30 h-topbar border-b border-line bg-bg/78 backdrop-blur-[18px] backdrop-saturate-130"
-    >
-      <div className="mx-auto flex h-full max-w-page items-center gap-10 px-14 max-xl:gap-6 max-xl:px-8 max-md:gap-3 max-md:px-5">
+    <header data-top-bar className="aurora-header">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onMenu}
+          aria-label={t.nav.menu}
+          aria-expanded={menuOpen}
+          aria-controls="sidebar"
+          className="inline-grid size-9 shrink-0 cursor-pointer place-items-center rounded-field text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-ink/8 hover:text-ink lg:hidden"
+        >
+          <ListIcon size={20} aria-hidden="true" />
+        </button>
+        <p className="aurora-trail">
+          {trail.map((part, index) => (
+            <span key={index} aria-current={index === trail.length - 1 ? 'page' : undefined}>
+              {part}
+            </span>
+          ))}
+        </p>
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={openPalette}
+          aria-label={t.nav.searchShortcut(`${modKey} K`)}
+          aria-keyshortcuts="Meta+K Control+K /"
+          className={cx(
+            'flex h-9 cursor-pointer items-center gap-2.5 rounded-field border border-line-2 bg-s2 pr-1.5 pl-3 text-control text-ink-3 transition-[background-color,border-color] duration-160 ease-nuit hover:border-line-3 hover:bg-s3',
+            'w-[248px] max-xl:w-auto max-md:w-9 max-md:justify-center max-md:border-transparent max-md:bg-transparent max-md:p-0 max-md:text-ink-2',
+          )}
+        >
+          <MagnifyingGlassIcon size={16} aria-hidden="true" className="shrink-0" />
+          <span className="flex-1 text-left max-xl:hidden">{t.nav.search}</span>
+          <Kbd className="max-md:hidden">{modKey === '⌘' ? '⌘K' : 'Ctrl K'}</Kbd>
+        </button>
         {webClient && inPlace && (
           <a
             {...webPlayerLink(true)}
-            aria-label={t.nav.backToWebPlayer}
             title={t.nav.backToWebPlayer}
-            className="-ml-2 inline-grid size-9 shrink-0 place-items-center rounded-field text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-ink/8 hover:text-ink md:hidden"
+            className="inline-flex h-9 items-center gap-2 rounded-field px-3 text-control font-medium whitespace-nowrap text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-s2 hover:text-ink"
           >
-            <ArrowLeftIcon size={18} aria-hidden="true" />
+            <ArrowLeftIcon size={16} aria-hidden="true" />
+            <span className="max-lg:sr-only">{t.nav.backToWebPlayer}</span>
           </a>
         )}
-        <Brand />
-        <nav aria-label={t.nav.label} className="flex h-full items-stretch gap-1 max-md:hidden">
-          {sections.map((section) => (
-            <Link
-              key={section.id}
-              to={section.to}
-              aria-current={isCurrent(section, pathname) ? 'page' : undefined}
-              className={cx(
-                'relative flex items-center px-3 text-body font-medium whitespace-nowrap text-ink-2 transition-colors duration-160 ease-nuit hover:text-ink max-lg:px-2',
-                'after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:scale-x-0 after:rounded-full after:bg-accent after:transition-transform after:duration-220 after:ease-nuit max-lg:after:inset-x-2',
-                'aria-[current=page]:text-ink aria-[current=page]:after:scale-x-100',
-                'focus-visible:rounded-field focus-visible:outline-offset-[-6px]',
-              )}
-            >
-              {section.label(t)}
-            </Link>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={openPalette}
-            aria-label={t.nav.searchShortcut(`${modKey} K`)}
-            aria-keyshortcuts="Meta+K Control+K /"
-            className={cx(
-              'flex h-9 cursor-pointer items-center gap-2.5 rounded-field border border-line-2 bg-s2 pr-1.5 pl-3 text-control text-ink-3 transition-[background-color,border-color] duration-160 ease-nuit hover:border-line-3 hover:bg-s3',
-              'w-[248px] max-xl:w-auto max-md:w-9 max-md:justify-center max-md:border-transparent max-md:bg-transparent max-md:p-0 max-md:text-ink-2',
-            )}
-          >
-            <MagnifyingGlassIcon size={16} aria-hidden="true" className="shrink-0" />
-            <span className="flex-1 text-left max-xl:hidden">{t.nav.search}</span>
-            <Kbd className="max-md:hidden">{modKey === '⌘' ? '⌘K' : 'Ctrl K'}</Kbd>
-          </button>
-          {webClient && (
-            <a
-              {...webPlayerLink(inPlace)}
-              title={inPlace ? t.nav.backToWebPlayer : t.nav.webPlayerHint}
-              className="inline-flex h-9 items-center gap-2 rounded-field px-3 text-control font-medium whitespace-nowrap text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-s2 hover:text-ink max-md:hidden"
-            >
-              {inPlace ? (
-                <>
-                  <ArrowLeftIcon size={16} aria-hidden="true" />
-                  <span className="max-lg:sr-only">{t.nav.backToWebPlayer}</span>
-                </>
-              ) : (
-                <>
-                  <span className="max-lg:sr-only">{t.nav.webPlayer}</span>
-                  <ArrowSquareOutIcon size={16} aria-hidden="true" />
-                  <span className="sr-only">{t.nav.webPlayerHint}</span>
-                </>
-              )}
-            </a>
-          )}
-          <ThemeToggle />
-          <div className="max-md:hidden">
-            <AccountMenu user={user} />
-          </div>
-          <div className="md:hidden">
-            <MobileMenu user={user} webClient={webClient} inPlace={inPlace} />
-          </div>
-        </div>
+        <ThemeToggle />
+        <AccountMenu user={user} />
       </div>
     </header>
   )
 }
 
 /**
- * The account button and its menu: who is signed in, an administrator's own pages (a member has
- * them in the bar), the language, the source code and signing out.
+ * The account button and its menu: who is signed in, an administrator's own pages, the
+ * language, the theme, the source code and signing out.
  */
 function AccountMenu({ user }: { user: SessionUser }) {
   const { language, setLanguage, t } = useI18n()
