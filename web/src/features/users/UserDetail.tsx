@@ -47,7 +47,6 @@ import { AudioRegionSelect } from '@/features/account/AudioRegion'
 import { errorMessage, formatDate } from '@/format'
 import { useI18n } from '@/i18n'
 import {
-  Avatar,
   Badge,
   Button,
   ButtonLink,
@@ -67,6 +66,7 @@ import {
   TextInput,
   useToast,
 } from '@/ui'
+import { AvatarButton } from './AvatarDialog'
 import DeviceList from './DeviceList'
 import {
   clockTime,
@@ -246,7 +246,7 @@ function UserPage({ user }: { user: User }) {
 
   const lede = (
     <span className="flex flex-wrap items-center gap-2">
-      <Avatar name={user.name} image={userImageUrl(user)} size="md" />
+      <AvatarButton user={user.id} name={user.name} image={userImageUrl(user)} />
       {user.id === self.id && <Badge>{t.users.you}</Badge>}
       <Badge tone={user.isAdministrator ? 'accent' : 'neutral'}>
         {user.isAdministrator ? t.users.administrator : t.users.member}

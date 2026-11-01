@@ -33,8 +33,10 @@ import {
   signOutMyDevice,
   startOwnAppImport,
   type OwnAppImport,
+  userImageUrl,
 } from '@/api'
 import { PageLayout } from '@/app/PageLayout'
+import { AvatarButton } from '@/features/users/AvatarDialog'
 import { useSessionUser } from '@/app/session'
 import DeviceList from '@/features/users/DeviceList'
 import NotificationTargets from '@/features/notifications/NotificationTargets'
@@ -141,10 +143,13 @@ export default function AccountRoute() {
     <PageLayout
       title={text.title}
       lede={
-        <>
-          {text.signedInAs}
-          <span className="font-mono text-ink">{user.name}</span>.
-        </>
+        <span className="flex flex-wrap items-center gap-3">
+          <AvatarButton user={null} name={user.name} image={userImageUrl(user)} />
+          <span>
+            {text.signedInAs}
+            <span className="font-mono text-ink">{user.name}</span>.
+          </span>
+        </span>
       }
       actions={<ResetPreferences />}
       nav={

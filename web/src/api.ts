@@ -2744,6 +2744,38 @@ export const fetchUsers = (signal?: AbortSignal) =>
 
 export const createUser = (body: NewUser) => request<User>('POST', '/users', body)
 
+/** An avatar of Xperience's gallery: its picture on Xperience's CDN, and its category. */
+export type XperienceAvatar = { id: string; name: string; url: string; category: string }
+
+/**
+ * Xperience's gallery of avatars, in its order, its categories sorted; `copy` when Xperience did
+ * not answer and the server's copy of it is offered.
+ */
+export type XperienceCatalog = {
+  avatars: XperienceAvatar[]
+  categories: string[]
+  sourceUrl: string
+  copy: boolean
+}
+
+export const fetchXperienceAvatars = (signal?: AbortSignal) =>
+  request<XperienceCatalog>('GET', '/xperience-avatars', undefined, signal)
+
+/** Where a user's picture is changed: a user's, for an administrator, or the signed-in user's. */
+const userImagePath = (user: string | null) =>
+  user === null ? '/account/image' : `/users/${seg(user)}/image`
+
+/** Makes a picture sent (JPEG, PNG or WebP, in base64) a user's, or the signed-in user's. */
+export const setUserImage = (user: string | null, data: string) =>
+  request<{ imageTag: string | null }>('PUT', userImagePath(user), { data })
+
+/** Makes an avatar of Xperience's gallery a user's picture, which the server downloads. */
+export const setXperienceImage = (user: string | null, url: string) =>
+  request<{ imageTag: string | null }>('POST', `${userImagePath(user)}/xperience`, { url })
+
+export const deleteUserImage = (user: string | null) =>
+  request<{ imageTag: string | null }>('DELETE', userImagePath(user))
+
 export const updateUser = (id: string, patch: UserPatch) =>
   request<User>('PATCH', `/users/${seg(id)}`, patch)
 
@@ -5484,6 +5516,7 @@ export const queryKeys = {
   webThemes: ['web-themes'] as const,
   tracking: ['account', 'tracking'] as const,
   users: ['users'] as const,
+  xperienceAvatars: ['xperience-avatars'] as const,
   /** Prefix of every group query: invalidating it refreshes the list and each group. */
   groups: ['groups'] as const,
   group: (id: string) => ['groups', id] as const,

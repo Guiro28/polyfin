@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router'
 import { ApiError, createUser, queryClient, queryKeys, type GroupSummary, type User } from '@/api'
 import { errorMessage } from '@/format'
 import { useI18n } from '@/i18n'
-import { Button, Checkbox, Modal, Field, Notice, Select, TextInput, useToast } from '@/ui'
+import { Avatar, Button, Checkbox, Modal, Field, Notice, Select, TextInput, useToast } from '@/ui'
+import { AvatarDialog, choicePreview, saveChoice, type AvatarChoice } from './AvatarDialog'
 
 /** Codes about one field, shown under it rather than above the buttons. */
 const nameCodes = ['invalid_name', 'name_taken']
@@ -35,6 +36,9 @@ export default function CreateUserModal({
   const [groupId, setGroupId] = useState('')
   // An account signing in through the identity provider only needs no password.
   const [providerOnly, setProviderOnly] = useState(false)
+  // Saved once the account exists, as the server keeps a user's picture.
+  const [avatar, setAvatar] = useState<AvatarChoice | null>(null)
+  const [choosingAvatar, setChoosingAvatar] = useState(false)
 
   const mutation = useMutation({
     mutationFn: createUser,
@@ -45,6 +49,12 @@ export default function CreateUserModal({
       setShowOnSignIn(false)
       setGroupId('')
       setProviderOnly(false)
+      if (avatar !== null) {
+        saveChoice(created.id, avatar)
+          .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.users }))
+          .catch(() => toast(t.users.avatar.savedOnCreate, { tone: 'danger' }))
+      }
+      setAvatar(null)
       // The new user's page needs it in the list before the refresh comes back.
       queryClient.setQueryData<User[]>(queryKeys.users, (old) => old && [...old, created])
       void queryClient.invalidateQueries({ queryKey: queryKeys.users })
@@ -109,6 +119,25 @@ export default function CreateUserModal({
             invalid={nameError !== undefined}
           />
         </Field>
+        <Field label={t.users.avatar.field} help={t.users.avatar.pickHelp}>
+          <div className="flex items-center gap-3">
+            <Avatar
+              name={name.trim() || '?'}
+              image={avatar === null ? undefined : choicePreview(avatar)}
+              size="lg"
+            />
+            <Button size="sm" onClick={() => setChoosingAvatar(true)}>
+              {t.users.avatar.pick}
+            </Button>
+          </div>
+        </Field>
+        <AvatarDialog
+          open={choosingAvatar}
+          onClose={() => setChoosingAvatar(false)}
+          name={name.trim() || t.users.avatar.field}
+          image={avatar === null ? undefined : choicePreview(avatar)}
+          onPick={setAvatar}
+        />
         <Checkbox
           label={t.users.providerOnly}
           help={t.users.providerOnlyHelp}
