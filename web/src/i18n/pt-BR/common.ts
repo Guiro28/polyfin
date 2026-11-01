@@ -279,6 +279,9 @@ const common: typeof en = {
       'O TMDB não aceitou esta chave. Copie novamente a chave da API ou o token de acesso de leitura da sua conta TMDB. Nada foi salvo.',
     tmdb_unreachable:
       'Não foi possível acessar o TMDB para verificar a chave. Nada foi salvo: tente novamente mais tarde.',
+    invalid_route: 'Escolha na lista o caminho dos vídeos.',
+    invalid_stream_proxy: 'Informe um endereço socks5://host:porta ou http://host:porta.',
+    invalid_versions_offered: 'Escolha na lista quais versões são oferecidas.',
     invalid_critic_rating_shows: 'Escolha na lista qual nota a avaliação da crítica exibe.',
     invalid_poster_badge_size: 'Escolha na lista o tamanho dos selos.',
     invalid_poster_template:

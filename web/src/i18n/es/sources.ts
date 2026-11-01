@@ -101,6 +101,17 @@ const sources: typeof en = {
       'Déjelo en Ninguno en la única extensión de metadatos del servidor, sea cual sea el idioma que se haya fijado en su página de configuración: una extensión con un idioma solo describe los títulos para los usuarios que han elegido ese idioma, salvo que ninguna extensión dejada en Ninguno los describa. Para que los usuarios lean los títulos en otros idiomas, añada la misma extensión de metadatos una vez más por cada idioma, configurada en ese idioma en su página de configuración, e indique aquí el idioma solo en esas copias adicionales: los usuarios que elijan ese idioma de los metadatos verán sus nombres, sinopsis e imágenes. Una extensión con un idioma y sin biblioteca propia solo describe títulos.',
     languageNone: 'Ninguno',
     languageSaved: (name: string) => `${name}: se ha guardado el idioma de sus descripciones.`,
+    route: 'Paso de los vídeos',
+    routeHelp:
+      'Cómo llegan los vídeos de este addon a las apps. En el origen: la app lee el vídeo directamente del proveedor cuando puede, sin pasar por el servidor. A través del servidor: el servidor obtiene el vídeo con su propia dirección IP y se lo pasa a la app, útil cuando un servicio debrid vincula sus enlaces a la dirección que los pidió. A través del proxy: como a través del servidor, pero por el proxy de los ajustes (WARP, por ejemplo), que también toman las peticiones al addon.',
+    routeChoices: {
+      source: 'En el origen (la app lee directamente)',
+      server: 'A través del servidor (su dirección IP)',
+      proxy: 'A través del proxy (WARP u otro)',
+    },
+    routeNoProxy:
+      'No hay ningún proxy configurado: sus vídeos pasan por el servidor, con su dirección. Indica el proxy en Ajustes › Reproducción.',
+    routeSaved: (name: string) => `${name}: se ha guardado el paso de sus vídeos.`,
     edit: 'Editar la cuenta',
     saved: 'Fuente guardada.',
     settings: 'Ajustes',

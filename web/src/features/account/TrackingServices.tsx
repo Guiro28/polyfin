@@ -31,7 +31,6 @@ import {
   cx,
   ExternalButtonLink,
   Field,
-  IconTile,
   InlineError,
   Notice,
   SecretField,
@@ -43,6 +42,7 @@ import {
   useToast,
   type StatusTone,
 } from '@/ui'
+import { ServiceLogo } from './serviceLogos'
 
 const serviceNames: Record<TrackingServiceName, string> = {
   trakt: 'Trakt',
@@ -497,16 +497,11 @@ function ServiceRow({
         'max-sm:grid-cols-[40px_minmax(0,1fr)] max-sm:gap-x-3.5 max-sm:px-4 max-sm:py-[18px]',
       )}
     >
-      {service.available ? (
-        <IconTile letters={monograms[service.service]} />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="inline-grid size-10 place-items-center rounded-row border border-line-2 bg-s2 text-[15px] font-semibold text-ink-3"
-        >
-          {monograms[service.service]}
-        </span>
-      )}
+      <ServiceLogo
+        service={service.service}
+        letters={monograms[service.service]}
+        muted={!service.available}
+      />
       <div className="min-w-0">
         <h3
           id={headingId}

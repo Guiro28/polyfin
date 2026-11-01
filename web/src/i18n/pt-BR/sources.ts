@@ -100,6 +100,17 @@ const sources: typeof en = {
       'Deixe em Nenhum no único complemento de metadados do servidor, seja qual for o idioma definido na página de configuração dele: um complemento com idioma descreve os títulos apenas para os usuários que escolheram esse idioma, a menos que nenhum complemento deixado em Nenhum os descreva. Para que os usuários leiam os títulos em outros idiomas, adicione o mesmo complemento de metadados mais uma vez para cada idioma, configurado nesse idioma na página de configuração dele, e indique o idioma aqui somente nessas cópias extras: os usuários que escolherem esse idioma dos metadados verão os nomes, sinopses e imagens dele. Um complemento com idioma e sem biblioteca própria apenas descreve títulos.',
     languageNone: 'Nenhum',
     languageSaved: (name: string) => `${name}: o idioma das descrições foi salvo.`,
+    route: 'Caminho dos vídeos',
+    routeHelp:
+      'Como os vídeos deste addon chegam aos apps. Na origem: o app lê o vídeo direto do provedor quando pode, sem passar pelo servidor. Pelo servidor: o servidor busca o vídeo com o próprio endereço IP e o repassa ao app, útil quando um serviço debrid vincula seus links ao endereço que os pediu. Pelo proxy: como pelo servidor, mas através do proxy das configurações (WARP, por exemplo), que as requisições ao addon também usam.',
+    routeChoices: {
+      source: 'Na origem (o app lê direto)',
+      server: 'Pelo servidor (o endereço IP dele)',
+      proxy: 'Pelo proxy (WARP ou outro)',
+    },
+    routeNoProxy:
+      'Nenhum proxy configurado: os vídeos passam pelo servidor, com o endereço dele. Informe o proxy em Configurações › Reprodução.',
+    routeSaved: (name: string) => `${name}: o caminho dos vídeos foi salvo.`,
     edit: 'Editar a conta',
     saved: 'Fonte salva.',
     settings: 'Configurações',

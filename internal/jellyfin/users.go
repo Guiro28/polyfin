@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/embyapp"
 	"github.com/moodiness/polyfin/internal/forwarded"
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/throttle"
@@ -39,6 +40,7 @@ func (h *Handler) publicUsers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		dto := newUserDto(user, h.ServerID)
+		dto.EnableAutoLogin = embyapp.In(r.Context())
 		if len(user.HiddenLibraries) > 0 {
 			if libraries == nil {
 				if libraries, err = h.Library.ServerLibraries(r.Context()); err != nil {
@@ -66,12 +68,12 @@ func (h *Handler) reserve(w http.ResponseWriter, key string) *throttle.Attempt {
 }
 
 func (h *Handler) authenticateByName(w http.ResponseWriter, r *http.Request) {
-	c := readCredentials(r, h.Accounts.Settings().LegacyAuthorization)
+	c := readCredentials(r, h.legacy(r))
 	var body struct {
 		Username string
 		Pw       string
 	}
-	if !c.complete() || decode(r, &body) != nil {
+	if !c.complete() || decodeSignIn(r, &body.Username, &body.Pw) != nil {
 		processingError(w, http.StatusBadRequest)
 		return
 	}
@@ -158,6 +160,9 @@ func (h *Handler) signIn(w http.ResponseWriter, r *http.Request, user accounts.U
 	if err != nil {
 		h.internalError(w, r, err)
 		return
+	}
+	if embyapp.In(r.Context()) {
+		embyapp.Remember(token)
 	}
 	// An account's first device, and those it used before, are not told.
 	if device.Unfamiliar && h.NewDevice != nil {

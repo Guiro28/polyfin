@@ -552,10 +552,15 @@ type settingsJSON struct {
 	HiddenReleases *[]string `json:"hiddenReleases"`
 	// NameHowVersionsPlay keeps its current value when a PUT leaves it out.
 	NameHowVersionsPlay *bool `json:"nameHowVersionsPlay"`
-	SyncAddonSubtitles  *bool `json:"syncAddonSubtitles"`
-	MaxConversions      *int  `json:"maxConversions"`
-	MaxConversionHeight *int  `json:"maxConversionHeight"`
-	ConvertedDownloads  *bool `json:"convertedDownloads"`
+	// VersionsOffered is "all" or "qualities".
+	VersionsOffered *string `json:"versionsOffered"`
+	// StreamProxy is the proxy of the addons routed through one, a
+	// socks5:// or http:// address, empty for none.
+	StreamProxy         *string `json:"streamProxy"`
+	SyncAddonSubtitles  *bool   `json:"syncAddonSubtitles"`
+	MaxConversions      *int    `json:"maxConversions"`
+	MaxConversionHeight *int    `json:"maxConversionHeight"`
+	ConvertedDownloads  *bool   `json:"convertedDownloads"`
 	// SubtitleOCR ("off", "played" or "scans") and SubtitleOCRTracks keep
 	// their current values when a PUT leaves them out.
 	SubtitleOCR       *string `json:"subtitleOcr"`
@@ -894,6 +899,8 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		HiddenVersionCodecs:   &settings.HiddenVersionCodecs,
 		HiddenVersionWords:    &settings.HiddenVersionWords,
 		NameHowVersionsPlay:   &settings.NameHowVersionsPlay,
+		VersionsOffered:       &settings.VersionsOffered,
+		StreamProxy:           &settings.StreamProxy,
 		HiddenReleases:        &settings.HiddenReleases,
 		SyncAddonSubtitles:    &settings.SyncAddonSubtitles,
 		MaxConversions:        &settings.MaxConversions,
@@ -1657,6 +1664,8 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		HiddenVersionCodecs:   valueOr(body.HiddenVersionCodecs, current.HiddenVersionCodecs),
 		HiddenVersionWords:    valueOr(body.HiddenVersionWords, current.HiddenVersionWords),
 		NameHowVersionsPlay:   valueOr(body.NameHowVersionsPlay, current.NameHowVersionsPlay),
+		VersionsOffered:       valueOr(body.VersionsOffered, current.VersionsOffered),
+		StreamProxy:           valueOr(body.StreamProxy, current.StreamProxy),
 		HiddenReleases:        valueOr(body.HiddenReleases, current.HiddenReleases),
 		SyncAddonSubtitles:    valueOr(body.SyncAddonSubtitles, current.SyncAddonSubtitles),
 		MaxConversions:        valueOr(body.MaxConversions, current.MaxConversions),

@@ -290,6 +290,9 @@ const common: typeof en = {
       'TMDB no ha aceptado esta clave. Copie de nuevo la clave API o el token de acceso de lectura desde su cuenta de TMDB. No se ha guardado nada.',
     tmdb_unreachable:
       'No se pudo contactar con TMDB para comprobar la clave. No se ha guardado nada: inténtelo de nuevo más tarde.',
+    invalid_route: 'Elige de la lista el paso de los vídeos.',
+    invalid_stream_proxy: 'Indica una dirección socks5://host:puerto o http://host:puerto.',
+    invalid_versions_offered: 'Elige de la lista qué versiones se ofrecen.',
     invalid_critic_rating_shows:
       'Elija en la lista qué puntuación muestra la valoración de la crítica.',
     invalid_poster_badge_size: 'Elija en la lista el tamaño de las insignias.',

@@ -498,7 +498,7 @@ func (s *Service) dashManifest(ctx context.Context, version library.Version) (ma
 	for name, value := range version.RequestHeaders() {
 		header.Set(name, value)
 	}
-	response, err := s.opener.Open(ctx, http.MethodGet, version.URL, header, version.Confined)
+	response, err := s.openerFor(version).Open(ctx, http.MethodGet, version.URL, header, version.Confined)
 	if err != nil {
 		return manifestInfo{}, fmt.Errorf("%w: %v", ErrLiveTimeout, err)
 	}

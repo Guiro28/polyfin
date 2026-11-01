@@ -64,10 +64,13 @@ func optionalTime(t *time.Time) *Time {
 }
 
 type PublicSystemInfo struct {
-	LocalAddress           string
+	LocalAddress string
+	// LocalAddresses and RemoteAddresses are Emby's, for its apps only.
+	LocalAddresses         []string `json:",omitempty"`
+	RemoteAddresses        []string `json:",omitempty"`
 	ServerName             string
 	Version                string
-	ProductName            string
+	ProductName            string `json:",omitempty"`
 	OperatingSystem        string
 	Id                     string
 	StartupWizardCompleted bool

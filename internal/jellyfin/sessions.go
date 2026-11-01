@@ -33,7 +33,7 @@ func (h *Handler) quickConnectInitiate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, quickConnectDisabled)
 		return
 	}
-	c := readCredentials(r, h.Accounts.Settings().LegacyAuthorization)
+	c := readCredentials(r, h.legacy(r))
 	if !c.complete() {
 		processingError(w, http.StatusBadRequest)
 		return
@@ -100,7 +100,7 @@ func (h *Handler) quickConnectAuthorize(w http.ResponseWriter, r *http.Request) 
 // error is not refused; that of one of Silo's apps signs in once (see
 // quickconnect.Store.Redeem).
 func (h *Handler) authenticateWithQuickConnect(w http.ResponseWriter, r *http.Request) {
-	c := readCredentials(r, h.Accounts.Settings().LegacyAuthorization)
+	c := readCredentials(r, h.legacy(r))
 	var body struct{ Secret string }
 	if !c.complete() || decode(r, &body) != nil {
 		processingError(w, http.StatusBadRequest)

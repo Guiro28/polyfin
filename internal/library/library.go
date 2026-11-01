@@ -1293,7 +1293,12 @@ func (s *Service) libraryChildren(ctx context.Context, v view, l library, start,
 	}
 	result := page(items, start, totalWithinMax(total, l.maxItems))
 	if result.More && !first {
-		s.prefetch(ctx, v, l.addon, func(ctx context.Context) { _, _, _ = s.window(ctx, v, src, start+count, count) })
+		s.prefetch(ctx, v, l.addon, func(ctx context.Context) {
+			next, _, _ := s.window(ctx, v, src, start+count, count)
+			// The descriptions take longer than the pages: they are read
+			// apart, leaving the read ahead to the next listing.
+			go s.describeSeries(ctx, v, l, next)
+		})
 	}
 	return result, s.save(ctx, records)
 }
@@ -1322,7 +1327,30 @@ func page(items []Item, start, total int) Page {
 }
 
 // prefetchLimit bounds the listings read ahead at once.
-const prefetchLimit = 2
+const prefetchLimit = 4
+
+// describeSeries reads ahead the descriptions of the series among metas,
+// listed by l, so that their episodes are known when an app lists them:
+// apps show on a series' poster how many of its episodes are left to
+// watch, which a catalog page does not tell (see Contents).
+func (s *Service) describeSeries(ctx context.Context, v view, l library, metas []stremio.Meta) {
+	var g errgroup.Group
+	g.SetLimit(describedAhead)
+	for _, meta := range metas {
+		_, r, err := titleItem(l.addon.addon.ID, l.catalog, meta, l.item.ID, l.addon.confined)
+		if err != nil || r.Kind != KindSeries {
+			continue
+		}
+		g.Go(func() error {
+			_, _ = s.described(ctx, v, r)
+			return nil
+		})
+	}
+	_ = g.Wait()
+}
+
+// describedAhead bounds the descriptions describeSeries reads at once.
+const describedAhead = 8
 
 // prefetch reads the next window of a listing ahead, in the background, so
 // that the app's next page answers at once: read fills the pages kept. It

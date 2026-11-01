@@ -2,6 +2,7 @@
 package jellyfin
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/moodiness/polyfin/internal/cache"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/commercials"
+	"github.com/moodiness/polyfin/internal/embyapp"
 	"github.com/moodiness/polyfin/internal/homerows"
 	"github.com/moodiness/polyfin/internal/iptv"
 	"github.com/moodiness/polyfin/internal/library"
@@ -273,7 +275,10 @@ func New(options Options) *Handler {
 	h.listings = newListings(h.listVersions)
 	if options.Library != nil {
 		options.Library.OnVersionsChanged(h.versionsChanged)
-		options.Library.OnFirstPagesRead(h.warmPosters)
+		options.Library.OnFirstPagesRead(func(ctx context.Context) {
+			h.warmPosters(ctx)
+			h.warmSeries(ctx)
+		})
 	}
 	options.Accounts.OnSignOut(h.signedOut)
 	if options.Thumbnails != nil {
@@ -293,6 +298,8 @@ func New(options Options) *Handler {
 	signedInAnyHour(http.MethodGet, "/System/Info", h.systemInfo)
 	signedIn(http.MethodGet, "/System/Configuration/{key}", h.namedConfiguration)
 	anonymous(http.MethodGet, "/System/Ping", h.ping)
+	signedIn(http.MethodGet, "/System/WakeOnLanInfo", h.wakeOnLanInfo)
+	signedIn(http.MethodGet, "/Users/{userId}/Sections/{sectionId}/Items", h.embySectionItems)
 	anonymous(http.MethodPost, "/System/Ping", h.ping)
 
 	anonymous(http.MethodGet, "/Branding/Configuration", h.brandingConfiguration)
@@ -352,6 +359,9 @@ func New(options Options) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if embyapp.Detect(r) {
+		r = r.WithContext(embyapp.With(r.Context()))
+	}
 	if isSocket(r) {
 		h.socket(w, r)
 		return

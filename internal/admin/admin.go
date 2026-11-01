@@ -375,6 +375,8 @@ func New(options Options) http.Handler {
 	h.dlnaRoutes(mux)
 	mux.Handle("PUT /admin/api/settings", h.administrator(h.updateSettings))
 	mux.Handle("GET /admin/api/settings/apps", h.administrator(h.settingsApps))
+	mux.Handle("POST /admin/api/settings/stream-proxy/check", h.administrator(h.checkStreamProxy))
+	mux.Handle("POST /admin/api/settings/stream-proxy/detect", h.administrator(h.detectWarp))
 	mux.Handle("GET /admin/api/settings/poster-previews", h.administrator(h.posterPreviews))
 	mux.Handle("POST /admin/api/settings/secrets/{name}/reveal", h.administrator(h.revealServerSecret))
 	mux.Handle("POST /admin/api/settings/metrics-token", h.administrator(h.newMetricsToken))
@@ -658,6 +660,8 @@ func accountError(w http.ResponseWriter, err error) bool {
 		{accounts.ErrInvalidMDBListRatingsKey, http.StatusBadRequest, "invalid_mdblist_ratings_key"},
 		{accounts.ErrInvalidTMDBKey, http.StatusBadRequest, "invalid_tmdb_key"},
 		{accounts.ErrInvalidCriticRatingShows, http.StatusBadRequest, "invalid_critic_rating_shows"},
+		{accounts.ErrInvalidVersionsOffered, http.StatusBadRequest, "invalid_versions_offered"},
+		{accounts.ErrInvalidStreamProxy, http.StatusBadRequest, "invalid_stream_proxy"},
 		{accounts.ErrInvalidPosterBadgeSize, http.StatusBadRequest, "invalid_poster_badge_size"},
 		{accounts.ErrInvalidPosterTemplate, http.StatusBadRequest, "invalid_poster_template"},
 		{accounts.ErrInvalidMeasureLoudness, http.StatusBadRequest, "invalid_measure_loudness"},

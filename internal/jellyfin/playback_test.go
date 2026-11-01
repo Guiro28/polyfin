@@ -172,7 +172,7 @@ func TestItemDetailsListVersions(t *testing.T) {
 	if first.Id != p.movie || second.Id != p.versions[1].ID.String() || first.ETag == second.ETag {
 		t.Errorf("ids %s %s, etags %s %s", first.Id, second.Id, first.ETag, second.ETag)
 	}
-	if first.Name != "Source 2160p · REMUX · HEVC" || first.Protocol != "Http" || !first.IsRemote || first.RequiredHttpHeaders == nil {
+	if first.Name != "Source 2160p · 80 GB · REMUX · HEVC" || first.Protocol != "Http" || !first.IsRemote || first.RequiredHttpHeaders == nil {
 		t.Errorf("first source: %+v", first)
 	}
 	if !strings.HasPrefix(first.Path, p.url+"/Videos/"+p.movie+"/stream.mkv?") || !strings.Contains(first.Path, grantParameter+"=") {

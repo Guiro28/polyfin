@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/embyapp"
 )
 
 // User configuration.
@@ -82,6 +83,7 @@ func (h *Handler) userDto(ctx context.Context, user accounts.User) (UserDto, err
 		return UserDto{}, err
 	}
 	dto := newUserDto(user, h.ServerID)
+	dto.EnableAutoLogin = embyapp.In(ctx)
 	dto.Configuration = configuration
 	dto.Policy.InvalidLoginAttemptCount = user.InvalidLoginAttempts
 	if limit := h.Accounts.Settings().LoginAttempts; limit > 0 {

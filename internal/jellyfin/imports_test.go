@@ -137,7 +137,9 @@ func TestALargeImportedHistoryDoesNotFloodTheAddons(t *testing.T) {
 	s.get(t, "/Shows/Upcoming", token, &next)
 	var resume QueryResult
 	s.get(t, "/UserItems/Resume", token, &resume)
-	if asked := metas.Load() - before; asked == 0 || asked > 50 {
+	// Listing the library described its series already, for the episodes
+	// left on their posters (see unstartedContents): Next Up may ask none.
+	if asked := metas.Load() - before; asked > 50 {
 		t.Errorf("%d series described for Next Up, Upcoming and Continue Watching", asked)
 	}
 }

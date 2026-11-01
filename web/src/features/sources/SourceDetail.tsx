@@ -10,9 +10,11 @@ import {
   TrashIcon,
 } from '@phosphor-icons/react'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  addonRoutes,
   deleteAddon,
+  fetchSettings,
   queryClient,
   queryKeys,
   refreshAddon,
@@ -320,6 +322,12 @@ export function SourceDetail({
         </PanelSection>
       )}
 
+      {scope === 'shared' && addon.kind === 'stremio' && (
+        <PanelSection>
+          <AddonRoute addon={addon} />
+        </PanelSection>
+      )}
+
       {scope === 'shared' && (
         <PanelSection>
           <SourceUsedBy key={addon.id} addon={addon} />
@@ -586,6 +594,49 @@ function AddonLanguage({ addon }: { addon: Addon }) {
         disabled={save.isPending}
         className="max-w-xs"
       />
+    </Field>
+  )
+}
+
+/**
+ * How a server's Stremio addon's videos reach the apps: at their source, through the server, or
+ * through the settings' proxy, saved as it changes. Through the proxy without one, it says the
+ * server's address stands for it.
+ */
+function AddonRoute({ addon }: { addon: Addon }) {
+  const { t } = useI18n()
+  const text = t.sources
+  const toast = useToast()
+  const settings = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: ({ signal }) => fetchSettings(signal),
+  })
+  const save = useMutation({
+    mutationFn: (route: Addon['route']) => updateAddon('shared', addon.id, { route }),
+    onSuccess: (updated) => {
+      replaceCachedAddon('shared', updated)
+      toast(text.routeSaved(updated.name))
+    },
+    onSettled: () => invalidateScope('shared'),
+  })
+  return (
+    <Field
+      label={text.route}
+      help={text.routeHelp}
+      error={save.isError ? errorMessage(t, save.error) : undefined}
+    >
+      <Select
+        value={addon.route}
+        options={addonRoutes.map((value) => ({ value, label: text.routeChoices[value] }))}
+        onValue={(route) => save.mutate(route)}
+        disabled={save.isPending}
+        className="max-w-sm"
+      />
+      {addon.route === 'proxy' && settings.data?.streamProxy === '' && (
+        <Notice tone="warn" className="mt-3">
+          {text.routeNoProxy}
+        </Notice>
+      )}
     </Field>
   )
 }

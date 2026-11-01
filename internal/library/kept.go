@@ -686,9 +686,10 @@ func PerRequest(ctx context.Context) context.Context {
 // (see Warm).
 const WarmInterval = time.Hour
 
-// Warm reads the first page of each enabled library, as home screens show
-// it, with the automatic images of those that find their own, so that no
-// home screen waits for an addon: those of the server's addons, and of
+// Warm reads the first pages of each enabled library (see warmedTitles):
+// the first as home screens show it, with the automatic images of those
+// that find their own, so that no home screen, and no library an app
+// opens, waits for an addon: those of the server's addons, and of
 // users' own addons when the settings allow them. Pages already fresh are
 // not asked again; stale ones are refreshed. Then it tells those pages
 // are read (see OnFirstPagesRead). It also forgets the pages and
@@ -745,9 +746,7 @@ func (s *Service) Warm(ctx context.Context) error {
 			// narrowed to one.
 			src := source{addon: entry, catalog: l.Catalog, genre: l.Genre}
 			group.Go(func() error {
-				if _, err := s.page(ctx, src, 0); err != nil && ctx.Err() == nil {
-					s.logger.Debug("A library's first page could not be read", "addon", addon.Manifest.Name, "catalog", l.Catalog.ID, "error", err)
-				}
+				s.warmPages(ctx, src, addon.Manifest.Name)
 				if l.Image == addons.LibraryImageAutomatic {
 					s.lookUpImage(ctx, src)
 				}
@@ -764,6 +763,34 @@ func (s *Service) Warm(ctx context.Context) error {
 		return err
 	}
 	return s.forgetArrivals(ctx)
+}
+
+// warmedTitles is how many titles of each library Warm reads ahead: the
+// first page, which home rows show, and those after it, up to what
+// Emby's apps ask for when they open a library, 300 titles at once, which
+// would otherwise wait for 15 pages of the addon.
+const warmedTitles = 300
+
+// warmPages reads the pages of src Warm reads ahead (see warmedTitles),
+// one after the other, until a page fails, comes back empty or repeats the
+// one before, as an addon that ignores skip does.
+func (s *Service) warmPages(ctx context.Context, src source, addonName string) {
+	received := 0
+	var last string
+	for received < warmedTitles {
+		metas, err := s.page(ctx, src, received)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.logger.Debug("A library's first pages could not be read", "addon", addonName, "catalog", src.catalog.ID, "skip", received, "error", err)
+			}
+			return
+		}
+		if len(metas) == 0 || metas[0].ID == last || !src.paged() {
+			return
+		}
+		last = metas[0].ID
+		received += len(metas)
+	}
 }
 
 // ReadCollections reads every collection of the server's collection

@@ -39,7 +39,8 @@ func TestVersionNamesSayHowTheyPlay(t *testing.T) {
 		}
 		return *dto.MediaSources
 	}
-	first, second := "Source 2160p · REMUX · HEVC", "Source 1080p · WEB-DL"
+	// Their sizes come after the addon's first line (see labeled).
+	first, second := "Source 2160p · 80 GB · REMUX · HEVC", "Source 1080p · 3 GB · WEB-DL"
 	before := details("before any play", p.token, first, second)
 
 	chrome := p.profile(t, "jellyfin-web-chrome")
@@ -57,7 +58,7 @@ func TestVersionNamesSayHowTheyPlay(t *testing.T) {
 	details("another device", phone, first, second)
 
 	p.setting(t, func(s *accounts.Settings) { s.Language = "fr" })
-	details("in French", p.token, first+" (converti\u00a0: audio)", second+" (lecture directe)")
+	details("in French", p.token, "Source 2160p \u00b7 80 Go \u00b7 REMUX \u00b7 HEVC (converti\u00a0: audio)", "Source 1080p \u00b7 3 Go \u00b7 WEB-DL (lecture directe)")
 	p.setting(t, func(s *accounts.Settings) { s.Language, s.Transcoding = "en", false })
 	details("without conversion", p.token, first+" (cannot play here)", second+" (direct play)")
 	p.setting(t, func(s *accounts.Settings) { s.Transcoding, s.NameHowVersionsPlay = true, false })
@@ -65,6 +66,14 @@ func TestVersionNamesSayHowTheyPlay(t *testing.T) {
 	if answer := p.ask(t, p.token, p.movie, chrome, nil); !slices.Equal(names(answer.MediaSources), []string{first, second}) {
 		t.Errorf("PlaybackInfo with the setting off: %q", names(answer.MediaSources))
 	}
+	// Offered by quality, versions are named after their quality only, as
+	// Stremfin names them, the setting on or off.
+	p.setting(t, func(s *accounts.Settings) { s.VersionsOffered, s.NameHowVersionsPlay = "qualities", true })
+	details("by quality", p.token, "4K", "1080p")
+	if answer := p.ask(t, p.token, p.movie, chrome, nil); !slices.Equal(names(answer.MediaSources), []string{"4K", "1080p"}) {
+		t.Errorf("PlaybackInfo by quality: %q", names(answer.MediaSources))
+	}
+	p.setting(t, func(s *accounts.Settings) { s.VersionsOffered = "all" })
 
 	// Taller than the user's quality group, a 1080p version is converted
 	// down to it.

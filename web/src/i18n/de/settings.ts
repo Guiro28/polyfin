@@ -257,6 +257,31 @@ const settings: typeof en = {
     preferDirectPlay: 'Versionen bevorzugen, die die App ohne Konvertierung abspielt',
     preferDirectPlayHelp:
       'Wenn eine App einen Titel ohne Wahl einer Version abspielt, wählt Polyfin die erste Version, die die App unverändert oder nur neu verpackt abspielt, statt der ersten, die überhaupt abspielbar ist. Die allererste Wiedergabe eines Titels kann etwas langsamer sein, da mehr Versionen analysiert werden können; sobald sie bekannt sind, ändert sich nichts mehr.',
+    versionsOffered: 'Angebotene Versionen',
+    versionsOfferedHelp:
+      'Alle Releases listet alle Versionen der Add-ons. 4K, 1080p und 720p bietet drei an: die beste jeder Qualität in der Versionsreihenfolge. Eine fehlende Qualität wird zuerst aus der nächstniedrigeren, dann aus der nächsthöheren genommen, nie zweimal dieselbe Version; Qualitäten über der Qualitätsgruppe eines Benutzers entfallen. In jedem Fall nennt der Name einer Version ihre Größe nach dem Namen ihres Add-ons.',
+    versionsOfferedChoices: { all: 'Alle Releases', qualities: '4K, 1080p und 720p' },
+    streamProxy: 'Proxy der Addons',
+    streamProxyHelp:
+      'Der Proxy, den die in Quellen auf „Über den Proxy“ gestellten Addons für ihre Videos und ihre eigenen Anfragen nehmen: eine Adresse socks5://host:port oder http://host:port, bei Bedarf mit benutzer:passwort@ vor dem Host. Der lokale Proxy von Cloudflare WARP lauscht oft auf socks5://127.0.0.1:40000, in Docker auf socks5://warp:1080. Leer gehen diese Addons über den Server, mit dessen Adresse.',
+    streamProxyCheck: 'Testen',
+    streamProxyDetect: 'WARP erkennen',
+    streamProxyChecking: 'Wird geprüft…',
+    streamProxyWarp: (ip: string) =>
+      `Der Proxy antwortet und geht über WARP (gesehene Adresse: ${ip}).`,
+    streamProxyNoWarp: (ip: string) => `Der Proxy antwortet, ohne WARP (gesehene Adresse: ${ip}).`,
+    streamProxyUnreachable: 'Der Proxy antwortet nicht.',
+    streamProxyServerWarp: (ip: string) =>
+      `Ohne Proxy geht der Server bereits über WARP (gesehene Adresse: ${ip}).`,
+    streamProxyServerDirect: (ip: string) =>
+      `Ohne Proxy sehen die Quellen die Adresse des Servers: ${ip}.`,
+    streamProxyServerUnreachable: 'Der Server erreicht das Internet nicht.',
+    streamProxyFound: (address: string) =>
+      `WARP gefunden unter ${address}. Speichere, um es zu nutzen.`,
+    streamProxyNotFound:
+      'WARP wurde unter keiner üblichen Adresse gefunden. Prüfe, ob sein lokaler Proxy läuft: Proxy-Modus von warp-cli oder ein WARP-Container.',
+    streamProxyServerOnWarp: (ip: string) =>
+      `Der Server geht bereits vollständig über WARP (gesehene Adresse: ${ip}): Kein Proxy nötig, wähle bei den Addons „Über den Server“.`,
     nameHowVersionsPlay: 'In Versionsnamen angeben, wie sie abgespielt werden',
     nameHowVersionsPlayHelp:
       'Versionsnamen enden damit, wie die App die jeweilige Version abspielt: „(Direktes Abspielen)“, „(Direktes Streamen)“, wenn sie ohne Umwandlung kopiert wird, „(umgewandelt: Grund)“ mit dem Wunsch der App, HDR, dem Qualitätslimit, Untertiteln, Video oder Audio als Grund, oder „(hier nicht abspielbar)“. Polyfin entscheidet das anhand des Geräteprofils, das die App bei ihrer letzten Wiedergabe gesendet hat. Vor der ersten Wiedergabe eines Geräts oder nach einem Neustart sagen die Namen daher nichts, ebenso bei einer Version, die noch nicht analysiert oder von RemuxDB beschrieben wurde. Die Namen stehen in der Sprache der generierten Namen. Dafür wird nichts gelesen.',

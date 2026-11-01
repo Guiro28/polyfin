@@ -42,6 +42,9 @@ type addonJSON struct {
 	// Language is the language of a server addon's descriptions, empty
 	// for none (see addons.Addon.Language).
 	Language string `json:"language"`
+	// Route is how a server addon's videos reach the apps, one of
+	// addons.Routes: "source", "server" or "proxy".
+	Route string `json:"route"`
 	// UsedBy is who uses a server addon; a user's own addon is used by
 	// everyone, its owner being the only one to see it.
 	UsedBy usedByJSON `json:"usedBy"`
@@ -247,6 +250,7 @@ func newAddonJSON(addon addons.Addon) addonJSON {
 		Kind:         addon.Kind,
 		Music:        newMusicJSON(addon),
 		Language:     addon.Language,
+		Route:        addon.Route,
 		UsedBy:       newUsedByJSON(addon.UsedBy),
 	}
 }
@@ -604,6 +608,7 @@ func addonError(w http.ResponseWriter, err error) bool {
 		{addons.ErrInvalidGuideURL, http.StatusBadRequest, "invalid_guide_url"},
 		{addons.ErrNotStremio, http.StatusBadRequest, "invalid_request"},
 		{addons.ErrInvalidLanguage, http.StatusBadRequest, "invalid_language"},
+		{addons.ErrInvalidRoute, http.StatusBadRequest, "invalid_route"},
 		{addons.ErrInvalidUsedBy, http.StatusBadRequest, "invalid_used_by"},
 		{addons.ErrNotEclipse, http.StatusBadRequest, "invalid_request"},
 		{addons.ErrKindChanged, http.StatusUnprocessableEntity, "addon_kind_changed"},
@@ -770,12 +775,13 @@ func (h *handler) updateAddon(w http.ResponseWriter, r *http.Request) {
 		Enabled     *bool       `json:"enabled"`
 		ManifestURL *string     `json:"manifestUrl"`
 		Language    *string     `json:"language"`
+		Route       *string     `json:"route"`
 		UsedBy      *usedByJSON `json:"usedBy"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.ManifestURL == nil && body.Enabled == nil && body.Language == nil && body.UsedBy == nil {
+	if body.ManifestURL == nil && body.Enabled == nil && body.Language == nil && body.Route == nil && body.UsedBy == nil {
 		writeError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
@@ -792,6 +798,10 @@ func (h *handler) updateAddon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_language")
 		return
 	}
+	if body.Route != nil && (!slices.Contains(addons.Routes, *body.Route) || (scope.Owner != nil && *body.Route != addons.RouteSource)) {
+		writeError(w, http.StatusBadRequest, "invalid_route")
+		return
+	}
 	var addon addons.Addon
 	var err error
 	if body.ManifestURL != nil {
@@ -802,6 +812,9 @@ func (h *handler) updateAddon(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil && body.Language != nil {
 		addon, err = h.Addons.SetLanguage(r.Context(), scope, id, *body.Language)
+	}
+	if err == nil && body.Route != nil {
+		addon, err = h.Addons.SetRoute(r.Context(), scope, id, *body.Route)
 	}
 	if err == nil && body.UsedBy != nil {
 		var before addons.Addon

@@ -420,6 +420,10 @@ export type Settings = {
   hiddenReleases: ReleaseKind[]
   /** Ends version names with how the app asking plays each, as its last playback decides it. */
   nameHowVersionsPlay: boolean
+  /** Every release the addons list, or the best of each of 4K, 1080p and 720p. */
+  versionsOffered: 'all' | 'qualities'
+  /** The proxy of the addons routed through one, a socks5:// or http:// address; '' for none. */
+  streamProxy: string
   /** Times the addons' subtitles to the version played, against when it has speech. */
   syncAddonSubtitles: boolean
   /** Playbacks whose video the server converts at once, 0 for no limit. */
@@ -898,9 +902,19 @@ export type Addon = {
    * Users who chose that metadata language see its descriptions.
    */
   language: string
+  /** How a server addon's videos reach the apps (see AddonRoute); a user's own addon's: 'source'. */
+  route: AddonRoute
   /** Who uses a server source; a user's own source is used by everyone, its owner alone seeing it. */
   usedBy: UsedBy
 }
+
+/**
+ * How an addon's videos reach the apps: read by the app at their source when it can, always
+ * through the server, from its address, or through the server and the settings' proxy, which the
+ * addon's own requests take too.
+ */
+export const addonRoutes = ['source', 'server', 'proxy'] as const
+export type AddonRoute = (typeof addonRoutes)[number]
 
 /**
  * Who uses a server source: everyone, or only the groups and users listed by id ('listed'), which
@@ -1475,6 +1489,7 @@ export type AddonPatch = Partial<{
   enabled: boolean
   manifestUrl: string
   language: string
+  route: AddonRoute
   usedBy: UsedBy
 }>
 
@@ -3359,6 +3374,20 @@ export const keepThemeCopy = () => request<ThemeCopy>('POST', '/settings/theme-c
 export const removeThemeCopy = () => request<ThemeCopy>('DELETE', '/settings/theme-copy')
 
 /** The apps users are signed in with, by the name they send, each once whatever its case, sorted. */
+/** What a check of a proxy found, through Cloudflare's trace page. */
+export type ProxyCheck = { reachable: boolean; warp: boolean; ip: string }
+
+/** Checks a proxy, typed and maybe not saved yet, or the server's own address for ''. */
+export const checkStreamProxy = (address: string) =>
+  request<ProxyCheck>('POST', '/settings/stream-proxy/check', { address })
+
+/**
+ * Looks for WARP's local proxy where it usually listens: its address, '' when none goes through
+ * WARP, and what the server's own address is. Takes a few seconds.
+ */
+export const detectWarp = () =>
+  request<{ address: string; server: ProxyCheck }>('POST', '/settings/stream-proxy/detect')
+
 export const fetchSettingsApps = async (signal?: AbortSignal) =>
   (await request<{ apps: string[] }>('GET', '/settings/apps', undefined, signal)).apps
 

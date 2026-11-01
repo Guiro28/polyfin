@@ -148,13 +148,15 @@ func (h *Handler) cachedPlayable(ctx context.Context, user accounts.User, item l
 // which stay in place for the user to pick, a play that picks none
 // skipping them (see choose); and, with the version rules or the user's
 // quality group, or versions naming another title, those they hide,
-// ordering the others (see ordered).
+// ordering the others, or offering the best of each quality (see
+// ordered); a movie's or an episode's versions are then named for
+// version menus (see labeled).
 func (h *Handler) offered(ctx context.Context, user accounts.User, versions []library.Version) []library.Version {
 	versions = slices.DeleteFunc(versions, func(v library.Version) bool { return h.Playback.Failed(v.ID) && !h.didNotStart(v) })
-	if !h.reordered(user) && !slices.ContainsFunc(versions, elsewhere) {
-		return versions
+	if h.reordered(user) || slices.ContainsFunc(versions, elsewhere) {
+		versions = h.ordered(ctx, user, versions)
 	}
-	return h.ordered(ctx, user, versions)
+	return h.labeled(ctx, user, versions)
 }
 
 // externals are the subtitle files a version offers as streams: its

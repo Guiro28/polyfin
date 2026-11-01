@@ -42,13 +42,17 @@ type versionRules struct {
 	// releases are the kinds of low-quality releases hidden (see
 	// library.Labels.Releases).
 	releases []string
+	// qualities offers the best version of each quality only (see
+	// byQuality).
+	qualities bool
 }
 
 // newVersionRules returns the rules settings set, without the user's
 // preferred audio language.
 func newVersionRules(settings accounts.Settings) versionRules {
 	rules := versionRules{order: settings.VersionOrder, codecs: settings.VersionCodecOrder, sources: settings.VersionSourceOrder,
-		larger: int64(settings.HideVersionsLargerGB) * 1e9, hiddenCodecs: settings.HiddenVersionCodecs, releases: settings.HiddenReleases}
+		larger: int64(settings.HideVersionsLargerGB) * 1e9, hiddenCodecs: settings.HiddenVersionCodecs, releases: settings.HiddenReleases,
+		qualities: settings.VersionsOffered == "qualities"}
 	for _, word := range settings.HiddenVersionWords {
 		rules.words = append(rules.words, strings.ToLower(word))
 	}
@@ -97,7 +101,7 @@ func elsewhere(version library.Version) bool {
 // group or the version rules (see offered).
 func (h *Handler) reordered(user accounts.User) bool {
 	rules := newVersionRules(h.Accounts.Settings())
-	return user.QualityGroup > 0 || len(rules.order) > 0 || rules.hides()
+	return user.QualityGroup > 0 || len(rules.order) > 0 || rules.hides() || rules.qualities
 }
 
 // hiddenVersion reports whether the hide rules hide a version among its
@@ -414,6 +418,13 @@ func (h *Handler) ordered(ctx context.Context, user accounts.User, versions []li
 		if shown := h.watched.shown(user.ID, kept[0].Item, rules.key()); len(shown) > 0 {
 			kept = keptInPlace(kept, shown, compare)
 		}
+	}
+	if rules.qualities {
+		heights := make(map[accounts.ID]int, len(kept))
+		for _, version := range kept {
+			heights[version.ID] = facts[version.ID].height
+		}
+		kept = byQuality(kept, heights, user)
 	}
 	return kept
 }

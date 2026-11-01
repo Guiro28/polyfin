@@ -7,42 +7,43 @@
  * `border-line-2`, `rounded-panel`, `shadow-pop`, `text-h1`…) and never raw colors.
  */
 @theme {
-  /* Backgrounds: the brand night, then tinted surfaces. */
-  --color-bg: #08080e;
-  --color-s1: #0d0d15; /* panels */
-  --color-s2: #12121c; /* fields, hovered rows */
-  --color-s3: #191925; /* selected, secondary buttons */
-  --color-s4: #232331; /* pressed, switch off */
+  /* « Aurora » palette: a blue night with violet and cyan light. Light values: `data-theme`. */
+  /* Backgrounds: the night, then translucent panels over its glow. */
+  --color-bg: #070b14;
+  --color-s1: rgb(14 22 39 / 0.86); /* panels */
+  --color-s2: rgb(24 35 57 / 0.82); /* fields, hovered rows */
+  --color-s3: #1c2943; /* selected, secondary buttons */
+  --color-s4: #26355a; /* pressed, switch off */
 
-  /* Hairlines: bluish white at 7, 11 and 17 %. */
-  --color-line: rgb(236 236 255 / 0.07);
-  --color-line-2: rgb(236 236 255 / 0.11);
-  --color-line-3: rgb(236 236 255 / 0.17);
+  /* Hairlines: steel blue at 14, 22 and 32 %. */
+  --color-line: rgb(111 142 190 / 0.14);
+  --color-line-2: rgb(130 159 207 / 0.22);
+  --color-line-3: rgb(130 159 207 / 0.32);
 
   /* Text, strongest first. All pass AA on every surface. */
-  --color-ink: #ededf5;
-  --color-ink-2: #a6a6ba;
-  --color-ink-3: #80809a;
+  --color-ink: #f5f7ff;
+  --color-ink-2: #c2cbe0;
+  --color-ink-3: #8f9bb4;
 
   /* The only accent (white text on it), its pressed state, and links and the focus ring. */
-  --color-accent: #5b63f6;
-  --color-accent-press: #4f57ec;
-  --color-link: #9aa0ff;
-  --color-link-hover: #c3c6ff;
+  --color-accent: #7656f5;
+  --color-accent-press: #6646e6;
+  --color-link: #b4a6ff;
+  --color-link-hover: #d9d0ff;
   /* Behind dialogs and the palette. */
-  --color-scrim: rgb(4 4 10 / 0.62);
+  --color-scrim: rgb(2 5 14 / 0.64);
 
   /* States: always shown with an icon and a word. */
-  --color-ok: #5cc79d;
-  --color-warn: #e9b86c;
-  --color-danger: #f27d74;
+  --color-ok: #4fd8a0;
+  --color-warn: #f2b84b;
+  --color-danger: #ff6b7a;
 
-  /* The brand gradient stops: the logo and playback progress only (see `bg-brand`). */
-  --color-brand-1: #6d4aff;
-  --color-brand-2: #4c3fd9;
-  --color-brand-3: #5b63f6;
-  --color-brand-4: #3e8ef7;
-  --color-brand-5: #22d3ee;
+  /* The brand gradient stops, violet to cyan: the logo and playback progress only. */
+  --color-brand-1: #9b82ff;
+  --color-brand-2: #8465ff;
+  --color-brand-3: #6f6cf6;
+  --color-brand-4: #4f9bf0;
+  --color-brand-5: #3bd9e7;
 
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -72,9 +73,9 @@
   --text-micro--line-height: 1.45;
 
   /* Radii: panels, rows and tiles, fields and buttons, checkboxes. */
-  --radius-panel: 16px;
+  --radius-panel: 14px;
   --radius-row: 12px;
-  --radius-field: 8px;
+  --radius-field: 10px;
   --radius-check: 5px;
 
   /* Spacing beyond the 4 px grid: between page blocks, and the top bar's height. */
@@ -83,7 +84,7 @@
   --container-page: 1232px;
 
   /* The one shadow, for floating surfaces only (menus, palette, dialogs). */
-  --shadow-pop: 0 28px 70px -20px rgb(3 3 14 / 0.9), 0 0 0 1px var(--color-line-2);
+  --shadow-pop: 0 28px 70px -20px rgb(0 5 18 / 0.8), 0 0 0 1px var(--color-line-2);
 
   --ease-nuit: cubic-bezier(0.2, 0.7, 0.2, 1);
 
@@ -182,10 +183,66 @@
   scrollbar-gutter: stable;
 }
 
+/*
+ * The light look, set by `src/theme.ts` on <html>. Panels and fields stay translucent over the
+ * page glow, as in the dark look.
+ */
+:root[data-theme='light'] {
+  --color-bg: #f2f5fc;
+  --color-s1: rgb(255 255 255 / 0.86);
+  --color-s2: rgb(231 236 248 / 0.9);
+  --color-s3: #dfe5f3;
+  --color-s4: #cfd8ea;
+  --color-line: rgb(70 91 128 / 0.13);
+  --color-line-2: rgb(80 101 140 / 0.22);
+  --color-line-3: rgb(80 101 140 / 0.34);
+  --color-ink: #182033;
+  --color-ink-2: #44516a;
+  --color-ink-3: #5f6b84;
+  --color-accent: #6946dd;
+  --color-accent-press: #5937bc;
+  --color-link: #5937bc;
+  --color-link-hover: #6946dd;
+  --color-scrim: rgb(24 32 51 / 0.42);
+  --color-ok: #187a54;
+  --color-warn: #8f5b00;
+  --color-danger: #c42a3e;
+  --color-brand-1: #7b57e9;
+  --color-brand-2: #6946dd;
+  --color-brand-3: #5a5be0;
+  --color-brand-4: #2f7fd6;
+  --color-brand-5: #078a99;
+  --color-pop: rgb(255 255 255 / 0.97);
+  --shadow-pop: 0 28px 70px -24px rgb(54 67 104 / 0.32), 0 0 0 1px var(--color-line-2);
+  --page-glow:
+    radial-gradient(900px 580px at 78% -8%, rgb(97 125 211 / 0.14), transparent 68%),
+    radial-gradient(720px 520px at 32% 104%, rgb(125 91 213 / 0.1), transparent 72%);
+  color-scheme: light;
+}
+
+:root {
+  --color-pop: rgb(17 26 46 / 0.97);
+  --page-glow:
+    radial-gradient(900px 580px at 78% -8%, rgb(61 99 197 / 0.2), transparent 68%),
+    radial-gradient(720px 520px at 32% 104%, rgb(93 49 185 / 0.14), transparent 72%);
+  color-scheme: dark;
+}
+
+/*
+ * Floating surfaces (menus, lists, dialogs, toasts) are nearly opaque: a blur behind them does
+ * not work under the top bar, which blurs already. They blur what shows through elsewhere.
+ */
+[class~='shadow-pop'] {
+  backdrop-filter: blur(22px) saturate(1.4);
+}
+[class~='shadow-pop']:is([class~='bg-s1'], [class~='bg-s2']) {
+  background-color: var(--color-pop);
+}
+
 @layer base {
   html {
-    color-scheme: dark;
-    background-color: var(--color-bg);
+    background: var(--page-glow), var(--color-bg);
+    background-attachment: fixed;
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -218,7 +275,7 @@
   }
 
   ::selection {
-    background-color: rgb(91 99 246 / 0.45);
+    background-color: color-mix(in srgb, var(--color-accent) 42%, transparent);
     color: var(--color-ink);
   }
 
@@ -242,7 +299,7 @@
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: #2e2e3f;
+    background-color: var(--color-line-3);
   }
 
   code,

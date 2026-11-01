@@ -164,6 +164,22 @@ export const settingEntries: readonly SettingEntry[] = [
   },
   {
     section: 'playback',
+    anchor: 'versions-offered',
+    label: (t) => s(t).versionsOffered,
+    help: (t) => s(t).versionsOfferedHelp,
+    keywords: ['4K', '1080p', '720p', 'quality', 'qualité', 'releases', 'versions'],
+    codes: ['invalid_versions_offered'],
+  },
+  {
+    section: 'playback',
+    anchor: 'stream-proxy',
+    label: (t) => s(t).streamProxy,
+    help: (t) => s(t).streamProxyHelp,
+    keywords: ['proxy', 'WARP', 'Cloudflare', 'SOCKS5', 'IP', 'debrid', 'addon'],
+    codes: ['invalid_stream_proxy'],
+  },
+  {
+    section: 'playback',
     anchor: 'name-how-versions-play',
     label: (t) => s(t).nameHowVersionsPlay,
     help: (t) => s(t).nameHowVersionsPlayHelp,

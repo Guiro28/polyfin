@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/embyapp"
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/media"
 )
@@ -20,6 +21,10 @@ type ChapterInfo struct {
 	Name               string
 	ImageDateModified  Time
 	ImageTag           string `json:",omitempty"`
+	// MarkerType and ChapterIndex are Emby's, for its apps only: their skip
+	// buttons read intro and credits markers among the chapters.
+	MarkerType   string `json:",omitempty"`
+	ChapterIndex *int   `json:",omitempty"`
 }
 
 // setChapters fills the chapters of an item that asked for them with those
@@ -52,6 +57,9 @@ func (h *Handler) setChapters(ctx context.Context, dto *BaseItemDto, versions []
 		}
 	}
 	dto.Chapters = &chapters
+	if embyapp.In(ctx) {
+		h.embyMarkers(ctx, dto, opened)
+	}
 }
 
 // chapterInfos describes chapters as Jellyfin does: their start to the

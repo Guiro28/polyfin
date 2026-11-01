@@ -465,7 +465,7 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 	// Every version listed is named for the profile sent: the one chosen
 	// from its decision, the others from what is known of them.
 	namer := h.playbackNamer(item, request, user)
-	if namer != nil {
+	if namer != nil && !h.byQualityNames(chosen.version) {
 		chosenSource.Name = chosen.version.Name + " " + playback.PlayNote(chosen.decision, true, namer.language)
 	}
 	if chosen.decision.HLS {
@@ -1072,7 +1072,7 @@ func (h *Handler) streamAccess(r *http.Request, route mediaRoute) (accounts.User
 // own media URLs with api_key would otherwise be refused, or get what no
 // one in particular gets.
 func (h *Handler) mediaToken(r *http.Request, route mediaRoute) string {
-	token := readCredentials(r, h.Accounts.Settings().LegacyAuthorization).Token
+	token := readCredentials(r, h.legacy(r)).Token
 	if token == "" && route == servedToAnyone {
 		token = query(r, "api_key")
 	}

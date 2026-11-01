@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -46,6 +47,12 @@ type Client struct {
 	trusted   *http.Client
 	confined  *http.Client
 	health    healthRecords
+	// proxied holds a client for each proxy requests went through (see
+	// Via), by its address.
+	proxied sync.Map
+	// proxyOf, when set, names the proxy an addon's requests go through,
+	// by its manifest's address, empty for none (see ProxyAddons).
+	proxyOf func(manifestURL string) string
 }
 
 // NewClient returns a client identifying itself with the Polyfin version.
@@ -145,6 +152,11 @@ func (c *Client) do(request *http.Request, confined bool) (*http.Response, error
 	if confined {
 		client = c.confined
 	}
+	return send(client, request)
+}
+
+// send sends request with client, wrapping its errors as do does.
+func send(client *http.Client, request *http.Request) (*http.Response, error) {
 	response, err := client.Do(request)
 	if err != nil {
 		var urlErr *url.Error
@@ -171,7 +183,12 @@ func (c *Client) get(ctx context.Context, manifestURL, target string, confined b
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", c.userAgent)
 	started := time.Now()
-	response, err := c.do(request, confined)
+	var response *http.Response
+	if proxy := c.addonProxy(manifestURL, confined); proxy != "" {
+		response, err = send(c.viaClient(proxy), request)
+	} else {
+		response, err = c.do(request, confined)
+	}
 	if err != nil {
 		c.health.record(ctx, manifestURL, target, started, failureOf(ctx, err))
 		return nil, err
@@ -305,6 +322,16 @@ func (c *Client) Fetch(ctx context.Context, manifestURL, target string, confined
 // the response is returned whatever its status, its body to be closed by
 // the caller.
 func (c *Client) Open(ctx context.Context, method, target string, header http.Header, confined bool) (*http.Response, error) {
+	request, err := c.request(ctx, method, target, header)
+	if err != nil {
+		return nil, err
+	}
+	return c.do(request, confined)
+}
+
+// request is a request Open sends: header as given, the client's
+// User-Agent unless header names one, and no compression.
+func (c *Client) request(ctx context.Context, method, target string, header http.Header) (*http.Request, error) {
 	request, err := http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil || (request.URL.Scheme != "https" && request.URL.Scheme != "http") {
 		return nil, fmt.Errorf("%w: invalid URL", ErrUnreachable)
@@ -315,7 +342,65 @@ func (c *Client) Open(ctx context.Context, method, target string, header http.He
 	}
 	// Byte ranges and lengths must reach the player unchanged.
 	request.Header.Set("Accept-Encoding", "identity")
-	return c.do(request, confined)
+	return request, nil
+}
+
+// ProxyAddons has the requests of the addons proxyOf names a proxy for,
+// by their manifest's address, go through that proxy: a socks5:// or
+// http:// address (see accounts.ValidStreamProxy). Confined requests, a
+// user's own addons', never do: the proxy would be the address checked.
+func (c *Client) ProxyAddons(proxyOf func(manifestURL string) string) {
+	c.proxyOf = proxyOf
+}
+
+// addonProxy is the proxy the requests to the addon of manifestURL go
+// through, empty for none.
+func (c *Client) addonProxy(manifestURL string, confined bool) string {
+	if c.proxyOf == nil || confined {
+		return ""
+	}
+	return c.proxyOf(manifestURL)
+}
+
+// viaClient is the client sending requests through proxy, made once for
+// each proxy.
+func (c *Client) viaClient(proxy string) *http.Client {
+	if client, ok := c.proxied.Load(proxy); ok {
+		return client.(*http.Client)
+	}
+	client := newHTTPClient(false)
+	if address, err := url.Parse(proxy); err == nil {
+		client.Transport.(*http.Transport).Proxy = http.ProxyURL(address)
+	}
+	actual, _ := c.proxied.LoadOrStore(proxy, client)
+	return actual.(*http.Client)
+}
+
+// Via sends requests as the client's Open does, through proxy, a
+// socks5:// or http:// address (see accounts.ValidStreamProxy): the
+// source's server sees the proxy's address, as WARP's, rather than the
+// server's.
+type Via struct {
+	client *Client
+	proxy  string
+}
+
+// Via returns the opener of the requests that go through proxy.
+func (c *Client) Via(proxy string) Via {
+	return Via{client: c, proxy: proxy}
+}
+
+// Open sends a request through the proxy as Client.Open does. A confined
+// request goes without it: the proxy would be the address checked.
+func (v Via) Open(ctx context.Context, method, target string, header http.Header, confined bool) (*http.Response, error) {
+	if confined {
+		return v.client.Open(ctx, method, target, header, confined)
+	}
+	request, err := v.client.request(ctx, method, target, header)
+	if err != nil {
+		return nil, err
+	}
+	return send(v.client.viaClient(v.proxy), request)
 }
 
 // Post sends body to an address a stream needs, as a ClearKey licence

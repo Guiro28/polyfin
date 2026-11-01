@@ -804,7 +804,7 @@ func (s *Service) sniff(ctx context.Context, version library.Version, times live
 	}
 	answerCtx, cancelAnswer := context.WithCancel(ctx)
 	answered := time.AfterFunc(times.answer, cancelAnswer)
-	response, err := s.opener.Open(answerCtx, http.MethodGet, version.URL, header, version.Confined)
+	response, err := s.openerFor(version).Open(answerCtx, http.MethodGet, version.URL, header, version.Confined)
 	if !answered.Stop() {
 		if err == nil {
 			response.Body.Close()

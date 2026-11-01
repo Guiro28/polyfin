@@ -98,6 +98,17 @@ const sources = {
       'Leave it at None on the server’s only metadata addon, whatever language its configure page sets: an addon with a language describes titles for the users who chose that language only, unless no addon left at None describes them. To let users read titles in other languages, add the same metadata addon once more for each language, configured in that language on its configure page, and name the language here on each of these extra copies only: users who choose that metadata language see its names, overviews and images. An addon with a language and no library of its own only describes titles.',
     languageNone: 'None',
     languageSaved: (name: string) => `${name}: the language of its descriptions was saved.`,
+    route: 'Video route',
+    routeHelp:
+      'How this addon’s videos reach the apps. At the source: the app reads the video straight from the provider when it can, without the server. Through the server: the server fetches the video from its own IP address and passes it on to the app, useful when a debrid service ties its links to the address that asked for them. Through the proxy: as through the server, but via the proxy of the settings (WARP, for instance), which the addon’s requests take too.',
+    routeChoices: {
+      source: 'At the source (the app reads it directly)',
+      server: 'Through the server (its IP address)',
+      proxy: 'Through the proxy (WARP or another)',
+    },
+    routeNoProxy:
+      'No proxy is set: its videos go through the server, from its address. Set the proxy in Settings › Playback.',
+    routeSaved: (name: string) => `${name}: its video route was saved.`,
     edit: 'Edit the account',
     saved: 'Source saved.',
     settings: 'Settings',

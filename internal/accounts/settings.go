@@ -831,6 +831,12 @@ func validSegmentSources(names []string) bool {
 var (
 	ErrInvalidMDBListRatingsKey = errors.New("invalid MDBList ratings key")
 	ErrInvalidCriticRatingShows = errors.New("invalid critic rating choice")
+	// ErrInvalidVersionsOffered reports a VersionsOffered not among
+	// VersionsOfferedChoices.
+	ErrInvalidVersionsOffered = errors.New("invalid versions offered")
+	// ErrInvalidStreamProxy reports a StreamProxy that is not a socks5://,
+	// socks5h://, http:// or https:// address of a host and a port.
+	ErrInvalidStreamProxy = errors.New("invalid stream proxy")
 )
 
 // MaxRatingsKeyBytes is the longest Settings.MDBListRatingsKey.
@@ -850,6 +856,11 @@ func ValidRatingsKey(key string) bool {
 	}
 	return true
 }
+
+// VersionsOfferedChoices are the versions a movie or an episode may offer
+// (see Settings.VersionsOffered), the first by default: every release the
+// addons list, or the best of each of 4K, 1080p and 720p.
+var VersionsOfferedChoices = []string{"all", "qualities"}
 
 // CriticRatingChoices are the scores CriticRating may carry (see
 // Settings.CriticRatingShows), the first by default: the critics' score
@@ -1499,6 +1510,16 @@ type Settings struct {
 	// versions with how the app asking plays each, as the device profile of
 	// its last PlaybackInfo decides it.
 	NameHowVersionsPlay bool
+	// VersionsOffered is the versions a movie or an episode offers, one of
+	// VersionsOfferedChoices: every release ("all"), or the best of each of
+	// 4K, 1080p and 720p ("qualities"), a missing quality taken from the
+	// next lower one first, then the next higher.
+	VersionsOffered string
+	// StreamProxy is the proxy the addons routed through one use, for
+	// their videos and their own requests (see addons.RouteProxy): a
+	// socks5://, socks5h://, http:// or https:// address, as WARP's local
+	// proxy, empty for none, which has them use the server's address.
+	StreamProxy string
 	// SyncAddonSubtitles times the addons' subtitles to the version played,
 	// against when the version has speech (see playback.Service.FindSpeech).
 	SyncAddonSubtitles bool
@@ -1994,6 +2015,26 @@ func ValidInterfaceName(name string) bool {
 	return true
 }
 
+// MaxStreamProxyBytes bounds Settings.StreamProxy.
+const MaxStreamProxyBytes = 255
+
+// streamProxySchemes are the proxies Go's HTTP client speaks.
+var streamProxySchemes = []string{"socks5", "socks5h", "http", "https"}
+
+// ValidStreamProxy reports whether address names a proxy the addons may
+// be routed through (see Settings.StreamProxy): one of streamProxySchemes,
+// a host and a port, and at most a user and a password besides.
+func ValidStreamProxy(address string) bool {
+	if len(address) > MaxStreamProxyBytes {
+		return false
+	}
+	parsed, err := url.Parse(address)
+	if err != nil || !slices.Contains(streamProxySchemes, parsed.Scheme) || parsed.Port() == "" || parsed.Hostname() == "" {
+		return false
+	}
+	return (parsed.Path == "" || parsed.Path == "/") && parsed.RawQuery == "" && parsed.Fragment == ""
+}
+
 // validProxyAddress reports whether address is a host and a port.
 func validProxyAddress(address string) bool {
 	host, port, err := net.SplitHostPort(address)
@@ -2081,7 +2122,7 @@ const settingsColumns = "server_name, quick_connect_enabled, legacy_authorizatio
 	"two_step_administrators, " +
 	"https_mode, https_port, https_redirect, https_certificate, https_private_key, acme_hosts, acme_email, acme_terms, acme_challenge, detailed_log, " +
 	"analysis_timeout, version_attempts, prefer_direct_play, " +
-	"version_order, version_codec_order, version_source_order, hide_versions_larger_gb, hidden_version_codecs, hidden_version_words, name_how_versions_play, " +
+	"version_order, version_codec_order, version_source_order, hide_versions_larger_gb, hidden_version_codecs, hidden_version_words, name_how_versions_play, versions_offered, stream_proxy, " +
 	"hidden_releases, " +
 	"sync_addon_subtitles, max_conversions, max_conversion_height, converted_downloads, subtitle_ocr, subtitle_ocr_tracks, " +
 	"default_audio_language, default_subtitle_language, " +
@@ -2138,7 +2179,7 @@ func (settings *Settings) fields() []any {
 		&settings.AnalysisTimeout, &settings.VersionAttempts, &settings.PreferDirectPlay,
 		&settings.VersionOrder, &settings.VersionCodecOrder, &settings.VersionSourceOrder, &settings.HideVersionsLargerGB, &settings.HiddenVersionCodecs,
 		&settings.HiddenVersionWords,
-		&settings.NameHowVersionsPlay,
+		&settings.NameHowVersionsPlay, &settings.VersionsOffered, &settings.StreamProxy,
 		&settings.HiddenReleases,
 		&settings.SyncAddonSubtitles, &settings.MaxConversions, &settings.MaxConversionHeight, &settings.ConvertedDownloads, &settings.SubtitleOCR, &settings.SubtitleOCRTracks,
 		&settings.DefaultAudioLanguage, &settings.DefaultSubtitleLanguage,
@@ -2418,6 +2459,12 @@ func (s *Store) UpdateSettings(ctx context.Context, settings Settings) (Settings
 	}
 	if !slices.Contains(CriticRatingChoices, settings.CriticRatingShows) {
 		return Settings{}, ErrInvalidCriticRatingShows
+	}
+	if !slices.Contains(VersionsOfferedChoices, settings.VersionsOffered) {
+		return Settings{}, ErrInvalidVersionsOffered
+	}
+	if settings.StreamProxy = strings.TrimSpace(settings.StreamProxy); settings.StreamProxy != "" && !ValidStreamProxy(settings.StreamProxy) {
+		return Settings{}, ErrInvalidStreamProxy
 	}
 	if !slices.Contains(PosterBadgeSizes, settings.PosterBadgeSize) {
 		return Settings{}, ErrInvalidPosterBadgeSize

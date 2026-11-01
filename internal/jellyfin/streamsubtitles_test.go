@@ -119,11 +119,13 @@ func TestStreamSubtitlesAreTheirVersions(t *testing.T) {
 	languages := map[string][]string{}
 	ids := map[string]string{}
 	for _, source := range *details.MediaSources {
-		ids[source.Name] = source.Id
-		languages[source.Name] = []string{}
+		// The addon's line, before the size its name gives after it.
+		name, _, _ := strings.Cut(source.Name, " · ")
+		ids[name] = source.Id
+		languages[name] = []string{}
 		for _, stream := range source.MediaStreams {
 			if stream.Type == "Subtitle" && stream.IsExternal {
-				languages[source.Name] = append(languages[source.Name], stream.Language)
+				languages[name] = append(languages[name], stream.Language)
 			}
 		}
 	}

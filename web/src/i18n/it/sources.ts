@@ -100,6 +100,17 @@ const sources: typeof en = {
       'Lascia Nessuna sull’unico add-on di metadati del server, qualunque sia la lingua impostata nella sua pagina di configurazione: un add-on con una lingua descrive i titoli solo per gli utenti che hanno scelto quella lingua, a meno che nessun add-on lasciato su Nessuna li descriva. Per permettere agli utenti di leggere i titoli in altre lingue, aggiungi di nuovo lo stesso add-on di metadati una volta per ogni lingua, configurato in quella lingua nella sua pagina di configurazione, e indica qui la lingua solo su queste copie aggiuntive: gli utenti che scelgono quella lingua dei metadati ne vedono i nomi, le trame e le immagini. Un add-on con una lingua e senza una propria libreria si limita a descrivere i titoli.',
     languageNone: 'Nessuna',
     languageSaved: (name: string) => `${name}: lingua delle descrizioni salvata.`,
+    route: 'Passaggio dei video',
+    routeHelp:
+      'Come i video di questo addon arrivano alle app. Alla fonte: l’app legge il video direttamente dal fornitore quando può, senza passare dal server. Tramite il server: il server recupera il video con il proprio indirizzo IP e lo passa all’app, utile quando un servizio debrid lega i suoi link all’indirizzo che li ha chiesti. Tramite il proxy: come tramite il server, ma attraverso il proxy delle impostazioni (WARP, per esempio), che prendono anche le richieste all’addon.',
+    routeChoices: {
+      source: 'Alla fonte (l’app legge direttamente)',
+      server: 'Tramite il server (il suo indirizzo IP)',
+      proxy: 'Tramite il proxy (WARP o altro)',
+    },
+    routeNoProxy:
+      'Nessun proxy impostato: i suoi video passano dal server, con il suo indirizzo. Indica il proxy in Impostazioni › Riproduzione.',
+    routeSaved: (name: string) => `${name}: il passaggio dei suoi video è stato salvato.`,
     edit: 'Modifica l’account',
     saved: 'Origine salvata.',
     settings: 'Impostazioni',

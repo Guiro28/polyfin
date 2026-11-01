@@ -380,7 +380,7 @@ func (s *Service) serveLive(w http.ResponseWriter, r *http.Request, version libr
 			header.Set(name, value)
 		}
 	}
-	response, err := s.opener.Open(r.Context(), http.MethodGet, target, header, version.Confined)
+	response, err := s.openerFor(version).Open(r.Context(), http.MethodGet, target, header, version.Confined)
 	if err != nil {
 		http.Error(w, "source unavailable", http.StatusBadGateway)
 		return err

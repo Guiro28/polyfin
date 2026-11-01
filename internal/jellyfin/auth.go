@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/embyapp"
 	"github.com/moodiness/polyfin/internal/forwarded"
 )
 
@@ -45,6 +46,9 @@ func readCredentials(r *http.Request, legacy bool) credentials {
 		if strings.EqualFold(scheme, "MediaBrowser") || strings.EqualFold(scheme, "Emby") {
 			c = parseParameters(params)
 		}
+	}
+	if legacy {
+		embyIdentity(r, &c)
 	}
 	if c.Token == "" {
 		c.Token = query(r, "ApiKey")
@@ -138,7 +142,7 @@ var keyUser = accounts.User{IsAdministrator: true, VideoTranscoding: true, Audio
 // the API key it carries. ok is false when r carries none, or none of an
 // enabled user.
 func (h *Handler) signedInCaller(r *http.Request) (c caller, ok bool, err error) {
-	credentials := readCredentials(r, h.Accounts.Settings().LegacyAuthorization)
+	credentials := readCredentials(r, h.legacy(r))
 	if credentials.Token == "" {
 		return caller{}, false, nil
 	}
@@ -148,6 +152,9 @@ func (h *Handler) signedInCaller(r *http.Request) (c caller, ok bool, err error)
 	}
 	if err != nil {
 		return caller{}, false, err
+	}
+	if embyapp.In(r.Context()) {
+		embyapp.Remember(credentials.Token)
 	}
 	return caller{User: user, Device: device, Token: credentials.Token}, true, nil
 }

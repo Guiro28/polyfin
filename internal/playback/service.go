@@ -64,8 +64,11 @@ type Renewer func(ctx context.Context, version library.Version) (library.Version
 
 // Service plays versions.
 type Service struct {
-	db       *pgxpool.Pool
-	opener   source.Opener
+	db     *pgxpool.Pool
+	opener source.Opener
+	// routing, when set, tells how the addon of a version routes its
+	// videos (see Routing).
+	routing  func(addon accounts.ID) Route
 	prober   media.Prober
 	settings func() accounts.Settings
 	sources  *source.Cache
@@ -230,10 +233,10 @@ func (s *Service) location(version library.Version) (source.Location, source.Ren
 	if s.renew != nil {
 		renew = func(ctx context.Context) (source.Location, error) {
 			fresh, err := s.renew(ctx, version)
-			return locationOf(fresh), err
+			return s.locationOf(fresh), err
 		}
 	}
-	return locationOf(version), renew
+	return s.locationOf(version), renew
 }
 
 // storedLookup bounds finding where a local file is read from (see
@@ -261,9 +264,48 @@ func (s *Service) storedLocation(version library.Version) (source.Location, bool
 // locationOf is where a version's bytes are, with the size its addon
 // announced: the source cache refuses another file at the first byte once
 // the addon's sizes prove right.
-func locationOf(version library.Version) source.Location {
-	return source.Location{URL: version.URL, Headers: version.RequestHeaders(), Confined: version.Confined, Size: version.Size,
+func (s *Service) locationOf(version library.Version) source.Location {
+	location := source.Location{URL: version.URL, Headers: version.RequestHeaders(), Confined: version.Confined, Size: version.Size,
 		Announcer: version.Addon}
+	if via := s.route(version).Via; via != nil {
+		location.Opener = via
+	}
+	return location
+}
+
+// Route is how an addon's videos reach the apps (see Routing).
+type Route struct {
+	// Relay sends them through Polyfin even when the app could read them at
+	// their source.
+	Relay bool
+	// Via, when set, sends Polyfin's requests for them, as a proxy does,
+	// in place of its own.
+	Via source.Opener
+}
+
+// Routing has routing tell how the addon of each version routes its
+// videos, by the addon's identifier: read at their source when an app can,
+// the default, or relayed, from the server's address or through a proxy
+// (see addons.Routes). A change applies to the sources opened next.
+func (s *Service) Routing(routing func(addon accounts.ID) Route) {
+	s.routing = routing
+}
+
+// route is how version's addon routes its videos.
+func (s *Service) route(version library.Version) Route {
+	if s.routing == nil || version.Confined {
+		return Route{}
+	}
+	return s.routing(version.Origin.Addon)
+}
+
+// openerFor is what sends Polyfin's requests for version: through its
+// addon's proxy, if it has one, else as the server's.
+func (s *Service) openerFor(version library.Version) source.Opener {
+	if via := s.route(version).Via; via != nil {
+		return via
+	}
+	return s.opener
 }
 
 // Torrents has the source cache read the versions that are torrents'
@@ -989,7 +1031,7 @@ func (s *Service) Serve(w http.ResponseWriter, r *http.Request, version library.
 		http.Error(w, "not one file", http.StatusNotFound)
 		return ErrNoFile
 	}
-	if !delivery.Relay && !version.HoldsConnection && version.Torrent == nil && len(version.Headers) == 0 && s.public(r.Context(), version.URL) {
+	if !delivery.Relay && !s.route(version).Relay && !version.HoldsConnection && version.Torrent == nil && len(version.Headers) == 0 && s.public(r.Context(), version.URL) {
 		current, err := s.check(r.Context(), version)
 		if err != nil {
 			http.Error(w, "source unavailable", http.StatusBadGateway)
@@ -1081,7 +1123,7 @@ func (s *Service) firstByte(ctx context.Context, version library.Version) (int, 
 	for name, value := range version.RequestHeaders() {
 		header.Set(name, value)
 	}
-	response, err := s.opener.Open(ctx, http.MethodGet, version.URL, header, version.Confined)
+	response, err := s.openerFor(version).Open(ctx, http.MethodGet, version.URL, header, version.Confined)
 	if err != nil {
 		return 0, err
 	}

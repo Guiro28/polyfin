@@ -100,6 +100,17 @@ const sources: typeof en = {
       'Laissez Aucune sur le seul addon de métadonnées du serveur, quelle que soit la langue réglée sur sa page de configuration : un addon avec une langue ne décrit les titres que pour les utilisateurs qui ont choisi cette langue, sauf si aucun addon laissé sur Aucune ne les décrit. Pour que les utilisateurs lisent les titres dans d’autres langues, ajoutez le même addon de métadonnées une fois de plus par langue, configuré dans cette langue sur sa page de configuration, et indiquez ici la langue sur ces copies supplémentaires seulement : les utilisateurs qui choisissent cette langue des métadonnées voient ses noms, ses résumés et ses images. Un addon avec une langue et sans bibliothèque à lui ne fait que décrire les titres.',
     languageNone: 'Aucune',
     languageSaved: (name: string) => `${name} : la langue de ses descriptions a été enregistrée.`,
+    route: 'Passage des vidéos',
+    routeHelp:
+      'Comment les vidéos de cet addon arrivent aux applis. À la source : l’appli lit la vidéo directement chez le fournisseur quand elle le peut, sans passer par le serveur. Via le serveur : le serveur récupère la vidéo avec sa propre adresse IP et la renvoie à l’appli, utile quand un débrideur lie ses liens à l’adresse qui les a demandés. Via le proxy : comme via le serveur, mais à travers le proxy des réglages (WARP par exemple), que les requêtes à l’addon prennent aussi.',
+    routeChoices: {
+      source: 'À la source (l’appli lit directement)',
+      server: 'Via le serveur (son adresse IP)',
+      proxy: 'Via le proxy (WARP ou autre)',
+    },
+    routeNoProxy:
+      'Aucun proxy n’est réglé : ses vidéos passent par le serveur, avec son adresse. Indiquez le proxy dans Paramètres › Lecture.',
+    routeSaved: (name: string) => `${name} : le passage de ses vidéos a été enregistré.`,
     edit: 'Modifier le compte',
     saved: 'Source enregistrée.',
     settings: 'Réglages',

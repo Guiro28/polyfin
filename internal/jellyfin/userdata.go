@@ -115,10 +115,14 @@ func (h *Handler) userState(ctx context.Context, user accounts.User, items []lib
 	}
 	state := userState{data: data, counts: counts, contents: map[accounts.ID]*library.Contents{}, lyrics: h.Lyrics.Known(ctx, songs),
 		gains: h.gains(ctx, items), collectionLibraries: h.collectionLibrariesByType(ctx), badges: h.posterBadges(ctx, items)}
-	var incomplete []accounts.ID
+	var incomplete, unstarted []accounts.ID
 	for _, item := range items {
-		if item.Kind == library.KindSeries && item.Contents == nil && counts[item.ID].Played > 0 {
+		switch {
+		case item.Kind != library.KindSeries || item.Contents != nil:
+		case counts[item.ID].Played > 0:
 			incomplete = append(incomplete, item.ID)
+		case len(unstarted) < unstartedSeriesRead:
+			unstarted = append(unstarted, item.ID)
 		}
 	}
 	if len(incomplete) > 0 {
@@ -130,7 +134,54 @@ func (h *Handler) userState(ctx context.Context, user accounts.User, items []lib
 			state.contents[series.ID] = series.Contents
 		}
 	}
+	for _, series := range h.unstartedContents(ctx, user, unstarted) {
+		state.contents[series.ID] = series.Contents
+	}
 	return state, nil
+}
+
+// unstartedSeriesRead bounds the series of one answer whose episodes are
+// read for their count, as many as Emby's apps ask for at once;
+// unstartedSeriesWait bounds how long the answer waits for them.
+const (
+	unstartedSeriesRead = 300
+	unstartedSeriesWait = 1500 * time.Millisecond
+)
+
+// unstartedContents describes the series of ids the user has not started,
+// which a listing gives without their episodes, so that their posters show
+// how many episodes there are to watch, as Emby's and Jellyfin's apps
+// show on every series, rather than once a series was opened. Each series
+// is read apart, for unstartedSeriesWait at most in all: those read by
+// then are described, and those read later are kept for the next answer.
+func (h *Handler) unstartedContents(ctx context.Context, user accounts.User, ids []accounts.ID) []library.Item {
+	if len(ids) == 0 {
+		return nil
+	}
+	read := make(chan []library.Item, len(ids))
+	background := context.WithoutCancel(ctx)
+	limit := make(chan struct{}, 8)
+	for _, id := range ids {
+		go func() {
+			limit <- struct{}{}
+			defer func() { <-limit }()
+			items, _ := h.Library.Items(background, user, []accounts.ID{id})
+			read <- items
+		}()
+	}
+	var found []library.Item
+	deadline := time.After(unstartedSeriesWait)
+	for range ids {
+		select {
+		case items := <-read:
+			found = append(found, items...)
+		case <-deadline:
+			return found
+		case <-ctx.Done():
+			return found
+		}
+	}
+	return found
 }
 
 // of describes what the user did with item. Series and seasons count

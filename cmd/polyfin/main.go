@@ -287,6 +287,15 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	secure := newHTTPS(cfg, store, pool, box, logger)
 	addonClient := stremio.NewClient(version)
 	addonStore := addons.New(pool, addonClient)
+	// The addons routed through the proxy the settings name send their own
+	// requests through it, as their videos (see addons.RouteProxy).
+	addonClient.ProxyAddons(func(manifestURL string) string {
+		proxy := store.Settings().StreamProxy
+		if proxy == "" || !addonStore.Proxied(ctx, manifestURL) {
+			return ""
+		}
+		return proxy
+	})
 	// Addons and libraries are answered from memory while their changes
 	// are followed.
 	go addonStore.Watch(ctx, logger)
@@ -382,6 +391,19 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		return err
 	}
 	defer player.Close()
+	player.Routing(func(addon accounts.ID) playback.Route {
+		switch addonStore.RouteOf(ctx, addon) {
+		case addons.RouteServer:
+			return playback.Route{Relay: true}
+		case addons.RouteProxy:
+			// Without a proxy, the server's address stands for it.
+			if proxy := store.Settings().StreamProxy; proxy != "" {
+				return playback.Route{Relay: true, Via: addonClient.Via(proxy)}
+			}
+			return playback.Route{Relay: true}
+		}
+		return playback.Route{}
+	})
 	// The files of local folders are read through the loopback interface,
 	// as the addons' files are; FFmpeg reads their discs and disc images
 	// itself.
@@ -787,6 +809,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 				return server.WebThemes{Theme: settings.WebTheme, CustomCss: settings.CustomCss, CustomJs: settings.CustomJs}
 			},
 			ServerID:    serverID,
+			ServerName:  func() string { return store.Settings().ServerName },
 			SavedThemes: themesDir,
 			// A file of the copy kept that is missing goes to where it
 			// came from.

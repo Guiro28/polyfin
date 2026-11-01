@@ -85,6 +85,9 @@ func (h *Handler) playbackNamer(item library.Item, request playbackInfoRequest, 
 // another file whose index cannot be read is found out only once played:
 // its name cannot tell it before.
 func (h *Handler) playName(n *versionNamer, p playable, version library.Version, streams []playback.MediaStream, analysis media.Analysis) string {
+	if h.byQualityNames(version) {
+		return version.Name
+	}
 	decision, options, described := h.trackDecision(p, version, streams, analysis, n.request, n.allowed, false)
 	playable := true
 	if decision.HLS && decision.Video == nil && h.Playback.GridPlanned(version, analysis) {

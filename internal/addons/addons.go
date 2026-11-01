@@ -59,6 +59,9 @@ var (
 	// ErrInvalidLanguage reports a language given to an addon that is no
 	// language code, or to one that takes none (see SetLanguage).
 	ErrInvalidLanguage = errors.New("invalid addon language")
+	// ErrInvalidRoute reports a route that is not among Routes, or one
+	// other than RouteSource given to a user's addon (see SetRoute).
+	ErrInvalidRoute = errors.New("invalid addon route")
 	// ErrKindChanged reports a new address of an addon that serves another
 	// kind of addon than it did.
 	ErrKindChanged = errors.New("the address serves another kind of addon")
@@ -120,6 +123,9 @@ type Addon struct {
 	// titles for the users who chose that language only, not for others
 	// (see SetLanguage).
 	Language string
+	// Route is how the videos of a server addon reach the apps, one of
+	// Routes (see SetRoute); a user's own addon's are read at their source.
+	Route string
 	// UsedBy is who uses a server addon (see UsedBy); a user's own addon
 	// is used by everyone, its owner being the only one to see it.
 	UsedBy UsedBy
@@ -354,7 +360,7 @@ func scanAddon(row pgx.Row, extra ...any) (Addon, error) {
 	var addon Addon
 	var manifest []byte
 	err := row.Scan(append([]any{&addon.ID, &addon.Kind, &addon.ManifestURL, &manifest, &addon.Settings, &addon.Enabled, &addon.RefreshedAt,
-		&addon.LibraryKeyTypes, &addon.Language, &addon.UsedBy.Listed, &addon.UsedBy.Groups, &addon.UsedBy.Users}, extra...)...)
+		&addon.LibraryKeyTypes, &addon.Language, &addon.Route, &addon.UsedBy.Listed, &addon.UsedBy.Groups, &addon.UsedBy.Users}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return addon, ErrNotFound
 	}
@@ -399,7 +405,7 @@ func localMusic(m stremio.Manifest) *eclipse.Manifest {
 
 // addonColumns are the columns scanAddon reads, of the addons table, named
 // addons in the query.
-const addonColumns = `id, kind, manifest_url, manifest, settings, enabled, refreshed_at, library_key_types, language, used_by = 'listed',
+const addonColumns = `id, kind, manifest_url, manifest, settings, enabled, refreshed_at, library_key_types, language, route, used_by = 'listed',
 	ARRAY(SELECT u.group_id FROM addon_users u WHERE u.addon_id = addons.id AND u.group_id IS NOT NULL ORDER BY u.group_id),
 	ARRAY(SELECT u.user_id FROM addon_users u WHERE u.addon_id = addons.id AND u.user_id IS NOT NULL ORDER BY u.user_id)`
 
@@ -936,6 +942,56 @@ func (s *Store) SetLanguage(ctx context.Context, scope Scope, id accounts.ID, la
 		}
 	}
 	return addon, err
+}
+
+// Routes are how the videos of an addon may reach the apps: read by the
+// app at their source when it can, the default, always through the
+// server, from its own address, or through the server and the settings'
+// proxy (see accounts.Settings.StreamProxy), which the addon's requests
+// take too.
+var Routes = []string{RouteSource, RouteServer, RouteProxy}
+
+const (
+	RouteSource = "source"
+	RouteServer = "server"
+	RouteProxy  = "proxy"
+)
+
+// SetRoute sets how the videos of a server addon reach the apps (see
+// Routes). ErrInvalidRoute refuses another route, or one other than
+// RouteSource for a user's addon, whose requests stay confined.
+func (s *Store) SetRoute(ctx context.Context, scope Scope, id accounts.ID, route string) (Addon, error) {
+	if !slices.Contains(Routes, route) || (scope.Owner != nil && route != RouteSource) {
+		return Addon{}, ErrInvalidRoute
+	}
+	defer s.changed()
+	return scanAddon(s.db.QueryRow(ctx, "UPDATE addons SET route = $3 WHERE id = $1 AND owner_id IS NOT DISTINCT FROM $2 RETURNING "+addonColumns,
+		id, scope.Owner, route))
+}
+
+// RouteOf is how the server addon id routes its videos (see Routes):
+// RouteSource for a user's addon, or one not found.
+func (s *Store) RouteOf(ctx context.Context, id accounts.ID) string {
+	list, err := s.Addons(ctx, Shared())
+	if err != nil {
+		return RouteSource
+	}
+	for _, addon := range list {
+		if addon.ID == id {
+			return addon.Route
+		}
+	}
+	return RouteSource
+}
+
+// Proxied reports whether a server addon installed from manifestURL
+// routes its videos through the proxy, which its requests take too.
+func (s *Store) Proxied(ctx context.Context, manifestURL string) bool {
+	list, err := s.Addons(ctx, Shared())
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(list, func(addon Addon) bool { return addon.ManifestURL == manifestURL && addon.Route == RouteProxy })
 }
 
 // Languages lists, sorted and each once, the languages the server's

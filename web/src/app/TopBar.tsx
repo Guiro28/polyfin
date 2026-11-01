@@ -11,6 +11,7 @@ import { Link, useLocation } from 'react-router'
 import { fetchStatus, queryKeys, userImageUrl, type SessionUser } from '@/api'
 import { languages, useI18n } from '@/i18n'
 import { webPlayerInPlace, webPlayerLink } from '@/jellyfinApps'
+import { setTheme, themeChoices, useTheme } from '@/theme'
 import {
   Avatar,
   cx,
@@ -24,6 +25,7 @@ import {
 } from '@/ui'
 import { Brand, repositoryUrl } from './Brand'
 import { MobileMenu } from './MobileMenu'
+import { ThemeToggle } from './ThemeToggle'
 import { accountPages, adminSections, isCurrent, memberSections } from './navigation'
 import { useOpenPalette } from './palette/CommandPalette'
 import { useSignOut } from './session'
@@ -124,6 +126,7 @@ export function TopBar({ user }: { user: SessionUser }) {
               )}
             </a>
           )}
+          <ThemeToggle />
           <div className="max-md:hidden">
             <AccountMenu user={user} />
           </div>
@@ -142,6 +145,7 @@ export function TopBar({ user }: { user: SessionUser }) {
  */
 function AccountMenu({ user }: { user: SessionUser }) {
   const { language, setLanguage, t } = useI18n()
+  const theme = useTheme().choice
   const signOut = useSignOut()
   return (
     <Menu
@@ -188,6 +192,15 @@ function AccountMenu({ user }: { user: SessionUser }) {
           label: t.language[code].short,
           title: t.language[code].name,
           lang: code,
+        }))}
+      />
+      <MenuChoice
+        label={t.nav.theme}
+        value={theme}
+        onChange={setTheme}
+        options={themeChoices.map((choice) => ({
+          value: choice,
+          label: { auto: t.nav.themeAuto, light: t.nav.themeLight, dark: t.nav.themeDark }[choice],
         }))}
       />
       <MenuSeparator />

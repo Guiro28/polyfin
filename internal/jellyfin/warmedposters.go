@@ -198,3 +198,53 @@ func (h *Handler) warmImage(ctx context.Context, poster warmedPoster) ([]string,
 	}
 	return keys, h.images.kept(keys)
 }
+
+// warmedSeries is how many titles of each library's first pages warmSeries
+// looks at, as many as the libraries' warming reads (see library.Warm).
+const warmedSeries = 300
+
+// warmSeries reads the descriptions of the series of the libraries' first
+// pages, once the warming read those pages, so that the posters of a
+// library an app opens show how many episodes are left to watch at once
+// (see unstartedContents): a catalog page does not tell a series'
+// episodes. Descriptions read within their refresh age are not asked
+// again.
+func (h *Handler) warmSeries(ctx context.Context) {
+	started := time.Now()
+	users, err := h.Accounts.Users(ctx)
+	if err != nil {
+		h.Logger.Debug("Series could not be described ahead", "error", err)
+		return
+	}
+	seen := map[accounts.ID]bool{}
+	described := 0
+	for _, user := range users {
+		if user.Refused(started) {
+			continue
+		}
+		titles, err := h.Library.WarmedTitles(ctx, user, warmedSeries)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			continue
+		}
+		var unseen []accounts.ID
+		for _, id := range titles {
+			if !seen[id] {
+				seen[id] = true
+				unseen = append(unseen, id)
+			}
+		}
+		for chunk := range slices.Chunk(unseen, 50) {
+			series, err := h.Library.ItemsOf(ctx, user, chunk, []library.Kind{library.KindSeries})
+			if ctx.Err() != nil {
+				return
+			}
+			if err == nil {
+				described += len(series)
+			}
+		}
+	}
+	h.Logger.Debug("Series described ahead", "titles", len(seen), "series", described, "took", time.Since(started).Round(time.Millisecond))
+}

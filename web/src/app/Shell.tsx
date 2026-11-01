@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import { Brand, LanguageSwitch } from './Brand'
 import { CommandPaletteProvider } from './palette/CommandPalette'
 import { SessionContext } from './session'
+import { ThemeToggle } from './ThemeToggle'
 import { TopBar } from './TopBar'
 
 function SkipLink() {
@@ -48,7 +49,10 @@ export function PublicShell({ children }: { children: ReactNode }) {
       <header className="border-b border-line">
         <div className="mx-auto flex h-topbar w-full max-w-page items-center justify-between gap-4 px-14 max-xl:px-8 max-md:px-5">
           <Brand link={false} />
-          <LanguageSwitch />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageSwitch />
+          </div>
         </div>
       </header>
       <main

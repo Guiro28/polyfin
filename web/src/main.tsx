@@ -8,6 +8,7 @@ import { answerAppNavigation } from '@/appNavigation'
 import { LanguageProvider } from '@/i18n'
 import { ToastProvider } from '@/ui'
 import '@/index.css'
+import '@/theme'
 
 answerAppNavigation((delta) => router.navigate(delta))
 

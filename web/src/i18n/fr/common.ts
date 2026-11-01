@@ -290,6 +290,9 @@ const common: typeof en = {
       'TMDB n’a pas accepté cette clé. Copiez de nouveau la clé d’API ou le jeton d’accès en lecture depuis votre compte TMDB. Rien n’a été enregistré.',
     tmdb_unreachable:
       'TMDB n’a pas pu être joint pour vérifier la clé. Rien n’a été enregistré : réessayez plus tard.',
+    invalid_route: 'Choisissez dans la liste le passage des vidéos.',
+    invalid_stream_proxy: 'Indiquez une adresse socks5://hôte:port ou http://hôte:port.',
+    invalid_versions_offered: 'Choisissez dans la liste les versions proposées.',
     invalid_critic_rating_shows: 'Choisissez dans la liste le score qu’affiche la note critique.',
     invalid_poster_badge_size: 'Choisissez dans la liste la taille des badges.',
     invalid_poster_template:

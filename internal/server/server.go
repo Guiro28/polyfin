@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -68,6 +69,9 @@ type Options struct {
 	// ServerID names the cookie the web client's page tells the server the
 	// theme it shows in (see webtheme.Cookie).
 	ServerID string
+	// ServerName is the server's name, which the web app manifest Emby's
+	// apps read names (see underEmbyBase).
+	ServerName func() string
 	// SavedThemes is the folder of the copy of a theme's files Polyfin
 	// keeps (see themecopy), served under /web/polyfin/themes/saved/;
 	// empty serves none.
@@ -163,7 +167,12 @@ func New(options Options) http.Handler {
 	if options.Proxies != nil {
 		handler = options.Proxies.Handler(handler)
 	}
-	return underJellyfinBase(handler)
+	handler = underEmbyBase(underJellyfinBase(handler), options.ServerName)
+	// POLYFIN_LOG_REQUESTS=1 logs every request, to diagnose an app.
+	if os.Getenv("POLYFIN_LOG_REQUESTS") == "1" && options.Logger != nil {
+		handler = logRequests(handler, options.Logger)
+	}
+	return handler
 }
 
 type baseKey struct{}

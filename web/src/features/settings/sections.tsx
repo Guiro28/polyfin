@@ -48,6 +48,7 @@ import MetricsToken from './MetricsToken'
 import { FieldRow, SettingRow, SettingsGroup, SwitchRow, TextRow } from './parts'
 import type { SectionFormApi } from './SectionForm'
 import SegmentSources from './SegmentSources'
+import StreamProxyRow from './StreamProxyRow'
 import VersionOrder, { CodecOrder, SourceOrder } from './VersionOrder'
 import { EditAsCustom, shownTexts, ThemeCopyPanel } from './WebTheme'
 import WorkFolderRow from './WorkFolders'
@@ -265,7 +266,8 @@ function General({ form, update, error, range, limits }: SectionFormApi) {
   )
 }
 
-function Playback({ form, update, error, number, range, limits }: SectionFormApi) {
+function Playback(api: SectionFormApi) {
+  const { form, update, error, number, range, limits } = api
   const { t } = useI18n()
   const s = t.settings
   return (
@@ -285,6 +287,23 @@ function Playback({ form, update, error, number, range, limits }: SectionFormApi
           checked={form.preferDirectPlay}
           onChange={(preferDirectPlay) => update({ preferDirectPlay })}
         />
+        <FieldRow
+          anchor="versions-offered"
+          label={s.versionsOffered}
+          help={s.versionsOfferedHelp}
+          error={error('versions-offered')}
+        >
+          <Select
+            value={form.versionsOffered}
+            options={(['all', 'qualities'] as const).map((value) => ({
+              value,
+              label: s.versionsOfferedChoices[value],
+            }))}
+            onValue={(versionsOffered) => update({ versionsOffered })}
+            className="max-w-xs"
+          />
+        </FieldRow>
+        <StreamProxyRow {...api} />
         <SwitchRow
           anchor="name-how-versions-play"
           label={s.nameHowVersionsPlay}

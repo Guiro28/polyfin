@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/embyapp"
 )
 
 func (h *Handler) publicInfo(r *http.Request) PublicSystemInfo {
@@ -21,6 +22,9 @@ func (h *Handler) publicInfo(r *http.Request) PublicSystemInfo {
 			scheme = "https"
 		}
 		local = scheme + "://" + r.Host
+	}
+	if embyapp.In(r.Context()) {
+		return embyPublicInfo(local, settings.ServerName, h.ServerID)
 	}
 	return PublicSystemInfo{
 		LocalAddress:           local,
@@ -208,6 +212,10 @@ func architecture(goarch string) string {
 	}
 }
 
-func (h *Handler) ping(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) ping(w http.ResponseWriter, r *http.Request) {
+	if embyapp.In(r.Context()) {
+		embyPing(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, productName)
 }

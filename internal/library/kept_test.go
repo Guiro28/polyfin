@@ -474,7 +474,7 @@ func TestDescriptionsShowWhileTheyAreRefreshed(t *testing.T) {
 	eventually(t, "showing the new description", func() bool { return describe() == "Rewritten" })
 }
 
-func TestWarmReadsEachLibrarysFirstPage(t *testing.T) {
+func TestWarmReadsEachLibrarysFirstPages(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	addon := pagedAddon(30, 10)
@@ -490,7 +490,10 @@ func TestWarmReadsEachLibrarysFirstPage(t *testing.T) {
 	if err := e.service.Warm(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if got := addon.catalogRequests(); len(got) != 2 || !slices.Contains(got, "catalog/movie/top") || !slices.Contains(got, "catalog/movie/new") {
+	// A paged catalog is read ahead to its end, here before warmedTitles,
+	// which its empty page tells; one without skip, its only page.
+	want := []string{"catalog/movie/new", "catalog/movie/top", "catalog/movie/top/skip=10", "catalog/movie/top/skip=20", "catalog/movie/top/skip=30"}
+	if got := slices.Sorted(slices.Values(addon.catalogRequests())); !slices.Equal(got, want) {
 		t.Errorf("warming asked %v", got)
 	}
 	var old int
@@ -504,8 +507,12 @@ func TestWarmReadsEachLibrarysFirstPage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := len(addon.catalogRequests()); got != 2 {
-		t.Errorf("home rows after warming asked %d pages in all", got)
+	// And a library opened, its titles read ahead.
+	if _, err := e.service.Children(t.Context(), e.member, e.library(e.member, "Top").ID, 0, 30, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(addon.catalogRequests()); got != len(want) {
+		t.Errorf("home rows and a library after warming asked %d pages in all: %v", got, addon.catalogRequests())
 	}
 }
 

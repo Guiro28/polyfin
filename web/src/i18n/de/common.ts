@@ -296,6 +296,9 @@ const common: typeof en = {
       'TMDB hat diesen Schlüssel nicht akzeptiert. Kopiere den API-Schlüssel oder das Lesezugriffstoken erneut aus deinem TMDB-Konto. Es wurde nichts gespeichert.',
     tmdb_unreachable:
       'TMDB war zur Prüfung des Schlüssels nicht erreichbar. Es wurde nichts gespeichert: Versuche es später erneut.',
+    invalid_route: 'Wähle den Weg der Videos aus der Liste.',
+    invalid_stream_proxy: 'Gib eine Adresse socks5://host:port oder http://host:port ein.',
+    invalid_versions_offered: 'Wähle aus der Liste, welche Versionen angeboten werden.',
     invalid_critic_rating_shows: 'Wähle aus der Liste, welchen Wert die Kritikerbewertung anzeigt.',
     invalid_poster_badge_size: 'Wähle die Größe der Abzeichen aus der Liste.',
     invalid_poster_template:

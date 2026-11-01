@@ -82,28 +82,10 @@ func (h *Handler) mediaSegments(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, result)
 		return
 	}
-	var segments []mediasegments.Segment
-	if item.Kind == library.KindRecording {
-		segments = h.Commercials.Segments(r.Context(), item.ID)
-	} else if h.Segments.Asks() {
-		title, err := h.segmentTitle(r.Context(), user, item)
-		if err != nil {
-			h.browseError(w, r, err)
-			return
-		}
-		segments = h.Segments.Segments(r.Context(), title)
-	}
-	if version, ok := h.segmentVersion(r.Context(), user, item, opened); ok {
-		analysis, analyzed := h.Playback.Analyzed(r.Context(), version)
-		if analyzed {
-			segments = versionSegments(segments, analysis, item.Runtime)
-		}
-		if item.Kind == library.KindEpisode {
-			segments = h.audioSegments(r.Context(), segments, version, analysis.Duration, item.Runtime)
-		}
-		if analyzed {
-			segments = h.splitAtStingers(r.Context(), segments, version, analysis, item.Runtime)
-		}
+	segments, err := h.titleSegments(r.Context(), user, item, opened)
+	if err != nil {
+		h.browseError(w, r, err)
+		return
 	}
 	wanted := map[string]bool{}
 	included := listQuery(r, "includeSegmentTypes")
@@ -126,6 +108,35 @@ func (h *Handler) mediaSegments(w http.ResponseWriter, r *http.Request) {
 	}
 	result.TotalRecordCount = len(result.Items)
 	writeJSON(w, http.StatusOK, result)
+}
+
+// titleSegments are the segments of item, opened as opened: a recording's
+// commercials, else the databases' segments, fitted to the version opened
+// once it was analyzed.
+func (h *Handler) titleSegments(ctx context.Context, user accounts.User, item library.Item, opened accounts.ID) ([]mediasegments.Segment, error) {
+	var segments []mediasegments.Segment
+	if item.Kind == library.KindRecording {
+		segments = h.Commercials.Segments(ctx, item.ID)
+	} else if h.Segments.Asks() {
+		title, err := h.segmentTitle(ctx, user, item)
+		if err != nil {
+			return nil, err
+		}
+		segments = h.Segments.Segments(ctx, title)
+	}
+	if version, ok := h.segmentVersion(ctx, user, item, opened); ok {
+		analysis, analyzed := h.Playback.Analyzed(ctx, version)
+		if analyzed {
+			segments = versionSegments(segments, analysis, item.Runtime)
+		}
+		if item.Kind == library.KindEpisode {
+			segments = h.audioSegments(ctx, segments, version, analysis.Duration, item.Runtime)
+		}
+		if analyzed {
+			segments = h.splitAtStingers(ctx, segments, version, analysis, item.Runtime)
+		}
+	}
+	return segments, nil
 }
 
 // segmentVersion is the version a movie's or an episode's segments are
