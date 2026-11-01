@@ -299,6 +299,11 @@ const settings: typeof en = {
         'hdr-first': 'HDR e Dolby Vision primeiro',
         'hdr-last': 'HDR e Dolby Vision por último',
         source: 'Fonte, na ordem abaixo',
+        'size-per-minute': 'Tamanho por minuto de duração, conforme o ajuste abaixo',
+        tier: 'Origem: cópia de disco, Blu-ray, web, DVD e depois TV',
+        audio: 'Áudio: sem perdas e Atmos primeiro, depois mais canais',
+        edition: 'Edição, na ordem abaixo',
+        labels: 'Pontuação das regras de rótulos, a mais alta primeiro',
       },
     },
     versionCodecOrder: {
@@ -311,6 +316,19 @@ const settings: typeof en = {
       none: 'Nenhuma fonte do servidor fornece versões de filmes ou episódios ainda.',
       dragHandle: (name: string) => `Arrastar ${name}`,
     },
+    versionEditionOrder: {
+      label: 'Ordem das edições',
+      help: 'A ordem em que o critério Edição coloca as versões, conforme a edição que seus rótulos nomeiam. Uma versão cujos rótulos não nomeiam nenhuma conta como a versão de cinema.',
+    },
+    versionEditions: {
+      theatrical: 'Versão de cinema',
+      extended: 'Versão estendida',
+      directors: 'Versão do diretor',
+      imax: 'IMAX',
+    },
+    versionMbPerMinute: 'Tamanho por minuto desejado (MB, 0 = o maior)',
+    versionMbPerMinuteHelp: (r: RangeText) =>
+      `O critério Tamanho por minuto coloca primeiro as versões mais próximas desta quantidade de megabytes por minuto de duração, por exemplo 50 para uma boa codificação 1080p; 0 coloca primeiro a maior. A duração é a da versão depois de analisada, senão a do título. Até ${r.max}; ${r.default} por padrão.`,
     versionCodecs: {
       av1: 'AV1',
       hevc: 'HEVC (H.265)',
@@ -337,6 +355,22 @@ const settings: typeof en = {
       telecine: 'Telecines (TC, TELECINE)',
       screener: 'Screeners (SCR, DVDSCR)',
       early: 'Cópias antecipadas (R5, WORKPRINT)',
+    },
+    versionLabelRules: {
+      label: 'Regras de rótulos',
+      help: (max: string) =>
+        `Cada regra lê o nome, a descrição e o nome do arquivo de uma versão, sem diferenciar maiúsculas e minúsculas: uma palavra encontrada em qualquer lugar, ou uma expressão regular. Uma regra oculta as versões que reconhece, depois das regras de ocultar acima e nunca todas as versões de um título, ou soma sua pontuação, de −100 a 100, à delas. O critério Pontuação das regras de rótulos coloca a mais alta primeiro; sem ele, a pontuação ordena as versões depois dos outros critérios. Até ${max} regras; nenhuma por padrão.`,
+      none: 'Nenhuma regra: os rótulos não pontuam.',
+      add: 'Adicionar uma regra',
+      remove: (position: number) => `Remover a regra ${position}`,
+      text: (position: number) => `Palavra ou expressão da regra ${position}`,
+      action: (position: number) => `O que a regra ${position} faz`,
+      points: (position: number) => `Pontuação da regra ${position}`,
+      regex: 'Expressão regular',
+      score: 'Somar uma pontuação',
+      hide: 'Ocultar',
+      wordPlaceholder: 'Palavra',
+      regexPlaceholder: 'Expressão regular',
     },
     syncAddonSubtitles: 'Sincronizar legendas dos complementos',
     syncAddonSubtitlesHelp:
@@ -610,6 +644,9 @@ const settings: typeof en = {
       keepConvertedVideo: 'Manter o vídeo convertido quando a faixa de áudio mudar',
       keepConvertedVideoHelp:
         'Converte a imagem e o som separadamente, para que escolher outra faixa de áudio no player prepare apenas o novo som: a imagem já convertida continua sendo reproduzida, e a nova faixa começa mais cedo. A imagem é mantida por 30 segundos depois que um player a interrompe e, enquanto isso, conta como uma conversão.',
+      fastStart: 'Iniciar mais rápido as reproduções de fontes remotas',
+      fastStartHelp:
+        'Quando uma reprodução reempacotada ou convertida do link de um complemento ou de um torrent começa por um segmento longo, como com um quadro-chave a cada 10 segundos, esse segmento é dividido em segmentos de 2 segundos convertidos rapidamente em no máximo 720p: a imagem aparece mais cedo, um pouco menos nítida nesses segundos, e depois a reprodução continua normalmente. Vale para as próximas reproduções.',
     },
     catalogsTitle: 'Catálogos',
     catalogLimit: 'Títulos lidos por catálogo de filmes e séries',
@@ -645,6 +682,9 @@ const settings: typeof en = {
     tmdbKey: 'Chave da API do TMDB',
     tmdbKeyHelp:
       'Opcional. Com uma chave da API ou um token de acesso de leitura de uma conta TMDB, o Editar imagens do jellyfin-web também busca no TMDB os pôsteres, imagens de fundo e logos de um título, as imagens de um episódio, os pôsteres de uma temporada e as fotos de uma pessoa, que o Polyfin repassa. As pessoas também são buscadas uma vez no TMDB: as que não têm foto recebem a sua, e suas páginas mostram a biografia, as datas de nascimento e de morte e o local de nascimento. Os arquivos de uma pasta local cuja pesquisa falha em todos os complementos de metadados também são pesquisados no TMDB. Sem chave, o Editar imagens lista apenas as imagens dos complementos e o TMDB nunca é consultado.',
+    waitDigitalRelease: 'Aguardar o lançamento digital',
+    waitDigitalReleaseHelp:
+      'Um filme dos catálogos dos addons só aparece quando já está disponível em casa: seu primeiro lançamento digital ou físico, segundo o TMDB, ou então 90 dias após a estreia nos cinemas. Até lá, ele fica fora das bibliotecas, das linhas da tela inicial, das buscas, dos títulos semelhantes e das páginas de pessoas, não tem versão e não é reproduzido; as listas inteligentes com uma regra de títulos futuros o mostram, com esse dia. Um filme que o TMDB não conhece, ou lançado há mais de um ano, continua aparecendo. Requer a chave da API do TMDB.',
     mdblistRatingsKey: 'Chave da API do MDBList para avaliações',
     mdblistRatingsKeyHelp:
       'Opcional. Com uma chave de uma conta MDBList, filmes e séries mostram a avaliação do IMDb, a nota da crítica e a nota do público do MDBList, buscadas em segundo plano e mantidas para todos os usuários. As chaves do MDBList dos próprios usuários para acompanhamento nunca são usadas para isso. Sem chave, o MDBList nunca é consultado.',
@@ -844,6 +884,43 @@ const settings: typeof en = {
     cacheSize: 'Espaço em disco para arquivos em leitura (GB)',
     cacheSizeHelp: (r: RangeText) =>
       `Espaço que o Polyfin pode usar para guardar as partes dos arquivos em reprodução, para que avanços, retrocessos e reinícios não as baixem novamente. As partes lidas nos últimos 30 segundos são mantidas mesmo acima desse limite. De ${r.min} a ${r.max} GB; ${r.default} por padrão.`,
+    sourceCacheGroup: 'Arquivos em leitura',
+    sourceCachePreset: 'Espaço em disco e retenção',
+    sourceCachePresetHelp: (free: string) =>
+      `Quanto dos arquivos reproduzidos o Polyfin guarda em disco, e por quanto tempo, de uma inicialização para a outra: um título reproduzido de novo, ou retomado após uma reinicialização, é então lido do disco em vez da sua fonte. Uma predefinição define os campos abaixo; alterar um deles a torna Personalizada. ${free}`,
+    sourceCacheFree: (free: string) => `${free} livres no disco da pasta de arquivos em leitura.`,
+    sourceCachePresetNames: {
+      off: 'Desativada',
+      small: 'Pequena',
+      everyday: 'Dia a dia',
+      large: 'Grande',
+      custom: 'Personalizada',
+    },
+    sourceCachePresetChoice: (name: string, size: string, days: number) =>
+      days > 0
+        ? `${name}: ${size} GB, mantidos por ${days} dias`
+        : `${name}: ${size} GB, esvaziada a cada inicialização`,
+    sourceCacheDays: 'Manter as partes lidas por (dias)',
+    sourceCacheDaysHelp: (r: RangeText) =>
+      `Por quanto tempo uma parte de um arquivo é mantida após a última leitura, reinicializações incluídas. 0 não mantém nada após uma reinicialização: cada inicialização esvazia o cache. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+    sourceCacheCreditDays: 'Dias a mais por nova reprodução',
+    sourceCacheCreditDaysHelp: (r: RangeText) =>
+      `Um título reproduzido de novo, 6 horas ou mais após a última reprodução, mantém suas partes esse número de dias a mais para cada reprodução após a primeira, no máximo 8, e elas abrem espaço depois das dos títulos reproduzidos uma vez só. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+    preloadGroup: 'Pré-carregamento dos próximos episódios',
+    preloadNextEpisodes: 'Pré-carregar os próximos episódios',
+    preloadNextEpisodesHelp:
+      'Enquanto nada é reproduzido, lê antecipadamente os próximos episódios das séries que cada usuário reproduziu ou começou nos últimos 14 dias, no máximo 5 séries por usuário: a primeira versão que Reproduzir escolheria, seus primeiros 128 MiB e seu final, ou o arquivo inteiro. Para assim que algo começa a ser reproduzido e lê no máximo um quarto do espaço em disco acima a cada 15 minutos. Torrents nunca são pré-carregados.',
+    preloadEpisodes: 'Episódios por série',
+    preloadEpisodesHelp: (r: RangeText) => `De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+    preloadMbps: 'Limite de velocidade (Mbit/s)',
+    preloadMbpsHelp: (r: RangeText) =>
+      `A velocidade média do pré-carregamento, que deixa o resto da conexão para a casa. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+    preloadReserveGb: 'Espaço livre a manter (GB)',
+    preloadReserveGbHelp: (r: RangeText) =>
+      `O pré-carregamento para antes que o disco da pasta de arquivos em leitura tenha menos do que isso livre. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+    preloadWholeFiles: 'Pré-carregar arquivos inteiros',
+    preloadWholeFilesHelp:
+      'Lê episódios inteiros em vez do início e do final, para um disco grande. A predefinição Grande o ativa; alterá-lo torna a predefinição Personalizada.',
     workFolders: {
       conversionFolder: 'Pasta de conversão',
       conversionFolderHelp:
@@ -1116,6 +1193,34 @@ const settings: typeof en = {
         'Não é possível dar aos outros aplicativos um novo tipo de seção da tela inicial: isso torna a linha também uma biblioteca, sem tipo, que eles listam entre as bibliotecas do usuário, com uma linha dos títulos mais recentes dela na tela inicial.',
       libraryBadge: 'Biblioteca',
       moveLabel: 'Mover',
+      schedule: 'Agenda',
+      scheduleHelp:
+        'Quando a linha aparece, no fuso horário do servidor. Deixada como está, ela aparece o tempo todo.',
+      startDate: 'De',
+      endDate: 'Até',
+      datesHelp: 'As duas datas estão incluídas; qualquer uma pode ficar vazia.',
+      dateOrder: 'A data final não pode vir antes da data inicial.',
+      days: 'Dias',
+      daysHelp: 'Nenhum escolhido: todos os dias.',
+      hours: 'Horários',
+      allDay: 'O dia todo',
+      someHours: 'Certos horários',
+      startHour: 'Das',
+      endHour: 'Às',
+      hoursHelp:
+        'Um fim antes do início passa da meia-noite, e essa noite pertence ao dia em que começa: das 22:00 às 02:00 às sextas termina no sábado às 02:00.',
+      libraryDatesOnly:
+        'Uma linha que também é uma biblioteca segue apenas as datas dela, para não aparecer e sumir de hora em hora nos outros aplicativos.',
+      scheduled: 'Agendada',
+      notShownNow: 'Não exibida agora',
+      preview: 'Visualizar como…',
+      previewTitle: 'Visualizar como um usuário',
+      previewUser: 'Usuário',
+      previewHelp:
+        'As linhas que o player web deste usuário mostra agora na página inicial dele, na posição delas, com o controle parental, os gêneros bloqueados, os títulos ocultos, as bibliotecas ocultas para ele e as linhas que ele desativou. As seções próprias do player web não são mostradas.',
+      previewChoose: 'Escolha um usuário para ver as linhas da tela inicial dele.',
+      previewLoading: 'Carregando a visualização…',
+      previewEmpty: 'Este usuário não vê nenhuma linha da tela inicial agora.',
     },
     codeSize: (used: number, max: number) =>
       `${used} KB de ${max >= 1024 ? `${max / 1024} MB` : `${max} KB`}`,
@@ -1158,6 +1263,7 @@ const settings: typeof en = {
       skip: 'Pular introdução e créditos',
       titlePages: 'Páginas de títulos',
       images: 'Imagens',
+      releases: 'Lançamentos de filmes',
       ratings: 'Avaliações',
       posters: 'Pôsteres',
       music: 'Música',

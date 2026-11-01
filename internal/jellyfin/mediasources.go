@@ -149,14 +149,41 @@ func (h *Handler) cachedPlayable(ctx context.Context, user accounts.User, item l
 // skipping them (see choose); and, with the version rules or the user's
 // quality group, or versions naming another title, those they hide,
 // ordering the others, or offering the best of each quality (see
-// ordered); a movie's or an episode's versions are then named for
-// version menus (see labeled).
+// ordered). The version an administrator pinned for the title comes
+// first (see pinnedFirst), but by quality; a movie's or an episode's
+// versions are then named for version menus (see labeled).
 func (h *Handler) offered(ctx context.Context, user accounts.User, versions []library.Version) []library.Version {
 	versions = slices.DeleteFunc(versions, func(v library.Version) bool { return h.Playback.Failed(v.ID) && !h.didNotStart(v) })
 	if h.reordered(user) || slices.ContainsFunc(versions, elsewhere) {
 		versions = h.ordered(ctx, user, versions)
 	}
+	if h.Accounts.Settings().VersionsOffered != "qualities" {
+		// By quality, each version stands for its quality (see labeled):
+		// a pin does not move it.
+		versions = h.pinnedFirst(ctx, versions)
+	}
 	return h.labeled(ctx, user, versions)
+}
+
+// pinnedFirst moves the version an administrator pinned for the title
+// first among its versions, the others keeping their order. A pin moves
+// only a version offered: it brings back none that failed lately, that a
+// rule hides or that the user's quality group leaves out, and a pinned
+// file no addon lists any more leaves the order as it is.
+func (h *Handler) pinnedFirst(ctx context.Context, versions []library.Version) []library.Version {
+	if len(versions) < 2 {
+		return versions
+	}
+	pin, ok := h.Library.PinnedVersion(ctx, versions[0].Item)
+	if !ok {
+		return versions
+	}
+	if i := slices.IndexFunc(versions, func(v library.Version) bool { return v.ID == pin.Version }); i > 0 {
+		pinned := versions[i]
+		copy(versions[1:i+1], versions[:i])
+		versions[0] = pinned
+	}
+	return versions
 }
 
 // externals are the subtitle files a version offers as streams: its

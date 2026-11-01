@@ -26,9 +26,12 @@ import (
 // parameters in Jellyfin's order. Polyfin reads back the play session, the
 // audio track and the segment container; the rest describes the stream as
 // Jellyfin would. A stream as one file is /videos/{id}/stream.{container},
-// without segments, as Jellyfin gives a progressive one.
+// without segments, as Jellyfin gives a progressive one. A play over HLS
+// starting with fast segments, from fastStart, has Polyfin's
+// FastStartTicks last (see playback.Remux.FastStart): every request of
+// the play then cuts it the same way.
 func transcodingURL(r *http.Request, item, sourceID accounts.ID, version library.Version, analysis media.Analysis, streams []playback.MediaStream,
-	decision playback.Decision, limit int64, session string) string {
+	decision playback.Decision, limit int64, session string, fastStart *time.Duration) string {
 	t := decision.Transcoding
 	var audio *playback.MediaStream
 	for i := range streams {
@@ -137,6 +140,9 @@ func transcodingURL(r *http.Request, item, sourceID accounts.ID, version library
 	}
 	if decision.Progressive {
 		return "/videos/" + hyphenated(item) + "/stream." + strings.ToLower(t.Container) + "?" + q.String()
+	}
+	if fastStart != nil {
+		q.add("FastStartTicks", strconv.FormatInt(int64(*fastStart/100), 10))
 	}
 	return "/videos/" + hyphenated(item) + "/master.m3u8?" + q.String()
 }
@@ -278,11 +284,17 @@ func (h *Handler) remuxFor(w http.ResponseWriter, r *http.Request, user accounts
 		// known already (see playback.Remux.Alternates).
 		remux.Alternates = func(ctx context.Context) []library.Version {
 			versions, ok := h.Library.CachedVersions(ctx, user, item.ID)
-			if !ok || !h.reordered(user) {
-				return versions
+			if ok && h.reordered(user) {
+				versions = h.ordered(ctx, user, versions)
 			}
-			return h.ordered(ctx, user, versions)
+			return h.pinnedFirst(ctx, versions)
 		}
+	}
+	// A play PlaybackInfo started with fast segments, which convert the
+	// video: a user who may not have it converted gets none, as from a URL
+	// kept from before the permission was taken away, or made up.
+	if ticks, err := strconv.ParseInt(query(r, "fastStartTicks"), 10, 64); err == nil && ticks >= 0 && !live && allowed.Video {
+		remux.FastStart, remux.Start = true, time.Duration(ticks)*100
 	}
 	// The conversions PlaybackInfo chose follow from the URL, as they
 	// would for Jellyfin, through the same functions, under the limit it
@@ -491,9 +503,10 @@ func (h *Handler) masterPlaylist(w http.ResponseWriter, r *http.Request, req rem
 }
 
 // mediaPlaylist serves the media playlist of a remux's variant, its
-// segments at prefix and their number.
+// segments at prefix and their number, the initialization segment of its
+// fast segments, if any, as -2.
 func (h *Handler) mediaPlaylist(w http.ResponseWriter, r *http.Request, req remuxRequest, prefix string) {
-	plan, err := h.Playback.Plan(r.Context(), req.remux.Version)
+	plan, err := h.Playback.RemuxPlan(r.Context(), req.remux)
 	if err != nil {
 		h.remuxError(w, r, req.remux, err)
 		return
@@ -549,9 +562,9 @@ func (h *Handler) renditions(ctx context.Context, req remuxRequest, selected, ra
 }
 
 // hlsSegment serves the segments of a remux under hls1/main, the
-// initialization segment as -1, those of its lower qualities and their
-// media playlists under hls1/main{variant}, and its subtitle renditions
-// under hls1/subtitles{index}.
+// initialization segment as -1, that of its fast segments as -2, those of
+// its lower qualities and their media playlists under hls1/main{variant},
+// and its subtitle renditions under hls1/subtitles{index}.
 func (h *Handler) hlsSegment(w http.ResponseWriter, r *http.Request) {
 	h.serveSegment(w, r, h.remuxOf)
 }
@@ -585,7 +598,7 @@ func (h *Handler) serveSegment(w http.ResponseWriter, r *http.Request, remuxOf r
 	}
 	name, extension, _ := strings.Cut(r.PathValue("file"), ".")
 	n, err := strconv.Atoi(name)
-	if err != nil || n < -1 {
+	if err != nil || n < hls.FastInit {
 		processingError(w, http.StatusNotFound)
 		return
 	}
@@ -599,7 +612,8 @@ func (h *Handler) serveSegment(w http.ResponseWriter, r *http.Request, remuxOf r
 	}
 	remux := req.remux
 	remux.Variant = variant
-	// The initialization segment of fragmented MP4 is -1.mp4.
+	// The initialization segments of fragmented MP4 are -1.mp4, and -2.mp4
+	// for the fast segments.
 	if !strings.EqualFold(extension, remux.Format.Extension()) {
 		processingError(w, http.StatusNotFound)
 		return
@@ -611,12 +625,14 @@ func (h *Handler) serveSegment(w http.ResponseWriter, r *http.Request, remuxOf r
 	defer cancel()
 	var file *os.File
 	if n < 0 {
-		file, err = h.Playback.RemuxInit(ctx, remux)
+		file, err = h.Playback.RemuxInit(ctx, remux, n == hls.FastInit)
 	} else {
 		file, err = h.Playback.RemuxSegment(ctx, remux, n)
 	}
 	if err != nil {
-		h.remuxError(w, r, remux, err)
+		if h.remuxError(w, r, remux, err) {
+			h.streamFailed(r, req.user, req.item, remux.Device)
+		}
 		return
 	}
 	defer file.Close()
@@ -668,7 +684,7 @@ func (h *Handler) hlsSubtitles(w http.ResponseWriter, r *http.Request, index int
 		}
 		copyCues = cues
 	}
-	plan, err := h.Playback.Plan(r.Context(), req.remux.Version)
+	plan, err := h.Playback.RemuxPlan(r.Context(), req.remux)
 	if err != nil {
 		h.remuxError(w, r, req.remux, err)
 		return
@@ -715,7 +731,9 @@ func (h *Handler) hlsSubtitles(w http.ResponseWriter, r *http.Request, index int
 // segmentWait bounds the wait for a segment whose FFmpeg makes progress.
 const segmentWait = 2 * time.Minute
 
-func (h *Handler) remuxError(w http.ResponseWriter, r *http.Request, remux playback.Remux, err error) {
+// remuxError answers err, which came of serving remux, and reports
+// whether the stream broke: its source failed, or its encoding did.
+func (h *Handler) remuxError(w http.ResponseWriter, r *http.Request, remux playback.Remux, err error) (broke bool) {
 	logger := h.Logger
 	if remux.Channel != "" {
 		// A live stream's lines name its channel.
@@ -747,10 +765,13 @@ func (h *Handler) remuxError(w http.ResponseWriter, r *http.Request, remux playb
 		// source failed.
 		logger.Warn("A segment could not be served in time: its source is slow or failed", "addon", remux.Version.Addon, "error", err)
 		processingError(w, http.StatusServiceUnavailable)
+		return true
 	default:
 		logger.Warn("A remux could not be served", "addon", remux.Version.Addon, "error", err)
 		processingError(w, http.StatusInternalServerError)
+		return true
 	}
+	return false
 }
 
 // stopEncodings answers DELETE /Videos/ActiveEncodings, which apps send

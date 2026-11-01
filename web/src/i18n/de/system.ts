@@ -340,7 +340,7 @@ const system: typeof en = {
       size: 'Größe',
       cacheTitle: 'Quellen-Cache',
       cacheHelp:
-        'Teile der gerade wiedergegebenen Dateien, auf der Festplatte gespeichert bis zur unter Einstellungen › Wiedergabe festgelegten Größe. Ein voller Cache ist normal: Die ältesten Teile machen Platz.',
+        'Teile der abgespielten Dateien, auf der Festplatte gespeichert bis zur unter Einstellungen › Wiedergabe festgelegten Größe, auch über Neustarts hinweg. Ein voller Cache ist normal: Die am längsten nicht gelesenen Teile machen Platz, die erneut abgespielter Titel zuletzt.',
       cacheUse: (used: string, limit: string) => `${used} von ${limit}`,
       imagesTitle: 'Bild-Cache',
       imagesHelp:
@@ -352,6 +352,14 @@ const system: typeof en = {
         `Bild-Cache geleert: ${images} Bilder, ${bytes} auf der Festplatte freigegeben.`,
       sourcesOpen: 'Geöffnete Dateien',
       torrentPieces: 'Davon Torrent-Teile',
+      sourcesKept: 'Behaltene Dateien',
+      hitRatio: 'Von der Festplatte gelesen',
+      hitRatioValue: (percent: string, read: string) =>
+        `${percent} der seit dem Start gelesenen ${read}`,
+      keptFor: (days: number) =>
+        days > 0
+          ? `${days} Tage nach dem letzten Lesen behalten, auch über Neustarts`
+          : 'Bei jedem Start geleert',
       torrentsTitle: 'Torrents',
       torrentsHelp:
         'Die Torrents, die die Wiedergabe gerade liest, ausschließlich über ihre Route. Ein Torrent stoppt, wenn seine Wiedergabe endet: keine Peers mehr, kein Teilen mehr.',
@@ -434,6 +442,10 @@ const system: typeof en = {
       goroutinesDownload: 'Goroutinen herunterladen',
       goroutinesHelp:
         'Wenn eine Anfrage nie beantwortet wird, laden Sie herunter, was der Server gerade tut, und senden Sie es mit Ihrer Meldung. Es enthält keine Adressen und keine Geheimnisse.',
+      lastCrash: 'Letzter Absturz',
+      noCrash: 'Keiner',
+      lastCrashHelp:
+        'Der Anfang des Traces des Fehlers, der Polyfin zuletzt beendet hat, beim Neustart gelesen. Von Adressen bleibt nur der Host, Tokens und Schlüssel werden ausgeblendet.',
       secretsTitle: 'Gespeicherte Schlüssel',
       secretsHelp:
         'Die Schlüssel des Servers, die Tracking-Tokens und -Schlüssel der Benutzer und die Passwörter der Netzwerkfreigaben, in der Datenbank verschlüsselt mit POLYFIN_SECRET_KEY (openssl rand -base64 32).',

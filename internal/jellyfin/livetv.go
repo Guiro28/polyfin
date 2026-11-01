@@ -20,6 +20,7 @@ import (
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/media"
 	"github.com/moodiness/polyfin/internal/playback"
+	"github.com/moodiness/polyfin/internal/plays"
 )
 
 // liveTvViewID identifies the Live TV view, the same on every server.
@@ -50,8 +51,8 @@ func (h *Handler) liveTvRoutes(rt *router) {
 	h.reminderRoutes(rt, signedIn)
 	// Players fetch these without credentials: see liveFile and
 	// liveSegment.
-	rt.handle(http.MethodGet, "/Videos/{itemId}/live/{file}", http.HandlerFunc(h.liveFile))
-	rt.handle(http.MethodGet, "/Videos/{itemId}/hls/{playlistId}/{file}", http.HandlerFunc(h.liveSegment))
+	rt.handle(http.MethodGet, "/Videos/{itemId}/live/{file}", h.meteredStream(h.liveFile))
+	rt.handle(http.MethodGet, "/Videos/{itemId}/hls/{playlistId}/{file}", h.meteredStream(h.liveSegment))
 }
 
 type LiveTvServiceInfo struct {
@@ -781,7 +782,7 @@ func (h *Handler) livePlaybackInfo(w http.ResponseWriter, r *http.Request, user 
 		writeJSON(w, http.StatusOK, playbackInfoResponse{MediaSources: []MediaSourceInfo{source}, PlaySessionId: session})
 		return
 	}
-	writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+	h.refusePlay(w, r, user, channel, "NoCompatibleStream", plays.FailedNoStream)
 }
 
 // liveSource describes a channel's stream with the decision for the app's
@@ -854,7 +855,7 @@ func (h *Handler) liveSource(r *http.Request, channel library.Item, version libr
 			limit = *request.DeviceProfile.MaxStreamingBitrate
 		}
 		source.SupportsTranscoding = true
-		source.TranscodingUrl = transcodingURL(r, channel.ID, id, version, analysis, streams, decision, limit, session)
+		source.TranscodingUrl = transcodingURL(r, channel.ID, id, version, analysis, streams, decision, limit, session, nil)
 		source.TranscodingSubProtocol = "hls"
 		source.TranscodingContainer = decision.Transcoding.Container
 		describeConverted(request, analysis, source.MediaStreams, decision.Video)
@@ -988,7 +989,9 @@ func (h *Handler) liveSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.remuxError(w, r, req.remux, err)
+		if h.remuxError(w, r, req.remux, err) {
+			h.streamFailed(r, req.user, req.item, req.remux.Device)
+		}
 		return
 	}
 	defer file.Close()

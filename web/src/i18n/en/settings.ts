@@ -298,6 +298,11 @@ const settings = {
         'hdr-first': 'HDR and Dolby Vision first',
         'hdr-last': 'HDR and Dolby Vision last',
         source: 'Source, in the order below',
+        'size-per-minute': 'Size per minute of runtime, as set below',
+        tier: 'Source: disc copy, Blu-ray, web, DVD, then TV',
+        audio: 'Audio: lossless and Atmos first, then most channels',
+        edition: 'Edition, in the order below',
+        labels: 'Score of the label rules, highest first',
       },
     },
     versionCodecOrder: {
@@ -310,6 +315,19 @@ const settings = {
       none: 'No source of the server gives versions of movies or episodes yet.',
       dragHandle: (name: string) => `Drag ${name}`,
     },
+    versionEditionOrder: {
+      label: 'Order of editions',
+      help: 'The order the Edition criterion puts versions in, as their labels name the edition. A version whose labels name none counts as the theatrical cut.',
+    },
+    versionEditions: {
+      theatrical: 'Theatrical cut',
+      extended: 'Extended cut',
+      directors: 'Director’s cut',
+      imax: 'IMAX',
+    },
+    versionMbPerMinute: 'Size per minute to aim at (MB, 0 = largest)',
+    versionMbPerMinuteHelp: (r: RangeText) =>
+      `The Size per minute criterion puts first the versions closest to this many megabytes a minute of runtime, such as 50 for a good 1080p encode; 0 puts the largest first. The runtime is a version’s own once it is analyzed, else the title’s. Up to ${r.max}; ${r.default} by default.`,
     versionCodecs: {
       av1: 'AV1',
       hevc: 'HEVC (H.265)',
@@ -336,6 +354,22 @@ const settings = {
       telecine: 'Telecines (TC, TELECINE)',
       screener: 'Screeners (SCR, DVDSCR)',
       early: 'Early copies (R5, WORKPRINT)',
+    },
+    versionLabelRules: {
+      label: 'Label rules',
+      help: (max: string) =>
+        `Each rule reads a version’s name, description and file name in any letter case: a word found anywhere in them, or a regular expression. A rule either hides the versions it matches, after the hiding rules above and never every version of a title, or adds its score, from −100 to 100, to theirs. The criterion Score of the label rules puts the highest first; without it, the score sorts versions after the other criteria. Up to ${max} rules; none by default.`,
+      none: 'No rules: labels score nothing.',
+      add: 'Add a rule',
+      remove: (position: number) => `Remove rule ${position}`,
+      text: (position: number) => `Word or expression of rule ${position}`,
+      action: (position: number) => `What rule ${position} does`,
+      points: (position: number) => `Score of rule ${position}`,
+      regex: 'Regular expression',
+      score: 'Add a score',
+      hide: 'Hide',
+      wordPlaceholder: 'Word',
+      regexPlaceholder: 'Regular expression',
     },
     syncAddonSubtitles: 'Sync addon subtitles',
     syncAddonSubtitlesHelp:
@@ -608,6 +642,9 @@ const settings = {
       keepConvertedVideo: 'Keep the converted video when the audio track changes',
       keepConvertedVideoHelp:
         'Converts the picture and the sound apart, so that choosing another audio track in the player only prepares the new sound: the picture already converted plays on, and the new track starts sooner. The picture is kept 30 seconds after a player stops it, and counts as one conversion meanwhile.',
+      fastStart: 'Start remote plays faster',
+      fastStartHelp:
+        'When a repackaged or converted play of an addon’s link or a torrent starts on a long segment, as with a keyframe every 10 seconds, that segment is cut into 2-second ones converted quickly at 720p at most: the picture shows sooner, a little less sharp for those seconds, then the play goes on as usual. Applies to the next plays.',
     },
     catalogsTitle: 'Catalogs',
     catalogLimit: 'Titles read per movie and series catalog',
@@ -643,6 +680,9 @@ const settings = {
     tmdbKey: 'TMDB API key',
     tmdbKeyHelp:
       'Optional. With an API key or a read access token from a TMDB account, jellyfin-web’s Edit images also searches TMDB for a title’s posters, backdrops and logos, an episode’s stills, a season’s posters and a person’s photos, which Polyfin relays. People are also looked up on TMDB once: those without a photo get theirs, and their pages show their biography, birth and death dates and birthplace. A local folder’s files whose search every metadata addon fails are searched on TMDB too. Without a key, Edit images lists the addons’ images only and TMDB is never asked.',
+    waitDigitalRelease: 'Wait for the digital release',
+    waitDigitalReleaseHelp:
+      'A movie of the addons’ catalogs shows once it is out at home: its first digital or physical release, as TMDB tells, else 90 days after it came out in cinemas. Until then it is left out of libraries, home rows, searches, similar titles and person pages, has no version and does not play; smart lists with a rule of upcoming titles list it, with that day. A movie TMDB does not know, and one out for over a year, stays listed. Needs the TMDB API key.',
     mdblistRatingsKey: 'MDBList API key for ratings',
     mdblistRatingsKeyHelp:
       'Optional. With a key from an MDBList account, movies and series show their IMDb rating, critics’ score and audience score from MDBList, looked up in the background and kept for every user. Users’ own MDBList keys for tracking are never used for this. Without a key, MDBList is never asked.',
@@ -838,6 +878,44 @@ const settings = {
     cacheSize: 'Disk space for files being read (GB)',
     cacheSizeHelp: (r: RangeText) =>
       `Space Polyfin may use to keep the parts of the files being played, so that seeks and restarts do not download them again. Parts read in the last 30 seconds are kept even above it. From ${r.min} to ${r.max} GB; ${r.default} by default.`,
+    sourceCacheGroup: 'Files being read',
+    sourceCachePreset: 'Disk space and retention',
+    sourceCachePresetHelp: (free: string) =>
+      `How much of the files played Polyfin keeps on disk, and for how long, from one start to the next: a title played again, or resumed after a restart, then reads from the disk instead of its source. A preset sets the fields below; changing one of them makes it Custom. ${free}`,
+    sourceCacheFree: (free: string) =>
+      `${free} free on the disk of the folder for files being read.`,
+    sourceCachePresetNames: {
+      off: 'Off',
+      small: 'Small',
+      everyday: 'Everyday',
+      large: 'Large',
+      custom: 'Custom',
+    },
+    sourceCachePresetChoice: (name: string, size: string, days: number) =>
+      days > 0
+        ? `${name}: ${size} GB, kept ${days} days`
+        : `${name}: ${size} GB, emptied at each start`,
+    sourceCacheDays: 'Keep parts read for (days)',
+    sourceCacheDaysHelp: (r: RangeText) =>
+      `How long a part of a file is kept once last read, restarts included. 0 keeps nothing past a restart: each start empties the cache. From ${r.min} to ${r.max}; ${r.default} by default.`,
+    sourceCacheCreditDays: 'Extra days for each play again',
+    sourceCacheCreditDaysHelp: (r: RangeText) =>
+      `A title played again, 6 hours or more after its last play, keeps its parts this many days longer for each play after the first, 8 at most, and they make room after those of titles played once. From ${r.min} to ${r.max}; ${r.default} by default.`,
+    preloadGroup: 'Next-episode preloading',
+    preloadNextEpisodes: 'Preload the next episodes',
+    preloadNextEpisodesHelp:
+      'While nothing plays, reads ahead the next episodes of the series each user played or started in the last 14 days, 5 series per user at most: the first version Play would pick, its first 128 MiB and its end, or the whole file. It stops as soon as something plays, and reads at most a quarter of the disk space above every 15 minutes. Torrents are never preloaded.',
+    preloadEpisodes: 'Episodes per series',
+    preloadEpisodesHelp: (r: RangeText) => `From ${r.min} to ${r.max}; ${r.default} by default.`,
+    preloadMbps: 'Speed limit (Mbit/s)',
+    preloadMbpsHelp: (r: RangeText) =>
+      `The average speed preloading reads at, which leaves the rest of the connection to the household. From ${r.min} to ${r.max}; ${r.default} by default.`,
+    preloadReserveGb: 'Free space to keep (GB)',
+    preloadReserveGbHelp: (r: RangeText) =>
+      `Preloading stops before the disk of the folder for files being read has less than this free. From ${r.min} to ${r.max}; ${r.default} by default.`,
+    preloadWholeFiles: 'Preload whole files',
+    preloadWholeFilesHelp:
+      'Reads whole episodes rather than their opening and end, for a large disk. The Large preset turns it on; changing it makes the preset Custom.',
     workFolders: {
       conversionFolder: 'Conversion folder',
       conversionFolderHelp:
@@ -1099,6 +1177,34 @@ const settings = {
         'Other apps cannot be given a new kind of home section: this makes the row a library too, without type, which they list among the user’s libraries, with a row of its latest titles on their home.',
       libraryBadge: 'Library',
       moveLabel: 'Move',
+      schedule: 'Schedule',
+      scheduleHelp:
+        'When the row shows, in the server’s time zone. Left as it is, the row shows all the time.',
+      startDate: 'From',
+      endDate: 'Until',
+      datesHelp: 'Both dates are included; either may be left empty.',
+      dateOrder: 'The end date must not come before the start date.',
+      days: 'Days',
+      daysHelp: 'None chosen: every day.',
+      hours: 'Hours',
+      allDay: 'All day',
+      someHours: 'Certain hours',
+      startHour: 'From',
+      endHour: 'To',
+      hoursHelp:
+        'An end before the start passes midnight, and that night belongs to the day it starts on: from 22:00 to 02:00 on Fridays ends on Saturday at 02:00.',
+      libraryDatesOnly:
+        'A row that is also a library follows its dates only, so that it does not come and go by the hour in other apps.',
+      scheduled: 'Scheduled',
+      notShownNow: 'Not shown now',
+      preview: 'Preview as…',
+      previewTitle: 'Preview as a user',
+      previewUser: 'User',
+      previewHelp:
+        'The rows this user’s web player shows on its home page now, at their places, with their parental control, blocked genres, hidden titles, the libraries hidden from them and the rows they turned off. The web player’s own sections are not shown.',
+      previewChoose: 'Choose a user to see their home rows.',
+      previewLoading: 'Loading the preview…',
+      previewEmpty: 'This user sees no home row now.',
     },
     codeSize: (used: number, max: number) =>
       `${used} KB of ${max >= 1024 ? `${max / 1024} MB` : `${max} KB`}`,
@@ -1140,6 +1246,7 @@ const settings = {
       skip: 'Skip intro and credits',
       titlePages: 'Title pages',
       images: 'Images',
+      releases: 'Movie releases',
       ratings: 'Ratings',
       posters: 'Posters',
       music: 'Music',

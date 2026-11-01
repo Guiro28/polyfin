@@ -14,10 +14,12 @@ import (
 
 	"github.com/moodiness/polyfin/internal/accounts"
 	"github.com/moodiness/polyfin/internal/forwarded"
+	"github.com/moodiness/polyfin/internal/hls"
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/localization"
 	"github.com/moodiness/polyfin/internal/media"
 	"github.com/moodiness/polyfin/internal/playback"
+	"github.com/moodiness/polyfin/internal/plays"
 	"github.com/moodiness/polyfin/internal/subtitles"
 )
 
@@ -29,13 +31,14 @@ func (h *Handler) playbackRoutes(rt *router) {
 	signedIn(http.MethodPost, "/Items/{itemId}/PlaybackInfo", h.playbackInfo)
 	signedIn(http.MethodGet, "/Polyfin/Playback/Starting", h.playbackStarting)
 	// Players fetch media, subtitles and the fonts they use without
-	// credentials, as Jellyfin allows: see streamAccess.
-	rt.handle(http.MethodGet, "/Videos/{itemId}/{file}", http.HandlerFunc(h.stream))
-	rt.handle(http.MethodGet, "/Videos/{itemId}/hls1/{playlistId}/{file}", http.HandlerFunc(h.hlsSegment))
+	// credentials, as Jellyfin allows: see streamAccess. What the media
+	// routes send is counted (see metered).
+	rt.handle(http.MethodGet, "/Videos/{itemId}/{file}", h.meteredFile(h.stream))
+	rt.handle(http.MethodGet, "/Videos/{itemId}/hls1/{playlistId}/{file}", h.meteredStream(h.hlsSegment))
 	rt.handle(http.MethodGet, "/Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/{file}", http.HandlerFunc(h.subtitle))
 	rt.handle(http.MethodGet, "/Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/{startTicks}/{file}", http.HandlerFunc(h.subtitle))
 	rt.handle(http.MethodGet, "/Videos/{itemId}/{mediaSourceId}/Attachments/{index}", http.HandlerFunc(h.attachment))
-	rt.handle(http.MethodGet, "/Items/{itemId}/Download", http.HandlerFunc(h.download))
+	rt.handle(http.MethodGet, "/Items/{itemId}/Download", h.meteredFile(h.download))
 	signedIn(http.MethodDelete, "/Videos/ActiveEncodings", h.stopEncodings)
 
 	signedIn(http.MethodPost, "/Sessions/Playing", h.reportPlayback("playbackStartInfo", playbackStarted))
@@ -342,7 +345,12 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w, r, err)
 		return
 	} else if reached {
-		rateLimitExceeded(w)
+		// The title is named to the notifications, as far as it is found.
+		var item library.Item
+		if h.PlayFailed != nil {
+			item, _ = h.played(r.Context(), user, opened)
+		}
+		h.refusePlay(w, r, user, item, "RateLimitExceeded", plays.FailedLimit)
 		return
 	}
 	h.rememberPlay(r.Context(), request)
@@ -353,6 +361,25 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.browseError(w, r, err)
 		return
+	}
+	// A movie waiting for its digital release does not play: Jellyfin's
+	// NotAllowed, which jellyfin-web tells as playback not allowed, while
+	// its page tells when it is out.
+	if item.Kind == library.KindMovie {
+		day, held, err := h.Library.Upcoming(r.Context(), user, item.ID)
+		if err != nil {
+			h.browseError(w, r, err)
+			return
+		}
+		if held {
+			out := "not known yet"
+			if !day.IsZero() {
+				out = day.Format(time.DateOnly)
+			}
+			h.Logger.Info("A movie waiting for its digital release was not played", "item", item.ID, "out", out)
+			writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NotAllowed"})
+			return
+		}
 	}
 	// A channel, and a video whose stream has no end, play live.
 	if item.Kind == library.KindChannel || h.liveVideo(r.Context(), user, item) {
@@ -382,7 +409,7 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 		release, err := h.Playback.Hold(playback.ForUser(r.Context(), user.ID), version)
 		if err != nil {
 			h.Logger.Info("A replay could not play: its provider's connections are all in use", "addon", version.Addon)
-			writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+			h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedLimit)
 			return
 		}
 		defer release()
@@ -451,10 +478,10 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 			// tells as media that cannot be played at this time, rather than
 			// as media no app plays.
 			h.Logger.Info("No version plays now: a torrent version could not start, see System › Health", "item", item.ID)
-			writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "RateLimitExceeded"})
+			h.refusePlay(w, r, user, item, "RateLimitExceeded", plays.FailedNoStream)
 			return
 		}
-		writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+		h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedNoStream)
 		return
 	}
 	chosen, unreadable, versions, at := choice.decided, choice.unreadable, p.versions, openedIndex(opened, p.versions)
@@ -823,7 +850,7 @@ func (h *Handler) decidedSource(r *http.Request, p playable, d decided, request 
 			limit = *request.DeviceProfile.MaxStreamingBitrate
 		}
 		source.SupportsTranscoding = true
-		source.TranscodingUrl = transcodingURL(r, p.item.ID, id, version, analysis, streams, decision, limit, session)
+		source.TranscodingUrl = transcodingURL(r, p.item.ID, id, version, analysis, streams, decision, limit, session, h.fastStart(r, version, decision, request))
 		source.TranscodingSubProtocol = "hls"
 		if decision.Progressive {
 			source.TranscodingSubProtocol = "http"
@@ -863,6 +890,27 @@ func (h *Handler) decidedSource(r *http.Request, p playable, d decided, request 
 		attachment.DeliveryUrl = attachmentURL(r, p.item.ID, id, attachment.Index)
 	}
 	return source
+}
+
+// fastStart is where a play over HLS that starts with fast segments
+// starts, as the request asks (see playback.Service.FastStarts), nil for
+// one that starts without. Fast segments are converted smaller than the
+// segments after them, which need their own initialization segment in
+// fragmented MP4: there, only jellyfin-web, whose players load each,
+// gets them. Every app gets them in MPEG-TS segments, which carry what
+// decodes them, as it plays a switch to another version.
+func (h *Handler) fastStart(r *http.Request, version library.Version, decision playback.Decision, request playbackInfoRequest) *time.Duration {
+	if !decision.HLS || decision.Transcoding == nil {
+		return nil
+	}
+	if format, _ := hls.ParseFormat(decision.Transcoding.Container); format == hls.FMP4 && !webClient(callerFrom(r.Context()).Device.Client) {
+		return nil
+	}
+	start := time.Duration(request.StartTimeTicks.value) * 100
+	if !h.Playback.FastStarts(r.Context(), version, decision.Video, start) {
+		return nil
+	}
+	return &start
 }
 
 // deliverable adapts a Jellyfin decision's subtitle deliveries to what
@@ -1167,6 +1215,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.Playback.Serve(w, r, version, playback.Delivery{Relay: relay, ContentType: contentType}); err != nil && r.Context().Err() == nil {
 		h.Logger.Warn("A stream could not be served", "addon", version.Addon, "error", err)
+		h.streamFailed(r, user, item, query(r, "deviceId"))
 	}
 }
 

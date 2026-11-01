@@ -324,7 +324,7 @@ const system = {
       size: 'Size',
       cacheTitle: 'Source cache',
       cacheHelp:
-        'Parts of the files being played, kept on disk up to the size set under Settings › Playback. A full cache is normal: the oldest parts make room.',
+        'Parts of the files played, kept on disk up to the size set under Settings › Playback, from one start to the next. A full cache is normal: the parts read longest ago make room, those of titles played again last.',
       cacheUse: (used: string, limit: string) => `${used} of ${limit}`,
       imagesTitle: 'Image cache',
       imagesHelp:
@@ -336,6 +336,14 @@ const system = {
         `Image cache cleared: ${images} images, ${bytes} freed on disk.`,
       sourcesOpen: 'Files open',
       torrentPieces: 'Of which torrent pieces',
+      sourcesKept: 'Files kept',
+      hitRatio: 'Read from the disk',
+      hitRatioValue: (percent: string, read: string) =>
+        `${percent} of the ${read} read since the start`,
+      keptFor: (days: number) =>
+        days > 0
+          ? `Kept ${days} days after their last read, restarts included`
+          : 'Emptied at each start',
       torrentsTitle: 'Torrents',
       torrentsHelp:
         'The torrents playback reads now, over their route alone. A torrent stops when its playback ends: no more peers, no more sharing.',
@@ -417,6 +425,10 @@ const system = {
       goroutinesDownload: 'Download the goroutines',
       goroutinesHelp:
         'When a request never answers, download what the server is doing and send it with your report. It holds no address or secret.',
+      lastCrash: 'Last crash',
+      noCrash: 'None',
+      lastCrashHelp:
+        'The start of the trace of the error that last stopped Polyfin, as it started again. Addresses keep only their host, and tokens and keys are hidden.',
       secretsTitle: 'Stored keys',
       secretsHelp:
         'The server’s keys, the users’ tracking tokens and keys, and the network shares’ passwords, encrypted in the database with POLYFIN_SECRET_KEY (openssl rand -base64 32).',

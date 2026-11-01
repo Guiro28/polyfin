@@ -103,7 +103,7 @@ const common: typeof en = {
       'O tempo para analisar uma versão deve ser um número inteiro de segundos de 5 a 120.',
     invalid_version_attempts: 'As versões tentadas devem ser um número inteiro de 1 a 10.',
     invalid_version_order:
-      'Escolha no máximo quatro critérios para ordenar as versões, um de cada tipo. Recarregue a página.',
+      'Escolha no máximo seis critérios para ordenar as versões, um de cada tipo. Recarregue a página.',
     invalid_version_codec_order:
       'A ordem dos codecs de vídeo deve listar cada codec uma vez. Recarregue a página.',
     invalid_version_source_order:
@@ -116,6 +116,12 @@ const common: typeof en = {
       'Digite no máximo 50 palavras que ocultam versões, uma por linha, cada uma com no máximo 100 caracteres.',
     invalid_hidden_releases:
       'Esta lista de tipos de lançamentos ocultos não é suportada. Recarregue a página.',
+    invalid_version_edition_order:
+      'A ordem das edições deve listar cada edição uma vez. Recarregue a página.',
+    invalid_version_mb_per_minute:
+      'O tamanho por minuto deve ser um número inteiro de MB de 0 a 1.000.',
+    invalid_version_label_rules:
+      'Digite no máximo 40 regras de rótulos, cada uma com no máximo 200 caracteres, uma expressão regular válida onde marcada e uma pontuação de −100 a 100 diferente de 0, a menos que oculte.',
     invalid_max_conversions:
       'As conversões de vídeo simultâneas devem ser um número inteiro de 0 a 32.',
     invalid_max_conversion_height: 'Escolha na lista a qualidade máxima do vídeo convertido.',
@@ -224,6 +230,8 @@ const common: typeof en = {
     invalid_hidden_libraries: 'A lista de bibliotecas mudou nesse meio-tempo. Recarregue a página.',
     invalid_blocked_genres:
       'Os gêneros devem ter de 1 a 100 caracteres, e no máximo 100 podem ser bloqueados.',
+    invalid_live_tv_channels:
+      'A escolha de canais não é válida: Todos, Somente estes ou Todos exceto estes, com no máximo 10.000 grupos e 10.000 canais.',
     invalid_access_schedules:
       'Os horários vão de 00:00 a 24:00, e cada fim deve vir depois do seu início (no máximo 50 linhas).',
     outside_allowed_hours:
@@ -277,6 +285,12 @@ const common: typeof en = {
       'Não foi possível acessar o MDBList para verificar a chave. Nada foi salvo: tente novamente mais tarde.',
     invalid_tmdb_key:
       'O TMDB não aceitou esta chave. Copie novamente a chave da API ou o token de acesso de leitura da sua conta TMDB. Nada foi salvo.',
+    unknown_episode_group:
+      'O TMDB não dá mais esta ordem para esta série. Abra-a de novo e escolha outra.',
+    episode_groups_unreachable:
+      'Não foi possível acessar o TMDB para listar as ordens desta série. Nada foi salvo: tente mais tarde.',
+    no_tmdb_key:
+      'Adicione primeiro uma chave do TMDB em Configurações › Conteúdo: as ordens vêm do TMDB.',
     tmdb_unreachable:
       'Não foi possível acessar o TMDB para verificar a chave. Nada foi salvo: tente novamente mais tarde.',
     invalid_route: 'Escolha na lista o caminho dos vídeos.',
@@ -302,6 +316,10 @@ const common: typeof en = {
     invalid_torrent_trackers:
       'Informe no máximo 30 trackers, cada um uma URL de anúncio HTTP, HTTPS ou UDP, UDP com a porta, de no máximo 500 caracteres.',
     invalid_cache_size: 'O espaço em disco deve ser um número inteiro de GB de 1 a 2000.',
+    invalid_source_cache:
+      'As partes lidas são mantidas por um número inteiro de dias de 0 a 365, com 0 a 30 dias a mais por nova reprodução.',
+    invalid_preload:
+      'O pré-carregamento aceita de 1 a 3 episódios por série, um limite de velocidade de 1 a 1000 Mbit/s e de 1 a 1000 GB de espaço livre a manter.',
     invalid_vaapi_device: 'Escolha a placa de vídeo na lista.',
     invalid_recordings_folder:
       'A pasta de gravações deve ser um caminho absoluto para uma pasta na qual o Polyfin possa gravar.',
@@ -411,6 +429,9 @@ const common: typeof en = {
     invalid_events: 'Um dos eventos escolhidos não está disponível para este destino.',
     invalid_reminder_settings: 'Escolha 1, 5, 10, 15, 30 ou 60 minutos.',
     too_many_targets: 'Já existem 20 destinos. Exclua um para adicionar outro.',
+    invalid_per_minute: 'Mensagens por minuto: de 1 a 60, ou vazio para nenhum limite.',
+    invalid_group_minutes: 'Agrupamento: de 1 a 1.440 minutos, ou vazio para enviar na hora.',
+    invalid_summary: 'Só o resumo semanal e as retrospectivas do mês e do ano têm prévia.',
     target_unreadable:
       'O endereço ou token deste destino não pode ser descriptografado com POLYFIN_SECRET_KEY. Digite-o novamente.',
     invalid_source_name: 'Os nomes de fonte devem ter de 1 a 64 caracteres.',

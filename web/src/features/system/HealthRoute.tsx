@@ -56,7 +56,7 @@ import {
   useHealth,
   useHealthProblems,
 } from '@/features/system/problems'
-import { errorMessage, formatBytes, formatSpan, relativeTime } from '@/format'
+import { dateTime, errorMessage, formatBytes, formatSpan, relativeTime } from '@/format'
 import { useI18n } from '@/i18n'
 import type { Messages } from '@/i18n'
 import BackupStatus from './BackupStatus'
@@ -676,11 +676,17 @@ function Database({ health }: { health: Health }) {
   )
 }
 
+/**
+ * The source cache against its limit, the files it reads and keeps, how long it keeps them, and its
+ * hit ratio: the share of the bytes read since the start that were on disk when asked for.
+ */
 function Cache({ health }: { health: Health }) {
   const { language, t } = useI18n()
   const text = t.system.health
   const cache = health.cache
   if (cache === null) return null
+  const read = cache.hits + cache.misses
+  const ratio = read > 0 ? cache.hits / read : 0
   return (
     <Anchor id="cache">
       <Panel title={text.cacheTitle} titleAs="h3" description={text.cacheHelp}>
@@ -694,10 +700,27 @@ function Cache({ health }: { health: Health }) {
             value={cache.used}
             max={cache.limit}
           />
+          <p className="text-small text-ink-3">{text.keptFor(cache.days)}</p>
           <p className="text-small text-ink-3 tabular-nums">
             {text.sourcesOpen}
             {t.common.colon} <span className="text-ink">{cache.sources}</span>
           </p>
+          <p className="text-small text-ink-3 tabular-nums">
+            {text.sourcesKept}
+            {t.common.colon} <span className="text-ink">{cache.kept}</span>
+          </p>
+          {read > 0 && (
+            <p className="text-small text-ink-3 tabular-nums">
+              {text.hitRatio}
+              {t.common.colon}{' '}
+              <span className="text-ink">
+                {text.hitRatioValue(
+                  ratio.toLocaleString(language, { style: 'percent', maximumFractionDigits: 1 }),
+                  formatBytes(read, language),
+                )}
+              </span>
+            </p>
+          )}
           {health.torrents !== null && (
             <p className="text-small text-ink-3 tabular-nums">
               {text.torrentPieces}
@@ -1082,8 +1105,27 @@ function Process({ health }: { health: Health }) {
               label: 'Go',
               value: <span className="font-mono">{process.goVersion.replace(/^go/, '')}</span>,
             },
+            {
+              label: text.lastCrash,
+              value:
+                process.lastCrash === null ? (
+                  text.noCrash
+                ) : (
+                  <time dateTime={process.lastCrash.at}>
+                    {dateTime(process.lastCrash.at, language)}
+                  </time>
+                ),
+            },
           ]}
         />
+        {process.lastCrash !== null && (
+          <div className="mt-4">
+            <p className="max-w-[70ch] text-small text-ink-3">{text.lastCrashHelp}</p>
+            <pre className="mt-2 max-h-64 overflow-auto rounded-panel border border-line-2 bg-s1 p-3 font-mono text-small whitespace-pre-wrap text-ink-2">
+              {process.lastCrash.trace}
+            </pre>
+          </div>
+        )}
         <p className="mt-4 max-w-[70ch] text-small text-ink-3">{text.goroutinesHelp}</p>
         <a
           href={goroutinesDownloadUrl}

@@ -331,7 +331,7 @@ const system: typeof en = {
       size: 'Taille',
       cacheTitle: 'Cache des sources',
       cacheHelp:
-        'Des morceaux des fichiers en lecture, gardés sur le disque dans la limite réglée dans Paramètres › Lecture. Un cache plein est normal : les morceaux les plus anciens laissent la place.',
+        'Des morceaux des fichiers lus, gardés sur le disque dans la limite réglée dans Paramètres › Lecture, d’un démarrage à l’autre. Un cache plein est normal : les morceaux lus il y a le plus longtemps laissent la place, ceux des titres relus en dernier.',
       cacheUse: (used: string, limit: string) => `${used} sur ${limit}`,
       imagesTitle: 'Cache des images',
       imagesHelp:
@@ -343,6 +343,14 @@ const system: typeof en = {
         `Cache des images vidé : ${images} images, ${bytes} libérés sur le disque.`,
       sourcesOpen: 'Fichiers ouverts',
       torrentPieces: 'Dont morceaux de torrents',
+      sourcesKept: 'Fichiers gardés',
+      hitRatio: 'Lu depuis le disque',
+      hitRatioValue: (percent: string, read: string) =>
+        `${percent} des ${read} lus depuis le démarrage`,
+      keptFor: (days: number) =>
+        days > 0
+          ? `Gardés ${days} jours après leur dernière lecture, redémarrages compris`
+          : 'Vidé à chaque démarrage',
       torrentsTitle: 'Torrents',
       torrentsHelp:
         'Les torrents que la lecture lit en ce moment, par leur seule route. Un torrent s’arrête à la fin de sa lecture : plus de pairs, plus de partage.',
@@ -425,6 +433,10 @@ const system: typeof en = {
       goroutinesDownload: 'Télécharger les goroutines',
       goroutinesHelp:
         'Quand une requête ne reçoit jamais de réponse, téléchargez ce que fait le serveur et joignez-le à votre signalement. Il ne contient ni adresse ni secret.',
+      lastCrash: 'Dernier plantage',
+      noCrash: 'Aucun',
+      lastCrashHelp:
+        'Le début de la trace de l’erreur qui a arrêté Polyfin la dernière fois, lue au redémarrage. Les adresses ne gardent que leur hôte, et les jetons et clés sont masqués.',
       secretsTitle: 'Clés enregistrées',
       secretsHelp:
         'Les clés du serveur, les jetons et clés de suivi des utilisateurs, et les mots de passe des partages réseau, chiffrés dans la base de données avec POLYFIN_SECRET_KEY (openssl rand -base64 32).',

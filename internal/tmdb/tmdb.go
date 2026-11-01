@@ -2,9 +2,12 @@
 // people, with the server's own API key (Settings.TMDBKey), for
 // administrators to choose an item's artwork from (see the jellyfin
 // package's remote images), for the details of the people titles credit
-// (see the library package's people details), and for the studios and
+// (see the library package's people details), for the studios and
 // networks of titles, which smart lists may judge (see the library
-// package's studios.go).
+// package's studios.go), for the release dates of movies, which the
+// wait for their digital release and smart lists judge (see the library
+// package's releases.go), and for the episode groups series may show in
+// (see the library package's episodeorder.go).
 //
 // TMDB is asked only while a key is saved. Its answers, and the titles and
 // people it did not know, are kept in memory for answerLife; at most
@@ -216,6 +219,64 @@ func (c *Client) Studios(ctx context.Context, kind Kind, id string) ([]string, e
 	return names, nil
 }
 
+// Releases are the release dates of a movie, the earliest TMDB knows of
+// each kind, in any country, each zero when it knows none: Home, its
+// first digital or physical release; Theatrical, its first in cinemas,
+// limited or wide; First, its first of any kind, premieres and television
+// included.
+type Releases struct {
+	Home, Theatrical, First time.Time
+}
+
+// TMDB's kinds of release dates.
+const (
+	releaseLimited  = 2
+	releaseCinemas  = 3
+	releaseDigital  = 4
+	releasePhysical = 5
+)
+
+// ReleaseDates returns the release dates of the movie TMDB identifies as
+// id, each counted from the day it falls on in UTC.
+func (c *Client) ReleaseDates(ctx context.Context, id string) (Releases, error) {
+	var answer struct {
+		Results []struct {
+			Dates []struct {
+				Date string `json:"release_date"`
+				Type int    `json:"type"`
+			} `json:"release_dates"`
+		} `json:"results"`
+	}
+	if err := c.get(ctx, "/movie/"+url.PathEscape(id)+"/release_dates", nil, &answer); err != nil {
+		return Releases{}, err
+	}
+	var releases Releases
+	earliest := func(kept *time.Time, date time.Time) {
+		if kept.IsZero() || date.Before(*kept) {
+			*kept = date
+		}
+	}
+	for _, country := range answer.Results {
+		for _, d := range country.Dates {
+			date, err := time.Parse(time.RFC3339Nano, d.Date)
+			if err != nil {
+				if date, err = time.Parse(time.DateOnly, d.Date); err != nil {
+					continue
+				}
+			}
+			date = date.UTC().Truncate(24 * time.Hour)
+			earliest(&releases.First, date)
+			switch d.Type {
+			case releaseDigital, releasePhysical:
+				earliest(&releases.Home, date)
+			case releaseLimited, releaseCinemas:
+				earliest(&releases.Theatrical, date)
+			}
+		}
+	}
+	return releases, nil
+}
+
 // SeasonPosters returns the posters of a series' season.
 func (c *Client) SeasonPosters(ctx context.Context, id string, season int) ([]Image, error) {
 	var images struct {
@@ -422,6 +483,74 @@ func (c *Client) IMDbID(ctx context.Context, kind Kind, id int) (string, error) 
 		return "", ErrNotFound
 	}
 	return strings.TrimSpace(ids.IMDb), nil
+}
+
+// GroupSummary is one of a series' episode groups, as TMDB lists them:
+// its identifier, name and type (GroupDVD and the others), and how many
+// episodes and groups, which the series' seasons are in its order, it
+// holds.
+type GroupSummary struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Type     int    `json:"type"`
+	Episodes int    `json:"episode_count"`
+	Groups   int    `json:"group_count"`
+}
+
+// The types of TMDB's episode groups.
+const (
+	GroupOriginalAirDate = 1
+	GroupAbsolute        = 2
+	GroupDVD             = 3
+	GroupDigital         = 4
+	GroupStoryArc        = 5
+	GroupProduction      = 6
+	GroupTV              = 7
+)
+
+// EpisodeGroup is one of TMDB's episode groups in full: a series'
+// episodes in another order, in groups that stand for its seasons.
+type EpisodeGroup struct {
+	ID     string          `json:"id"`
+	Name   string          `json:"name"`
+	Type   int             `json:"type"`
+	Groups []EpisodeSeason `json:"groups"`
+}
+
+// EpisodeSeason is a group of an EpisodeGroup: a season of its order, at
+// Order among them, with its episodes.
+type EpisodeSeason struct {
+	Name     string         `json:"name"`
+	Order    int            `json:"order"`
+	Episodes []GroupEpisode `json:"episodes"`
+}
+
+// GroupEpisode is an episode of an EpisodeSeason: the series' episode
+// Season and Episode, as TMDB numbers them as aired, at Order in the
+// group, from 0. Show is the series it is an episode of, which a group
+// may mix.
+type GroupEpisode struct {
+	Show    int `json:"show_id"`
+	Season  int `json:"season_number"`
+	Episode int `json:"episode_number"`
+	Order   int `json:"order"`
+}
+
+// EpisodeGroups lists the episode groups of the series TMDB identifies
+// as id.
+func (c *Client) EpisodeGroups(ctx context.Context, id string) ([]GroupSummary, error) {
+	var groups struct {
+		Results []GroupSummary `json:"results"`
+	}
+	err := c.get(ctx, "/tv/"+url.PathEscape(id)+"/episode_groups", nil, &groups)
+	return groups.Results, err
+}
+
+// EpisodeGroupOf returns the episode group TMDB identifies as id.
+func (c *Client) EpisodeGroupOf(ctx context.Context, id string) (EpisodeGroup, error) {
+	var group EpisodeGroup
+	err := c.get(ctx, "/tv/episode_group/"+url.PathEscape(id), nil, &group)
+	return group, err
 }
 
 // CheckKey asks TMDB whether it accepts key: ErrKeyRefused when it does

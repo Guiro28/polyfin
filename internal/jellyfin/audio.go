@@ -17,6 +17,7 @@ import (
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/media"
 	"github.com/moodiness/polyfin/internal/playback"
+	"github.com/moodiness/polyfin/internal/plays"
 )
 
 // Tracks play as Jellyfin plays audio: PlaybackInfo decides with the
@@ -33,9 +34,9 @@ import (
 func (h *Handler) audioRoutes(rt *router) {
 	// Players fetch audio without credentials, as Jellyfin allows: see
 	// streamAccess.
-	rt.handle(http.MethodGet, "/Audio/{itemId}/{file}", http.HandlerFunc(h.audioFile))
-	rt.handle(http.MethodGet, "/Audio/{itemId}/universal", http.HandlerFunc(h.universalAudio))
-	rt.handle(http.MethodGet, "/Audio/{itemId}/hls1/{playlistId}/{file}", http.HandlerFunc(h.audioSegment))
+	rt.handle(http.MethodGet, "/Audio/{itemId}/{file}", h.meteredFile(h.audioFile))
+	rt.handle(http.MethodGet, "/Audio/{itemId}/universal", h.meteredFile(h.universalAudio))
+	rt.handle(http.MethodGet, "/Audio/{itemId}/hls1/{playlistId}/{file}", h.meteredStream(h.audioSegment))
 }
 
 // audioCodec reads an Eclipse codec as Jellyfin names it, with its profile.
@@ -201,7 +202,7 @@ func (h *Handler) audioPlaybackInfo(w http.ResponseWriter, r *http.Request, user
 	if request.MediaSourceId != "" {
 		if requested, ok := parseGUID(request.MediaSourceId); !ok || requested != item.ID {
 			if owner, isVersion := h.Library.VersionOwner(requested); !isVersion || owner != item.ID {
-				writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+				h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedNoStream)
 				return
 			}
 		}
@@ -209,7 +210,7 @@ func (h *Handler) audioPlaybackInfo(w http.ResponseWriter, r *http.Request, user
 	version, err := h.version(r.Context(), user, item, item.ID)
 	if failed, ok := errors.AsType[*library.StreamError](err); ok && r.Context().Err() == nil {
 		h.Logger.Info("A track's addon gave no stream", "addon", failed.Addon, "error", failed.Err)
-		writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+		h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedNoStream)
 		return
 	}
 	if err != nil {
@@ -219,7 +220,7 @@ func (h *Handler) audioPlaybackInfo(w http.ResponseWriter, r *http.Request, user
 	d, err := h.describeAudio(r.Context(), version)
 	if err != nil {
 		h.Logger.Info("A track could not be analyzed", "addon", version.Addon, "error", err)
-		writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+		h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedNoStream)
 		return
 	}
 	session := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Relay: relayTrack(r, version)})
@@ -243,7 +244,7 @@ func (h *Handler) audioPlaybackInfo(w http.ResponseWriter, r *http.Request, user
 	if !decision.DirectPlay {
 		if decision.Transcoding == nil || decision.Target != nil && !h.Accounts.Conversions(user).Audio {
 			h.Logger.Info("A track would need a conversion the user may not have, or that the app does not take", "addon", version.Addon)
-			writeJSON(w, http.StatusOK, noCompatibleStream{MediaSources: []MediaSourceInfo{}, ErrorCode: "NoCompatibleStream"})
+			h.refusePlay(w, r, user, item, "NoCompatibleStream", plays.FailedNoStream)
 			return
 		}
 		source.SupportsDirectPlay, source.SupportsDirectStream = false, false

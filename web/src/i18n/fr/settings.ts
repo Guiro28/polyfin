@@ -301,6 +301,11 @@ const settings: typeof en = {
         'hdr-first': 'HDR et Dolby Vision d’abord',
         'hdr-last': 'HDR et Dolby Vision en dernier',
         source: 'Source, dans l’ordre ci-dessous',
+        'size-per-minute': 'Taille par minute de durée, selon le réglage ci-dessous',
+        tier: 'Source : copie de disque, Blu-ray, web, DVD, puis TV',
+        audio: 'Audio : sans perte et Atmos d’abord, puis le plus de canaux',
+        edition: 'Édition, dans l’ordre ci-dessous',
+        labels: 'Score des règles de libellés, le plus haut d’abord',
       },
     },
     versionCodecOrder: {
@@ -313,6 +318,19 @@ const settings: typeof en = {
       none: 'Aucune source du serveur ne donne encore de versions de films ou d’épisodes.',
       dragHandle: (name: string) => `Déplacer ${name}`,
     },
+    versionEditionOrder: {
+      label: 'Ordre des éditions',
+      help: 'L’ordre dans lequel le critère Édition range les versions, selon l’édition que nomment leurs libellés. Une version dont les libellés n’en nomment aucune compte comme la version cinéma.',
+    },
+    versionEditions: {
+      theatrical: 'Version cinéma',
+      extended: 'Version longue',
+      directors: 'Version du réalisateur',
+      imax: 'IMAX',
+    },
+    versionMbPerMinute: 'Taille par minute visée (Mo, 0 = la plus grande)',
+    versionMbPerMinuteHelp: (r: RangeText) =>
+      `Le critère Taille par minute met en premier les versions les plus proches de ce nombre de mégaoctets par minute de durée, par exemple 50 pour un bon encodage 1080p ; 0 met la plus grande en premier. La durée est celle de la version une fois analysée, sinon celle du titre. Jusqu’à ${r.max} ; ${r.default} par défaut.`,
     versionCodecs: {
       av1: 'AV1',
       hevc: 'HEVC (H.265)',
@@ -340,6 +358,22 @@ const settings: typeof en = {
       telecine: 'Télécinés (TC, TELECINE)',
       screener: 'Screeners (SCR, DVDSCR)',
       early: 'Copies anticipées (R5, WORKPRINT)',
+    },
+    versionLabelRules: {
+      label: 'Règles de libellés',
+      help: (max: string) =>
+        `Chaque règle lit le nom, la description et le nom de fichier d’une version, sans tenir compte de la casse : un mot trouvé n’importe où, ou une expression régulière. Une règle masque les versions qu’elle reconnaît, après les règles de masquage ci-dessus et jamais toutes les versions d’un titre, ou ajoute son score, de −100 à 100, au leur. Le critère Score des règles de libellés met le plus haut en premier ; sans lui, le score range les versions après les autres critères. Jusqu’à ${max} règles ; aucune par défaut.`,
+      none: 'Aucune règle : les libellés ne comptent pas.',
+      add: 'Ajouter une règle',
+      remove: (position: number) => `Supprimer la règle ${position}`,
+      text: (position: number) => `Mot ou expression de la règle ${position}`,
+      action: (position: number) => `Effet de la règle ${position}`,
+      points: (position: number) => `Score de la règle ${position}`,
+      regex: 'Expression régulière',
+      score: 'Ajouter un score',
+      hide: 'Masquer',
+      wordPlaceholder: 'Mot',
+      regexPlaceholder: 'Expression régulière',
     },
     syncAddonSubtitles: 'Recaler les sous-titres des addons',
     syncAddonSubtitlesHelp:
@@ -617,6 +651,9 @@ const settings: typeof en = {
       keepConvertedVideo: 'Garder la vidéo convertie quand la piste audio change',
       keepConvertedVideoHelp:
         'Convertit l’image et le son à part : choisir une autre piste audio dans le lecteur ne prépare que le nouveau son, l’image déjà convertie continue, et la nouvelle piste démarre plus vite. L’image est gardée 30 secondes après l’arrêt du lecteur, et compte pendant ce temps pour une conversion.',
+      fastStart: 'Démarrer plus vite les lectures de sources distantes',
+      fastStartHelp:
+        'Quand une lecture réemballée ou convertie du lien d’un addon ou d’un torrent commence par un long segment, comme avec une image clé toutes les 10 secondes, ce segment est découpé en segments de 2 secondes convertis rapidement en 720p au plus : l’image s’affiche plus tôt, un peu moins nette pendant ces secondes, puis la lecture continue comme d’habitude. S’applique aux lectures suivantes.',
     },
     catalogsTitle: 'Catalogues',
     catalogLimit: 'Titres lus par catalogue de films et séries',
@@ -652,6 +689,9 @@ const settings: typeof en = {
     tmdbKey: 'Clé d’API TMDB',
     tmdbKeyHelp:
       'Facultatif. Avec une clé d’API ou un jeton d’accès en lecture d’un compte TMDB, « Modifier les images » de jellyfin-web cherche aussi sur TMDB les affiches, fonds et logos d’un titre, les images d’un épisode, les affiches d’une saison et les photos d’une personne, que Polyfin relaie. Les personnes sont aussi cherchées une fois sur TMDB : celles sans photo reçoivent la leur, et leurs pages montrent leur biographie, leurs dates de naissance et de décès et leur lieu de naissance. Les fichiers d’un dossier local dont la recherche échoue auprès de tous les addons de métadonnées sont aussi cherchés sur TMDB. Sans clé, « Modifier les images » ne montre que les images des addons et TMDB n’est jamais consulté.',
+    waitDigitalRelease: 'Attendre la sortie numérique',
+    waitDigitalReleaseHelp:
+      'Un film des catalogues des addons n’apparaît qu’une fois sorti en vidéo : sa première sortie numérique ou physique, selon TMDB, sinon 90 jours après sa sortie en salles. D’ici là, il est absent des bibliothèques, des rangées de l’accueil, des recherches, des titres similaires et des pages des personnes, n’a aucune version et ne se lit pas ; les listes intelligentes avec une règle de titres à venir le montrent, avec ce jour. Un film que TMDB ne connaît pas, ou sorti depuis plus d’un an, reste affiché. Nécessite la clé d’API TMDB.',
     mdblistRatingsKey: 'Clé d’API MDBList des notes',
     mdblistRatingsKeyHelp:
       'Facultatif. Avec la clé d’un compte MDBList, les films et les séries affichent leur note IMDb, le score des critiques et celui du public donnés par MDBList, cherchés en arrière-plan et gardés pour tous les utilisateurs. Les clés MDBList des utilisateurs pour le suivi ne servent jamais à cela. Sans clé, MDBList n’est jamais consulté.',
@@ -853,6 +893,44 @@ const settings: typeof en = {
     cacheSize: 'Espace disque des fichiers en cours de lecture (Go)',
     cacheSizeHelp: (r: RangeText) =>
       `L’espace que Polyfin peut utiliser pour garder les parties des fichiers lus, afin que les retours en arrière et les reprises ne les téléchargent pas à nouveau. Les parties lues dans les 30 dernières secondes sont gardées même au-delà. De ${r.min} à ${r.max} Go ; ${r.default} par défaut.`,
+    sourceCacheGroup: 'Fichiers en cours de lecture',
+    sourceCachePreset: 'Espace disque et conservation',
+    sourceCachePresetHelp: (free: string) =>
+      `La part des fichiers lus que Polyfin garde sur le disque, et combien de temps, d’un démarrage à l’autre : un titre relu, ou repris après un redémarrage, est alors lu depuis le disque plutôt que depuis sa source. Un préréglage règle les champs ci-dessous ; en changer un le fait passer à « Personnalisé ». ${free}`,
+    sourceCacheFree: (free: string) =>
+      `${free} libres sur le disque du dossier des fichiers en cours de lecture.`,
+    sourceCachePresetNames: {
+      off: 'Désactivé',
+      small: 'Petit',
+      everyday: 'Quotidien',
+      large: 'Grand',
+      custom: 'Personnalisé',
+    },
+    sourceCachePresetChoice: (name: string, size: string, days: number) =>
+      days > 0
+        ? `${name} : ${size} Go, gardés ${days} jours`
+        : `${name} : ${size} Go, vidé à chaque démarrage`,
+    sourceCacheDays: 'Garder les parties lues (jours)',
+    sourceCacheDaysHelp: (r: RangeText) =>
+      `Combien de temps une partie d’un fichier est gardée après sa dernière lecture, redémarrages compris. 0 ne garde rien après un redémarrage : chaque démarrage vide le cache. De ${r.min} à ${r.max} ; ${r.default} par défaut.`,
+    sourceCacheCreditDays: 'Jours de plus par nouvelle lecture',
+    sourceCacheCreditDaysHelp: (r: RangeText) =>
+      `Un titre relu, 6 heures ou plus après sa dernière lecture, garde ses parties ce nombre de jours de plus pour chaque lecture après la première, 8 au plus, et elles laissent la place après celles des titres lus une seule fois. De ${r.min} à ${r.max} ; ${r.default} par défaut.`,
+    preloadGroup: 'Préchargement des épisodes suivants',
+    preloadNextEpisodes: 'Précharger les épisodes suivants',
+    preloadNextEpisodesHelp:
+      'Tant que rien n’est en lecture, lit à l’avance les épisodes suivants des séries que chaque utilisateur a lues ou commencées ces 14 derniers jours, 5 séries par utilisateur au plus : la première version que Lecture choisirait, ses 128 premiers Mio et sa fin, ou le fichier entier. Il s’arrête dès qu’une lecture commence, et lit au plus un quart de l’espace disque ci-dessus toutes les 15 minutes. Les torrents ne sont jamais préchargés.',
+    preloadEpisodes: 'Épisodes par série',
+    preloadEpisodesHelp: (r: RangeText) => `De ${r.min} à ${r.max} ; ${r.default} par défaut.`,
+    preloadMbps: 'Limite de débit (Mbit/s)',
+    preloadMbpsHelp: (r: RangeText) =>
+      `Le débit moyen du préchargement, qui laisse le reste de la connexion au foyer. De ${r.min} à ${r.max} ; ${r.default} par défaut.`,
+    preloadReserveGb: 'Espace libre à garder (Go)',
+    preloadReserveGbHelp: (r: RangeText) =>
+      `Le préchargement s’arrête avant que le disque du dossier des fichiers en cours de lecture ait moins que cet espace libre. De ${r.min} à ${r.max} ; ${r.default} par défaut.`,
+    preloadWholeFiles: 'Précharger les fichiers entiers',
+    preloadWholeFilesHelp:
+      'Lit les épisodes entiers plutôt que leur début et leur fin, pour un grand disque. Le préréglage « Grand » l’active ; le changer fait passer le préréglage à « Personnalisé ».',
     workFolders: {
       conversionFolder: 'Dossier de conversion',
       conversionFolderHelp:
@@ -1127,6 +1205,34 @@ const settings: typeof en = {
         'On ne peut pas donner aux autres applis un nouveau type de section d’accueil : la rangée devient aussi une bibliothèque, sans type, qu’elles affichent parmi les bibliothèques de l’utilisateur, avec une rangée de ses derniers titres sur leur accueil.',
       libraryBadge: 'Bibliothèque',
       moveLabel: 'Déplacer',
+      schedule: 'Calendrier',
+      scheduleHelp:
+        'Quand la rangée s’affiche, dans le fuseau horaire du serveur. Laissée telle quelle, elle s’affiche tout le temps.',
+      startDate: 'Du',
+      endDate: 'Au',
+      datesHelp: 'Les deux dates sont incluses ; chacune peut rester vide.',
+      dateOrder: 'La date de fin ne peut pas précéder la date de début.',
+      days: 'Jours',
+      daysHelp: 'Aucun choisi : tous les jours.',
+      hours: 'Heures',
+      allDay: 'Toute la journée',
+      someHours: 'Certaines heures',
+      startHour: 'De',
+      endHour: 'À',
+      hoursHelp:
+        'Une fin avant le début passe minuit, et cette nuit appartient au jour où elle commence : de 22:00 à 02:00 le vendredi se termine le samedi à 02:00.',
+      libraryDatesOnly:
+        'Une rangée qui est aussi une bibliothèque ne suit que ses dates, pour ne pas apparaître et disparaître d’heure en heure dans les autres applis.',
+      scheduled: 'Programmée',
+      notShownNow: 'Pas affichée maintenant',
+      preview: 'Aperçu en tant que…',
+      previewTitle: 'Aperçu en tant qu’utilisateur',
+      previewUser: 'Utilisateur',
+      previewHelp:
+        'Les rangées que le lecteur web de cet utilisateur affiche maintenant sur sa page d’accueil, à leur place, avec son contrôle parental, ses genres bloqués, ses titres masqués, les bibliothèques qui lui sont masquées et les rangées qu’il a désactivées. Les sections propres au lecteur web ne sont pas affichées.',
+      previewChoose: 'Choisissez un utilisateur pour voir ses rangées d’accueil.',
+      previewLoading: 'Chargement de l’aperçu…',
+      previewEmpty: 'Cet utilisateur ne voit aucune rangée d’accueil maintenant.',
     },
     codeSize: (used: number, max: number) =>
       `${used} Ko sur ${max >= 1024 ? `${max / 1024} Mo` : `${max} Ko`}`,
@@ -1169,6 +1275,7 @@ const settings: typeof en = {
       skip: 'Passer l’intro et le générique',
       titlePages: 'Fiche des titres',
       images: 'Images',
+      releases: 'Sorties des films',
       ratings: 'Notes',
       posters: 'Affiches',
       music: 'Musique',

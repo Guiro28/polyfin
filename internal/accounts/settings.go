@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"regexp/syntax"
 	"runtime"
 	"slices"
 	"strconv"
@@ -318,28 +319,46 @@ var ConversionHeights = []int{0, 480, 720, 1080, 1440, 2160}
 // VersionCriteria are the values Settings.VersionOrder holds, each once
 // at most and one of each kind: the user's preferred audio language, the
 // height of the video, highest or lowest first, the size, largest or
-// smallest first, the video codec, in the order of
-// Settings.VersionCodecOrder, HDR or Dolby Vision, first or last, and the
-// source, in the order of Settings.VersionSourceOrder.
-var VersionCriteria = []string{"language", "resolution-high", "resolution-low", "size-large", "size-small", "codec", "hdr-first", "hdr-last",
-	"source"}
+// smallest first, or by minute (see Settings.VersionMBPerMinute), the
+// video codec, in the order of Settings.VersionCodecOrder, HDR or Dolby
+// Vision, first or last, the source, in the order of
+// Settings.VersionSourceOrder, the source tier, a disc's full copy
+// first, then a Blu-ray encode, web, DVD and TV, the audio format,
+// lossless and object-based first, then by channels, the edition, in the
+// order of Settings.VersionEditionOrder, and the score of the label rules
+// (see Settings.VersionLabelRules), highest first.
+var VersionCriteria = []string{"language", "resolution-high", "resolution-low", "size-large", "size-small", "size-per-minute", "codec",
+	"hdr-first", "hdr-last", "source", "tier", "audio", "edition", "labels"}
 
 // VersionCodecs are the video codecs the version rules know, by FFmpeg's
 // names, in the default order of Settings.VersionCodecOrder: the most
 // efficient first.
 var VersionCodecs = []string{"av1", "hevc", "vp9", "h264", "vc1", "mpeg4", "mpeg2video"}
 
+// VersionEditions are the editions of a movie the version rules know, in
+// the default order of Settings.VersionEditionOrder: the theatrical cut,
+// an extended cut, the director's cut and an IMAX cut.
+var VersionEditions = []string{"theatrical", "extended", "directors", "imax"}
+
 // The bounds of the version rules: MaxVersionCriteria criteria order the
 // versions at most, MaxVersionSources sources are placed at most, versions
 // are hidden above MaxHideVersionsLargerGB at most, and
 // MaxHiddenVersionWords words, of MaxHiddenVersionWordLength characters at
-// most, hide versions.
+// most, hide versions. The size-per-minute criterion aims at
+// MaxVersionMBPerMinute megabytes a minute at most. MaxVersionLabelRules
+// label rules, of MaxVersionLabelRuleLength characters at most, scoring
+// between -MaxVersionLabelScore and MaxVersionLabelScore, read versions'
+// labels.
 const (
-	MaxVersionCriteria         = 4
+	MaxVersionCriteria         = 6
 	MaxVersionSources          = 500
 	MaxHideVersionsLargerGB    = 1000
 	MaxHiddenVersionWords      = 50
 	MaxHiddenVersionWordLength = 100
+	MaxVersionMBPerMinute      = 1000
+	MaxVersionLabelRules       = 40
+	MaxVersionLabelRuleLength  = 200
+	MaxVersionLabelScore       = 100
 )
 
 // The errors of the version rules: ErrInvalidVersionOrder reports a
@@ -362,6 +381,14 @@ var (
 	ErrInvalidHideVersionsLarger  = errors.New("invalid size above which versions are hidden")
 	ErrInvalidHiddenVersionCodecs = errors.New("invalid hidden video codecs")
 	ErrInvalidHiddenVersionWords  = errors.New("invalid words hiding versions")
+	// ErrInvalidVersionEditionOrder reports a VersionEditionOrder that is
+	// not every one of VersionEditions once; ErrInvalidVersionMBPerMinute
+	// a VersionMBPerMinute outside [0, MaxVersionMBPerMinute]; and
+	// ErrInvalidVersionLabelRules VersionLabelRules not as
+	// VersionLabelRule tells.
+	ErrInvalidVersionEditionOrder = errors.New("invalid version edition order")
+	ErrInvalidVersionMBPerMinute  = errors.New("invalid size per minute of versions")
+	ErrInvalidVersionLabelRules   = errors.New("invalid version label rules")
 )
 
 // VersionCriterionKind is what a criterion of VersionCriteria looks at,
@@ -432,6 +459,74 @@ func canonicalHiddenVersionWords(words []string) ([]string, error) {
 	}
 	if len(canonical) > MaxHiddenVersionWords {
 		return nil, ErrInvalidHiddenVersionWords
+	}
+	return canonical, nil
+}
+
+// VersionLabelRule scores or hides the versions whose labels, their name
+// and description and their file name, match it. Text is a word, found
+// anywhere in them whatever its letter case, or, with Regex, a regular
+// expression in the syntax of package regexp, matched without case. A
+// rule with Hide hides the versions it matches, and scores none; another
+// adds Score, other than 0, to their score, which the labels criterion
+// orders by.
+type VersionLabelRule struct {
+	Text  string `json:"text"`
+	Regex bool   `json:"regex"`
+	Score int    `json:"score"`
+	Hide  bool   `json:"hide"`
+}
+
+// maxLabelRuleInstructions bounds a label rule's regular expression once
+// compiled. Package regexp matches in a time proportional to the
+// expression's size times the labels', so that, with both bounded, no
+// rule takes long to match however it is written.
+const maxLabelRuleInstructions = 2000
+
+// CompileLabelRule compiles the regular expression of a rule with Regex,
+// to be matched without case; ErrInvalidVersionLabelRules when it is not
+// one, or too large once compiled.
+func CompileLabelRule(text string) (*regexp.Regexp, error) {
+	parsed, err := syntax.Parse(text, syntax.Perl|syntax.FoldCase)
+	if err != nil {
+		return nil, ErrInvalidVersionLabelRules
+	}
+	program, err := syntax.Compile(parsed.Simplify())
+	if err != nil || len(program.Inst) > maxLabelRuleInstructions {
+		return nil, ErrInvalidVersionLabelRules
+	}
+	compiled, err := regexp.Compile("(?i)" + text)
+	if err != nil {
+		return nil, ErrInvalidVersionLabelRules
+	}
+	return compiled, nil
+}
+
+// canonicalVersionLabelRules checks the label rules and returns them with
+// their text trimmed; empty, not nil, for none, as the column holds no
+// NULL. A rule hiding versions is kept with no score.
+func canonicalVersionLabelRules(rules []VersionLabelRule) ([]VersionLabelRule, error) {
+	if len(rules) > MaxVersionLabelRules {
+		return nil, ErrInvalidVersionLabelRules
+	}
+	canonical := make([]VersionLabelRule, 0, len(rules))
+	for _, rule := range rules {
+		rule.Text = strings.TrimSpace(rule.Text)
+		if rule.Text == "" || !utf8.ValidString(rule.Text) || utf8.RuneCountInString(rule.Text) > MaxVersionLabelRuleLength ||
+			strings.ContainsFunc(rule.Text, unicode.IsControl) {
+			return nil, ErrInvalidVersionLabelRules
+		}
+		if rule.Regex {
+			if _, err := CompileLabelRule(rule.Text); err != nil {
+				return nil, err
+			}
+		}
+		if rule.Hide {
+			rule.Score = 0
+		} else if rule.Score == 0 || rule.Score < -MaxVersionLabelScore || rule.Score > MaxVersionLabelScore {
+			return nil, ErrInvalidVersionLabelRules
+		}
+		canonical = append(canonical, rule)
 	}
 	return canonical, nil
 }
@@ -1173,6 +1268,83 @@ const (
 	DefaultCacheSizeGB = 10
 )
 
+// ErrInvalidSourceCache reports a SourceCachePreset not among
+// SourceCachePresets, or a SourceCacheDays or SourceCacheCreditDays out of
+// their bounds; ErrInvalidPreload a PreloadEpisodes, PreloadMbps or
+// PreloadReserveGB out of theirs.
+var (
+	ErrInvalidSourceCache = errors.New("invalid source cache retention")
+	ErrInvalidPreload     = errors.New("invalid next-episode preloading")
+)
+
+// The presets of the source cache (see Settings.SourceCachePreset): Off
+// keeps nothing across restarts, Small, Everyday and Large keep more for
+// longer, and Custom keeps the values set one by one.
+const (
+	SourceCacheOff      = "off"
+	SourceCacheSmall    = "small"
+	SourceCacheEveryday = "everyday"
+	SourceCacheLarge    = "large"
+	SourceCacheCustom   = "custom"
+)
+
+// SourceCachePresets are the values SourceCachePreset takes.
+var SourceCachePresets = []string{SourceCacheOff, SourceCacheSmall, SourceCacheEveryday, SourceCacheLarge, SourceCacheCustom}
+
+// SourceCacheLimits are the values a source cache preset sets: the
+// settings' CacheSizeGB, SourceCacheDays, SourceCacheCreditDays and
+// PreloadWholeFiles.
+type SourceCacheLimits struct {
+	SizeGB, Days, CreditDays int
+	WholeFiles               bool
+}
+
+// SourceCachePresetLimits are the limits each preset but Custom sets. Off
+// keeps 2 GB, room for a playback's reads ahead, and nothing past a
+// restart; Large is for a disk of its own, and preloads whole episodes.
+var SourceCachePresetLimits = map[string]SourceCacheLimits{
+	SourceCacheOff:      {SizeGB: 2, Days: 0, CreditDays: 0},
+	SourceCacheSmall:    {SizeGB: 10, Days: 3, CreditDays: 1},
+	SourceCacheEveryday: {SizeGB: 50, Days: 14, CreditDays: 3},
+	SourceCacheLarge:    {SizeGB: 250, Days: 60, CreditDays: 7, WholeFiles: true},
+}
+
+// The bounds and defaults of SourceCacheDays and SourceCacheCreditDays,
+// and of the next-episode preloading's PreloadEpisodes, PreloadMbps and
+// PreloadReserveGB.
+const (
+	MaxSourceCacheDays           = 365
+	DefaultSourceCacheDays       = 3
+	MaxSourceCacheCreditDays     = 30
+	DefaultSourceCacheCreditDays = 1
+	MinPreloadEpisodes           = 1
+	MaxPreloadEpisodes           = 3
+	DefaultPreloadEpisodes       = 1
+	MinPreloadMbps               = 1
+	MaxPreloadMbps               = 1000
+	DefaultPreloadMbps           = 20
+	MinPreloadReserveGB          = 1
+	MaxPreloadReserveGB          = 1000
+	DefaultPreloadReserveGB      = 20
+)
+
+// applySourceCachePreset sets the limits of the source cache's preset,
+// unless it is Custom, and checks them.
+func (s *Settings) applySourceCachePreset() error {
+	if !slices.Contains(SourceCachePresets, s.SourceCachePreset) {
+		return ErrInvalidSourceCache
+	}
+	if limits, ok := SourceCachePresetLimits[s.SourceCachePreset]; ok {
+		s.CacheSizeGB, s.SourceCacheDays, s.SourceCacheCreditDays, s.PreloadWholeFiles =
+			limits.SizeGB, limits.Days, limits.CreditDays, limits.WholeFiles
+	}
+	if s.SourceCacheDays < 0 || s.SourceCacheDays > MaxSourceCacheDays ||
+		s.SourceCacheCreditDays < 0 || s.SourceCacheCreditDays > MaxSourceCacheCreditDays {
+		return ErrInvalidSourceCache
+	}
+	return nil
+}
+
 // vaapiDevice matches the render nodes VAAPI may open.
 var vaapiDevice = regexp.MustCompile(`^/dev/dri/renderD[0-9]{1,4}$`)
 
@@ -1393,6 +1565,12 @@ type Settings struct {
 	// only the addons' images are listed and TMDB is never asked. A
 	// secret, like PublicMetaDBKey.
 	TMDBKey string
+	// WaitDigitalRelease hides a movie of the addons' catalogs until it is
+	// out at home: its first digital or physical release, else 90 days
+	// after it was first shown in cinemas, as TMDB tells with TMDBKey (see
+	// the library package's releases.go). A movie TMDB cannot tell of
+	// stays listed. Off, or without TMDBKey, no movie waits.
+	WaitDigitalRelease bool
 	// Lyrics looks music tracks up on LRCLIB and serves their lyrics to
 	// apps, synced line by line when LRCLIB has them; off, LRCLIB is never
 	// asked and tracks have no lyrics.
@@ -1506,6 +1684,19 @@ type Settings struct {
 	// default. Like the rules above, it never hides every version of a
 	// title.
 	HiddenReleases []string
+	// VersionEditionOrder is the order of the editions for the edition
+	// criterion, every one of VersionEditions once; a version whose labels
+	// name no edition counts as the theatrical cut. VersionMBPerMinute is
+	// the size, in megabytes (10^6 bytes) a minute of the version's
+	// runtime, the size-per-minute criterion puts the closest to first; 0,
+	// the default, puts the largest a minute first.
+	VersionEditionOrder []string
+	VersionMBPerMinute  int
+	// VersionLabelRules score or hide versions by their labels, in this
+	// order, MaxVersionLabelRules at most; none by default. The rules
+	// hiding versions hide them after those above, and with them never
+	// every version of a title.
+	VersionLabelRules []VersionLabelRule
 	// NameHowVersionsPlay ends the names of a movie's or an episode's
 	// versions with how the app asking plays each, as the device profile of
 	// its last PlaybackInfo decides it.
@@ -1611,6 +1802,11 @@ type Settings struct {
 	// play session takes over the video converted, and only the new track
 	// is made.
 	KeepConvertedVideo bool
+	// FastStart starts the repackaged and converted HLS plays of remote
+	// sources with fast segments where their first segment is long: 2
+	// seconds each, converted quickly at 720p at most, then the play goes
+	// on as before (see hls.Plan.FastFrom).
+	FastStart bool
 	// Trickplay makes scrubbing thumbnails of the versions played, one
 	// every TrickplayInterval seconds, TrickplayWidth pixels wide, and
 	// ChapterImages an image of each of their chapters. Both read keyframes
@@ -1731,8 +1927,26 @@ type Settings struct {
 	RemuxDBURL string
 	// CacheSizeGB bounds the space the blocks of the sources being played
 	// take, in gigabytes (10^9 bytes); lowered, the cache evicts down to it
-	// at its next write.
+	// at its next write. A SourceCachePreset other than Custom sets it.
 	CacheSizeGB int
+	// SourceCachePreset is one of SourceCachePresets, which sets
+	// CacheSizeGB, SourceCacheDays, SourceCacheCreditDays and
+	// PreloadWholeFiles as UpdateSettings saves them, but for Custom (see
+	// SourceCachePresetLimits).
+	SourceCachePreset string
+	// SourceCacheDays is how many days the source cache keeps a block once
+	// last read, across restarts; 0 empties it at each start.
+	// SourceCacheCreditDays is how many days longer it keeps those of a
+	// title for each time it was played again.
+	SourceCacheDays, SourceCacheCreditDays int
+	// PreloadNextEpisodes has the source cache read ahead the next
+	// PreloadEpisodes episodes of the series the users watch lately, while
+	// nothing plays, at PreloadMbps megabits a second at most, as long as
+	// the disk keeps PreloadReserveGB free: their opening, or the whole
+	// file with PreloadWholeFiles.
+	PreloadNextEpisodes                            bool
+	PreloadEpisodes, PreloadMbps, PreloadReserveGB int
+	PreloadWholeFiles                              bool
 	// VAAPIDevice is the render node VAAPI opens, such as
 	// /dev/dri/renderD128; empty tries each in turn (see ValidVAAPIDevice).
 	VAAPIDevice string
@@ -2118,18 +2332,19 @@ const settingsColumns = "server_name, quick_connect_enabled, legacy_authorizatio
 	"dlna, dlna_name, dlna_new_devices_user, dlna_mark_played, " +
 	"skip_buttons, publicmetadb_key, theintrodb_key, segment_order, segment_sources_off, audio_intros, similar_titles, generate_images, lyrics, even_volume, measure_loudness, played_percent, resume_percent, version_list_minutes, catalog_refresh_minutes, " +
 	"mdblist_ratings_key, critic_rating_shows, tmdb_key, " +
+	"wait_digital_release, " +
 	"personal_addons, server_imports, share_links, login_attempts, inactive_device_days, known_proxies, known_proxy_names, " +
 	"two_step_administrators, " +
 	"https_mode, https_port, https_redirect, https_certificate, https_private_key, acme_hosts, acme_email, acme_terms, acme_challenge, detailed_log, " +
 	"analysis_timeout, version_attempts, prefer_direct_play, " +
 	"version_order, version_codec_order, version_source_order, hide_versions_larger_gb, hidden_version_codecs, hidden_version_words, name_how_versions_play, versions_offered, stream_proxy, " +
-	"hidden_releases, " +
+	"hidden_releases, version_edition_order, version_mb_per_minute, version_label_rules, " +
 	"sync_addon_subtitles, max_conversions, max_conversion_height, converted_downloads, subtitle_ocr, subtitle_ocr_tracks, " +
 	"default_audio_language, default_subtitle_language, " +
 	"encoder_preset, h264_quality, hevc_quality, allow_hevc_encoding, hardware_acceleration, hardware_decoding_codecs, " +
 	"adaptive_quality, " +
 	"tone_mapping, tone_mapping_algorithm, tone_mapping_peak, tone_mapping_desat, gpu_tone_mapping, processor_tone_mapping_height, deinterlace_method, deinterlace_double_rate, " +
-	"downmix_algorithm, downmix_boost, max_audio_channels, audio_bitrate_per_channel, encoding_threads, ahead_seconds, keep_converted_video, " +
+	"downmix_algorithm, downmix_boost, max_audio_channels, audio_bitrate_per_channel, encoding_threads, ahead_seconds, keep_converted_video, fast_start, " +
 	"trickplay, trickplay_interval, trickplay_width, chapter_images, thumbnail_storage_gb, " +
 	"recording_pre_padding, recording_post_padding, recording_retention_days, " +
 	"recording_commercials, " +
@@ -2149,7 +2364,9 @@ const settingsColumns = "server_name, quick_connect_enabled, legacy_authorizatio
 	"silo_apps, " +
 	"poster_ratings, poster_badges, poster_badge_size, poster_template, " +
 	"provider_issuer, provider_name, provider_client_id, provider_client_secret, provider_user_claim, provider_create_accounts, " +
-	"provider_admin_claim, provider_admin_value"
+	"provider_admin_claim, provider_admin_value, " +
+	"source_cache_preset, source_cache_days, source_cache_credit_days, " +
+	"preload_next_episodes, preload_episodes, preload_mbps, preload_reserve_gb, preload_whole_files"
 
 // updateSettingsQuery sets every column of settingsColumns, in order.
 var updateSettingsQuery = func() string {
@@ -2171,6 +2388,7 @@ func (settings *Settings) fields() []any {
 		&settings.SimilarTitles, &settings.GenerateImages, &settings.Lyrics, &settings.EvenVolume, &settings.MeasureLoudness, &settings.PlayedPercent, &settings.ResumePercent,
 		&settings.VersionListMinutes, &settings.CatalogRefreshMinutes,
 		&settings.MDBListRatingsKey, &settings.CriticRatingShows, &settings.TMDBKey,
+		&settings.WaitDigitalRelease,
 		&settings.PersonalAddons, &settings.ServerImports, &settings.ShareLinks, &settings.LoginAttempts, &settings.InactiveDeviceDays, &settings.KnownProxies,
 		&settings.KnownProxyNames,
 		&settings.TwoStepAdministrators,
@@ -2180,7 +2398,7 @@ func (settings *Settings) fields() []any {
 		&settings.VersionOrder, &settings.VersionCodecOrder, &settings.VersionSourceOrder, &settings.HideVersionsLargerGB, &settings.HiddenVersionCodecs,
 		&settings.HiddenVersionWords,
 		&settings.NameHowVersionsPlay, &settings.VersionsOffered, &settings.StreamProxy,
-		&settings.HiddenReleases,
+		&settings.HiddenReleases, &settings.VersionEditionOrder, &settings.VersionMBPerMinute, &settings.VersionLabelRules,
 		&settings.SyncAddonSubtitles, &settings.MaxConversions, &settings.MaxConversionHeight, &settings.ConvertedDownloads, &settings.SubtitleOCR, &settings.SubtitleOCRTracks,
 		&settings.DefaultAudioLanguage, &settings.DefaultSubtitleLanguage,
 		&settings.EncoderPreset, &settings.H264Quality, &settings.HevcQuality, &settings.AllowHevcEncoding, &settings.HardwareAcceleration, &settings.HardwareDecodingCodecs,
@@ -2188,7 +2406,7 @@ func (settings *Settings) fields() []any {
 		&settings.ToneMapping, &settings.ToneMappingAlgorithm, &settings.ToneMappingPeak, &settings.ToneMappingDesat, &settings.GPUToneMapping, &settings.ProcessorToneMappingHeight,
 		&settings.DeinterlaceMethod, &settings.DeinterlaceDoubleRate,
 		&settings.DownmixAlgorithm, &settings.DownmixBoost, &settings.MaxAudioChannels, &settings.AudioBitratePerChannel, &settings.EncodingThreads, &settings.AheadSeconds,
-		&settings.KeepConvertedVideo,
+		&settings.KeepConvertedVideo, &settings.FastStart,
 		&settings.Trickplay, &settings.TrickplayInterval, &settings.TrickplayWidth, &settings.ChapterImages, &settings.ThumbnailStorageGB,
 		&settings.RecordingPrePadding, &settings.RecordingPostPadding, &settings.RecordingRetentionDays,
 		&settings.RecordingCommercials,
@@ -2215,7 +2433,9 @@ func (settings *Settings) fields() []any {
 		&settings.SiloApps,
 		&settings.PosterRatings, &settings.PosterBadges, &settings.PosterBadgeSize, &settings.PosterTemplate,
 		&settings.ProviderIssuer, &settings.ProviderName, &settings.ProviderClientID, &settings.ProviderClientSecret, &settings.ProviderUserClaim,
-		&settings.ProviderCreateAccounts, &settings.ProviderAdminClaim, &settings.ProviderAdminValue}
+		&settings.ProviderCreateAccounts, &settings.ProviderAdminClaim, &settings.ProviderAdminValue,
+		&settings.SourceCachePreset, &settings.SourceCacheDays, &settings.SourceCacheCreditDays,
+		&settings.PreloadNextEpisodes, &settings.PreloadEpisodes, &settings.PreloadMbps, &settings.PreloadReserveGB, &settings.PreloadWholeFiles}
 }
 
 func (s *Store) loadSettings(ctx context.Context) (Settings, error) {
@@ -2392,6 +2612,8 @@ func (s *Store) AdoptEnvironment(ctx context.Context, env Environment) error {
 			THEN $3::text[] ELSE segment_sources_off END,
 		cache_size_gb = CASE WHEN $4::integer > 0 AND 'cache_size_gb' = ANY(environment_pending)
 			THEN $4::integer ELSE cache_size_gb END,
+		source_cache_preset = CASE WHEN $4::integer > 0 AND 'cache_size_gb' = ANY(environment_pending)
+			THEN 'custom' ELSE source_cache_preset END,
 		detailed_log = CASE WHEN $5::boolean AND 'detailed_log' = ANY(environment_pending) THEN true ELSE detailed_log END,
 		vaapi_device = CASE WHEN $6::text <> '' AND 'vaapi_device' = ANY(environment_pending)
 			THEN $6::text ELSE vaapi_device END,
@@ -2566,6 +2788,23 @@ func (s *Store) UpdateSettings(ctx context.Context, settings Settings) (Settings
 		}
 	}
 	settings.HiddenReleases = releases
+	if len(settings.VersionEditionOrder) != len(VersionEditions) {
+		return Settings{}, ErrInvalidVersionEditionOrder
+	}
+	for i, edition := range settings.VersionEditionOrder {
+		if !slices.Contains(VersionEditions, edition) || slices.Contains(settings.VersionEditionOrder[:i], edition) {
+			return Settings{}, ErrInvalidVersionEditionOrder
+		}
+	}
+	settings.VersionEditionOrder = slices.Clone(settings.VersionEditionOrder)
+	if settings.VersionMBPerMinute < 0 || settings.VersionMBPerMinute > MaxVersionMBPerMinute {
+		return Settings{}, ErrInvalidVersionMBPerMinute
+	}
+	labelRules, err := canonicalVersionLabelRules(settings.VersionLabelRules)
+	if err != nil {
+		return Settings{}, err
+	}
+	settings.VersionLabelRules = labelRules
 	if settings.MaxConversions < MinMaxConversions || settings.MaxConversions > MaxMaxConversions {
 		return Settings{}, ErrInvalidMaxConversions
 	}
@@ -2656,8 +2895,16 @@ func (s *Store) UpdateSettings(ctx context.Context, settings Settings) (Settings
 		return Settings{}, err
 	}
 	settings.CollectionLibraryApps = apps
+	if err := settings.applySourceCachePreset(); err != nil {
+		return Settings{}, err
+	}
 	if settings.CacheSizeGB < MinCacheSizeGB || settings.CacheSizeGB > MaxCacheSizeGB {
 		return Settings{}, ErrInvalidCacheSize
+	}
+	if settings.PreloadEpisodes < MinPreloadEpisodes || settings.PreloadEpisodes > MaxPreloadEpisodes ||
+		settings.PreloadMbps < MinPreloadMbps || settings.PreloadMbps > MaxPreloadMbps ||
+		settings.PreloadReserveGB < MinPreloadReserveGB || settings.PreloadReserveGB > MaxPreloadReserveGB {
+		return Settings{}, ErrInvalidPreload
 	}
 	if !ValidVAAPIDevice(settings.VAAPIDevice) {
 		return Settings{}, ErrInvalidVAAPIDevice

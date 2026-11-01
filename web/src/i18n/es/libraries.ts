@@ -233,6 +233,7 @@ const libraries: typeof en = {
       rank: 'Posición en su catálogo',
       state: 'Estado de visualización',
       released: 'Fecha de estreno',
+      homeRelease: 'Estreno en casa',
       votes: 'Votos de IMDb',
       runtime: 'Duración',
       contentRating: 'Clasificación por edad',
@@ -251,6 +252,11 @@ const libraries: typeof en = {
     atMost: 'Como mucho',
     releasedWhen: 'Cuándo',
     releasedWithin: { last: 'En los últimos', next: 'En los próximos' } as Record<string, string>,
+    homeReleaseWithin: {
+      released: 'Estrenado en los últimos',
+      upcoming: 'Se estrena en los próximos',
+      both: 'A menos de',
+    } as Record<string, string>,
     days: 'días',
     namePlaceholder: { person: 'Su nombre', studio: 'Su nombre' } as Record<string, string>,
     types: { movie: 'Una película', series: 'Una serie' } as Record<string, string>,
@@ -268,6 +274,8 @@ const libraries: typeof en = {
       'Los votos de IMDb vienen de MDBList, con la clave API de MDBList para valoraciones en Ajustes › Contenido, consultados en segundo plano. Sin esa clave, ningún título tiene votos.',
     studioHelp:
       'Los estudios y las cadenas vienen de TMDB, con la clave API de TMDB en Ajustes › Contenido, consultados en segundo plano y guardados: la lista crece a medida que llegan. Sin esa clave, solo cuentan los estudios que un administrador puso en los metadatos de un título.',
+    homeReleaseHelp:
+      'El estreno en casa de una película es su primer estreno digital o físico, o si no 90 días después de su estreno en cines, según TMDB, con la clave API de TMDB en Ajustes › Contenido, consultado en segundo plano y guardado: la lista crece a medida que llegan. El de una serie es su fecha de estreno. Con Esperar al estreno digital activado, una película aún no estrenada solo aparece en las listas con una regla de títulos próximos.',
     sort: 'Ordenar',
     sorts: {
       catalog: 'Como los listan sus catálogos, uno de cada uno por turnos',
@@ -315,6 +323,50 @@ const libraries: typeof en = {
       genres: 'Géneros',
       languages: 'Idioma',
     },
+  },
+  /** Episode orders: the order a series shows its seasons and episodes in, for every user. */
+  episodeOrders: {
+    title: 'Órdenes de episodios',
+    help: 'Una serie muestra sus temporadas y episodios como los numera su complemento, en orden de emisión. Muestre una en otro orden de TMDB, como DVD, absoluto o arco argumental, para todos los usuarios, como hace el orden de visualización del editor de metadatos de jellyfin-web. Sus episodios conservan su propia temporada y número para la reproducción, el historial y el seguimiento.',
+    loading: 'Cargando los órdenes de episodios…',
+    emptyTitle: 'Todas las series se muestran en orden de emisión',
+    emptyHow: 'Busque una serie abajo para mostrarla en otro orden.',
+    search: 'Buscar una serie',
+    searchPlaceholder: 'Nombre de la serie',
+    searchButton: 'Buscar',
+    searching: 'Buscando…',
+    results: 'Series encontradas',
+    noSeries: 'Ninguna serie coincide con este nombre.',
+    editTitle: (name: string) => `Orden de episodios de ${name}`,
+    order: 'Orden',
+    orderHelp:
+      'Los grupos de episodios que TMDB da para esta serie. Las partes de un grupo pasan a ser sus temporadas.',
+    aired: 'Orden de emisión',
+    types: {
+      originalAirDate: 'Fecha de emisión original',
+      absolute: 'Absoluto',
+      dvd: 'DVD',
+      digital: 'Digital',
+      storyArc: 'Arco argumental',
+      production: 'Producción',
+      tv: 'TV',
+    },
+    counts: (seasons: number, episodes: number) =>
+      `${seasons === 1 ? '1 temporada' : `${seasons} temporadas`}, ${episodes === 1 ? '1 episodio' : `${episodes} episodios`}`,
+    lookup: {
+      no_key: 'Añada una clave de TMDB en Ajustes › Contenido para ver los órdenes de esta serie.',
+      unknown: 'TMDB no conoce esta serie: se muestra en orden de emisión.',
+      failed:
+        'No se pudo contactar con TMDB para ver los órdenes de esta serie. Inténtelo de nuevo en un momento.',
+    },
+    specials: 'Especiales',
+    specialsHelp:
+      'Dónde aparece la temporada 0 entre las temporadas. Los especiales ocultos se siguen reproduciendo desde «Seguir viendo» o un enlace.',
+    specialsFirst: 'Primero',
+    specialsLast: 'Al final',
+    specialsHidden: 'Ocultos',
+    specialsSummary: { last: 'Especiales al final', hidden: 'Especiales ocultos' },
+    saved: (name: string) => `${name}: orden de episodios guardado.`,
   },
 }
 

@@ -340,7 +340,7 @@ const system: typeof en = {
       size: 'Dimensione',
       cacheTitle: 'Cache delle origini',
       cacheHelp:
-        'Parti dei file in riproduzione, conservate su disco fino alla dimensione impostata in Impostazioni › Riproduzione. Una cache piena è normale: le parti più vecchie lasciano spazio.',
+        'Parti dei file riprodotti, conservate su disco fino alla dimensione impostata in Impostazioni › Riproduzione, da un avvio all’altro. Una cache piena è normale: le parti lette da più tempo lasciano spazio, quelle dei titoli riprodotti di nuovo per ultime.',
       cacheUse: (used: string, limit: string) => `${used} di ${limit}`,
       imagesTitle: 'Cache delle immagini',
       imagesHelp:
@@ -352,6 +352,13 @@ const system: typeof en = {
         `Cache delle immagini svuotata: ${images} immagini, ${bytes} liberati su disco.`,
       sourcesOpen: 'File aperti',
       torrentPieces: 'Di cui parti di torrent',
+      sourcesKept: 'File conservati',
+      hitRatio: 'Letto dal disco',
+      hitRatioValue: (percent: string, read: string) => `${percent} dei ${read} letti dall’avvio`,
+      keptFor: (days: number) =>
+        days > 0
+          ? `Conservati ${days} giorni dopo l’ultima lettura, riavvii compresi`
+          : 'Svuotata a ogni avvio',
       torrentsTitle: 'Torrent',
       torrentsHelp:
         'I torrent che la riproduzione sta leggendo ora, solo attraverso il loro percorso. Un torrent si ferma quando termina la sua riproduzione: niente più peer, niente più condivisione.',
@@ -434,6 +441,10 @@ const system: typeof en = {
       goroutinesDownload: 'Scarica le goroutine',
       goroutinesHelp:
         'Quando una richiesta non riceve mai risposta, scarica ciò che il server sta facendo e invialo con la tua segnalazione. Non contiene indirizzi né segreti.',
+      lastCrash: 'Ultimo arresto anomalo',
+      noCrash: 'Nessuno',
+      lastCrashHelp:
+        'L’inizio della traccia dell’errore che ha fermato Polyfin l’ultima volta, letta alla ripartenza. Degli indirizzi resta solo l’host, e token e chiavi sono nascosti.',
       secretsTitle: 'Chiavi memorizzate',
       secretsHelp:
         'Le chiavi del server, i token e le chiavi di tracciamento degli utenti e le password delle condivisioni di rete, crittografati nel database con POLYFIN_SECRET_KEY (openssl rand -base64 32).',

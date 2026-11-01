@@ -105,7 +105,7 @@ const common: typeof en = {
       'Il tempo per analizzare una versione deve essere un numero intero di secondi da 5 a 120.',
     invalid_version_attempts: 'Le versioni provate devono essere un numero intero da 1 a 10.',
     invalid_version_order:
-      'Scegli al massimo quattro criteri per ordinare le versioni, uno per tipo. Ricarica la pagina.',
+      'Scegli al massimo sei criteri per ordinare le versioni, uno per tipo. Ricarica la pagina.',
     invalid_version_codec_order:
       'L’ordine dei codec video deve elencare ogni codec una sola volta. Ricarica la pagina.',
     invalid_version_source_order:
@@ -118,6 +118,12 @@ const common: typeof en = {
       'Inserisci al massimo 50 parole che nascondono le versioni, una per riga, ciascuna di al massimo 100 caratteri.',
     invalid_hidden_releases:
       'Questo elenco di tipi di release nascosti non è supportato. Ricarica la pagina.',
+    invalid_version_edition_order:
+      'L’ordine delle edizioni deve elencare ogni edizione una sola volta. Ricarica la pagina.',
+    invalid_version_mb_per_minute:
+      'La dimensione al minuto deve essere un numero intero di MB da 0 a 1.000.',
+    invalid_version_label_rules:
+      'Inserisci al massimo 40 regole sulle etichette, ciascuna di al massimo 200 caratteri, con un’espressione regolare valida dove spuntata e un punteggio da −100 a 100 diverso da 0 se non nasconde.',
     invalid_max_conversions:
       'Le conversioni video contemporanee devono essere un numero intero da 0 a 32.',
     invalid_max_conversion_height: 'Scegli dall’elenco la qualità massima dei video convertiti.',
@@ -228,6 +234,8 @@ const common: typeof en = {
       'L’elenco delle librerie è cambiato nel frattempo. Ricarica la pagina.',
     invalid_blocked_genres:
       'I generi devono contenere da 1 a 100 caratteri e se ne possono bloccare al massimo 100.',
+    invalid_live_tv_channels:
+      'La scelta dei canali non è valida: Tutti, Solo questi o Tutti tranne questi, con al massimo 10.000 gruppi e 10.000 canali.',
     invalid_access_schedules:
       'Gli orari vanno dalle 00:00 alle 24:00 e ogni fine deve venire dopo il rispettivo inizio (al massimo 50 righe).',
     outside_allowed_hours:
@@ -282,6 +290,12 @@ const common: typeof en = {
       'Impossibile raggiungere MDBList per verificare la chiave. Non è stato salvato nulla: riprova più tardi.',
     invalid_tmdb_key:
       'TMDB non ha accettato questa chiave. Copia di nuovo la chiave API o il token di accesso in lettura dal tuo account TMDB. Non è stato salvato nulla.',
+    unknown_episode_group:
+      'TMDB non fornisce più questo ordine per questa serie. Riaprila e scegline un altro.',
+    episode_groups_unreachable:
+      'Impossibile raggiungere TMDB per elencare gli ordini di questa serie. Non è stato salvato nulla: riprova più tardi.',
+    no_tmdb_key:
+      'Aggiungi prima una chiave TMDB in Impostazioni › Contenuti: gli ordini vengono da TMDB.',
     tmdb_unreachable:
       'Impossibile raggiungere TMDB per verificare la chiave. Non è stato salvato nulla: riprova più tardi.',
     invalid_route: 'Scegli dall’elenco il passaggio dei video.',
@@ -307,6 +321,10 @@ const common: typeof en = {
     invalid_torrent_trackers:
       'Inserisci al massimo 30 tracker, ognuno un URL di annuncio HTTP, HTTPS o UDP, UDP con la sua porta, di al massimo 500 caratteri.',
     invalid_cache_size: 'Lo spazio su disco deve essere un numero intero di GB da 1 a 2.000.',
+    invalid_source_cache:
+      'Le parti lette vengono conservate un numero intero di giorni da 0 a 365, con da 0 a 30 giorni in più per ogni nuova riproduzione.',
+    invalid_preload:
+      'Il precaricamento accetta da 1 a 3 episodi per serie, un limite di velocità da 1 a 1.000 Mbit/s e da 1 a 1.000 GB di spazio libero da mantenere.',
     invalid_vaapi_device: 'Scegli la scheda grafica dall’elenco.',
     invalid_recordings_folder:
       'La cartella delle registrazioni deve essere un percorso assoluto di una cartella in cui Polyfin può scrivere.',
@@ -419,6 +437,10 @@ const common: typeof en = {
     invalid_events: 'Uno degli eventi scelti non è disponibile per questa destinazione.',
     invalid_reminder_settings: 'Scegli 1, 5, 10, 15, 30 o 60 minuti.',
     too_many_targets: 'Ci sono già 20 destinazioni. Eliminane una per aggiungerne un’altra.',
+    invalid_per_minute: 'Messaggi al minuto: da 1 a 60, oppure vuoto per nessun limite.',
+    invalid_group_minutes: 'Raggruppamento: da 1 a 1.440 minuti, oppure vuoto per inviare subito.',
+    invalid_summary:
+      'Solo il riepilogo settimanale, il mese e l’anno in sintesi hanno un’anteprima.',
     target_unreadable:
       'Impossibile decifrare l’indirizzo o il token di questa destinazione con POLYFIN_SECRET_KEY. Inseriscilo di nuovo.',
     invalid_source_name: 'I nomi delle origini devono avere da 1 a 64 caratteri.',

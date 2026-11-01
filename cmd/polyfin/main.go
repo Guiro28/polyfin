@@ -28,9 +28,11 @@ import (
 	stremioimport "github.com/moodiness/polyfin/internal/appimport/stremio"
 	"github.com/moodiness/polyfin/internal/audiosegments"
 	"github.com/moodiness/polyfin/internal/backup"
+	"github.com/moodiness/polyfin/internal/bandwidth"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/commercials"
 	"github.com/moodiness/polyfin/internal/config"
+	"github.com/moodiness/polyfin/internal/crashes"
 	"github.com/moodiness/polyfin/internal/database"
 	"github.com/moodiness/polyfin/internal/desktop/tools"
 	"github.com/moodiness/polyfin/internal/discovery"
@@ -209,6 +211,15 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	if err := process.KillChildrenOnExit(); err != nil {
 		logger.Warn("The programs Polyfin runs may outlive it if it is killed", "error", err)
 	}
+	// A crash of this run is written to the data folder too, for the next
+	// start to tell; the last run's, if any, is told once the notifications
+	// are made, below.
+	var crashed *crashes.Report
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		logger.Warn("A crash of Polyfin would not be kept: the data folder cannot be made", "error", err)
+	} else if crashed, err = crashes.Watch(cfg.DataDir); err != nil {
+		logger.Warn("A crash of Polyfin would not be kept", "error", err)
+	}
 	adminApp, err := webui.Assets()
 	if err != nil {
 		return err
@@ -323,8 +334,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	if err := work.ClearUnused(cfg.DataDir); err != nil {
 		logger.Warn("The folders of the data folder's cache left unused could not be removed", "error", err)
 	}
-	cacheLimit := func() int64 { return int64(store.Settings().CacheSizeGB) * 1e9 }
-	sources, err := source.New(work.Sources(), cacheLimit, addonClient, logger)
+	sources, err := source.New(work.Sources(), func() source.Policy { return playback.SourcePolicy(store.Settings()) }, addonClient, logger)
 	if err != nil {
 		return fmt.Errorf("prepare the source cache: %w", err)
 	}
@@ -404,6 +414,12 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		}
 		return playback.Route{}
 	})
+	// What playbacks receive from sources and send to apps, sampled every
+	// second for Now playing (see the bandwidth package).
+	received, sent := bandwidth.New(), bandwidth.New()
+	player.CountReceived(received)
+	go received.Run(ctx)
+	go sent.Run(ctx)
 	// The files of local folders are read through the loopback interface,
 	// as the addons' files are; FFmpeg reads their discs and disc images
 	// itself.
@@ -420,7 +436,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	// source cache's space, which counts them. DHT lookups start from the
 	// bootstrap nodes clients use, over a route that carries UDP.
 	torrents, err := torrent.New(torrent.Config{Settings: func() torrent.Settings { return playback.TorrentSettings(store.Settings()) },
-		Dir: work.Torrents(), Budget: func() int64 { return cacheLimit() / 4 },
+		Dir: work.Torrents(), Budget: func() int64 { return playback.SourcePolicy(store.Settings()).Limit / 4 },
 		Bootstrap: torrent.BootstrapNodes, Logger: logger})
 	if err != nil {
 		return fmt.Errorf("prepare the torrent directory: %w", err)
@@ -557,7 +573,8 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		return err
 	}
 	fromJellyfin := jellyfinimport.New(jellyfinimport.Options{Settings: store.Settings, Titles: lib, UserData: userData, Version: version,
-		Logger: logger, Watchlist: watchlist.New(pool), PlexClient: plexClient})
+		Logger: logger, Watchlist: watchlist.New(pool), Collections: collections.New(pool), Playlists: playlists.New(pool),
+		PlexClient: plexClient})
 	defer fromJellyfin.Close()
 	// The watch data of accounts on apps built on addons, Nuvio's and
 	// Stremio's, finds its titles and merges the same way; the accounts'
@@ -609,6 +626,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	registerTasteTask(registry, tastes)
 	jellyfinAPI := jellyfin.New(jellyfin.Options{
 		ServerID:     serverID,
+		Sent:         sent,
 		Accounts:     store,
 		QuickConnect: quickConnect,
 		SignIns:      signIns,
@@ -647,9 +665,10 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		Backups:        backups,
 		Trackers:       tracking,
 		Plays:          playbacks,
-		// Guests playing through share links are told through the
-		// notifications, made below.
+		// Guests playing through share links, and plays that failed, are
+		// told through the notifications, made below.
 		SharePlayed: func(link accounts.ShareLink) { notifier.SharePlayed(link) },
+		PlayFailed:  func(f plays.Failure) { notifier.PlaybackFailed(f) },
 	})
 	// DLNA devices on the local network browse and play the libraries of
 	// the user chosen for each, while the settings share them; a port
@@ -714,10 +733,11 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		VirtualChannels: ownChannels,
 		ChannelBuilder:  jellyfinAPI,
 		Playouts:        player,
-		// The rows of the web player's home page, and the collections they
-		// may list as the Jellyfin API tells them.
-		HomeRows:       homeRows,
-		HomeRowChoices: jellyfinAPI,
+		// The rows of the web player's home page, the collections they may
+		// list, and each user's rows as the Jellyfin API tells them.
+		HomeRows:        homeRows,
+		HomeRowChoices:  jellyfinAPI,
+		HomeRowPreviews: jellyfinAPI,
 		// Each user's taste profile, which My account shows them.
 		Taste: tastes,
 		// Settings › Content › Posters previews the badges over real
@@ -731,7 +751,15 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		// Apply this order to every user clears the orders of libraries
 		// users saved, with what the Jellyfin API remembers of them.
 		LibraryOrders: jellyfinAPI,
+		EpisodeOrders: lib,
 		Sharing:       lib,
+		// Users' and groups' Live TV channel rules name the channels of the
+		// server's line-ups.
+		ChannelChoices: lib,
+		// The Versions page explains titles' versions as the Jellyfin API
+		// offers them.
+		Versions: jellyfinAPI,
+		Titles:   lib,
 		Health: admin.HealthSources{
 			Addons:           addonClient,
 			SearchesLeaveOut: lib.SearchesLeaveOut,
@@ -781,6 +809,14 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	defer notifier.Close()
 	adminOptions.Notifications = notifier
 	registerSummaryTasks(registry, notifier)
+	if crashed != nil {
+		logger.Warn("Polyfin crashed during its last run: System › Health shows the start of its trace", "crashed_at", crashed.At.Format(time.RFC3339))
+		if err := notifier.ServerCrashed(ctx, *crashed); err != nil {
+			logger.Warn("The last crash could not be kept: the next start tells it", "error", err)
+		} else if err := crashes.Forget(cfg.DataDir); err != nil {
+			logger.Warn("The last crash's file could not be deleted", "error", err)
+		}
+	}
 	// Programme reminders tell users, on their own targets and on their
 	// apps when they choose it, that a programme they chose starts soon.
 	// They are sent once the notifications read their targets.

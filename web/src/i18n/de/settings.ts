@@ -303,6 +303,11 @@ const settings: typeof en = {
         'hdr-first': 'HDR und Dolby Vision zuerst',
         'hdr-last': 'HDR und Dolby Vision zuletzt',
         source: 'Quelle, in der Reihenfolge unten',
+        'size-per-minute': 'Größe pro Minute Laufzeit, wie unten eingestellt',
+        tier: 'Quelle: Disc-Kopie, Blu-ray, Web, DVD, dann TV',
+        audio: 'Audio: verlustfrei und Atmos zuerst, dann die meisten Kanäle',
+        edition: 'Fassung, in der Reihenfolge unten',
+        labels: 'Punkte der Bezeichnungsregeln, höchste zuerst',
       },
     },
     versionCodecOrder: {
@@ -315,6 +320,19 @@ const settings: typeof en = {
       none: 'Noch keine Quelle des Servers liefert Versionen von Filmen oder Folgen.',
       dragHandle: (name: string) => `${name} ziehen`,
     },
+    versionEditionOrder: {
+      label: 'Reihenfolge der Fassungen',
+      help: 'Die Reihenfolge, in die das Kriterium Fassung die Versionen bringt, je nach der Fassung, die ihre Bezeichnungen nennen. Eine Version, deren Bezeichnungen keine nennen, gilt als Kinofassung.',
+    },
+    versionEditions: {
+      theatrical: 'Kinofassung',
+      extended: 'Erweiterte Fassung',
+      directors: 'Director’s Cut',
+      imax: 'IMAX',
+    },
+    versionMbPerMinute: 'Angestrebte Größe pro Minute (MB, 0 = die größte)',
+    versionMbPerMinuteHelp: (r: RangeText) =>
+      `Das Kriterium Größe pro Minute stellt die Versionen nach vorn, die dieser Anzahl Megabyte pro Minute Laufzeit am nächsten kommen, etwa 50 für eine gute 1080p-Kodierung; 0 stellt die größte nach vorn. Die Laufzeit ist die der Version, sobald sie analysiert ist, sonst die des Titels. Bis zu ${r.max}; standardmäßig ${r.default}.`,
     versionCodecs: {
       av1: 'AV1',
       hevc: 'HEVC (H.265)',
@@ -342,6 +360,22 @@ const settings: typeof en = {
       telecine: 'Telecines (TC, TELECINE)',
       screener: 'Screener (SCR, DVDSCR)',
       early: 'Frühe Fassungen (R5, WORKPRINT)',
+    },
+    versionLabelRules: {
+      label: 'Bezeichnungsregeln',
+      help: (max: string) =>
+        `Jede Regel liest Name, Beschreibung und Dateiname einer Version, unabhängig von Groß- und Kleinschreibung: ein Wort, das irgendwo darin vorkommt, oder einen regulären Ausdruck. Eine Regel blendet die Versionen aus, auf die sie passt, nach den Ausblenderegeln oben und nie alle Versionen eines Titels, oder addiert ihre Punkte, von −100 bis 100, zu deren Punkten. Das Kriterium Punkte der Bezeichnungsregeln stellt die höchsten nach vorn; ohne es sortieren die Punkte die Versionen nach den anderen Kriterien. Bis zu ${max} Regeln; standardmäßig keine.`,
+      none: 'Keine Regeln: Bezeichnungen zählen nicht.',
+      add: 'Regel hinzufügen',
+      remove: (position: number) => `Regel ${position} entfernen`,
+      text: (position: number) => `Wort oder Ausdruck von Regel ${position}`,
+      action: (position: number) => `Wirkung von Regel ${position}`,
+      points: (position: number) => `Punkte von Regel ${position}`,
+      regex: 'Regulärer Ausdruck',
+      score: 'Punkte vergeben',
+      hide: 'Ausblenden',
+      wordPlaceholder: 'Wort',
+      regexPlaceholder: 'Regulärer Ausdruck',
     },
     syncAddonSubtitles: 'Add-on-Untertitel synchronisieren',
     syncAddonSubtitlesHelp:
@@ -616,6 +650,9 @@ const settings: typeof en = {
       keepConvertedVideo: 'Konvertiertes Video beim Wechsel der Audiospur behalten',
       keepConvertedVideoHelp:
         'Konvertiert Bild und Ton getrennt, sodass bei Auswahl einer anderen Audiospur im Player nur der neue Ton vorbereitet wird: Das bereits konvertierte Bild läuft weiter, und die neue Spur startet schneller. Das Bild wird 30 Sekunden aufbewahrt, nachdem ein Player es beendet, und zählt in dieser Zeit als eine Konvertierung.',
+      fastStart: 'Wiedergaben aus entfernten Quellen schneller starten',
+      fastStartHelp:
+        'Beginnt eine neu verpackte oder konvertierte Wiedergabe eines Add-on-Links oder Torrents mit einem langen Segment, etwa bei einem Keyframe alle 10 Sekunden, wird dieses Segment in 2-Sekunden-Segmente geteilt, die schnell mit höchstens 720p konvertiert werden: Das Bild erscheint früher, in diesen Sekunden etwas weniger scharf, danach läuft die Wiedergabe wie gewohnt weiter. Gilt für die nächsten Wiedergaben.',
     },
     catalogsTitle: 'Kataloge',
     catalogLimit: 'Gelesene Titel pro Film- und Serienkatalog',
@@ -651,6 +688,9 @@ const settings: typeof en = {
     tmdbKey: 'TMDB-API-Schlüssel',
     tmdbKeyHelp:
       'Optional. Mit einem API-Schlüssel oder einem Lesezugriffstoken eines TMDB-Kontos durchsucht „Bilder bearbeiten“ in jellyfin-web auch TMDB nach Postern, Hintergründen und Logos eines Titels, Standbildern einer Folge, Postern einer Staffel und Fotos einer Person, die Polyfin weiterleitet. Personen werden außerdem einmal auf TMDB nachgeschlagen: Personen ohne Foto erhalten ihres, und ihre Seiten zeigen Biografie, Geburts- und Sterbedatum und Geburtsort. Dateien eines lokalen Ordners, deren Suche bei allen Metadaten-Add-ons fehlschlägt, werden ebenfalls auf TMDB gesucht. Ohne Schlüssel listet „Bilder bearbeiten“ nur die Bilder der Add-ons auf und TMDB wird nie abgefragt.',
+    waitDigitalRelease: 'Auf die digitale Veröffentlichung warten',
+    waitDigitalReleaseHelp:
+      'Ein Film aus den Katalogen der Addons erscheint erst, wenn er fürs Heimkino erschienen ist: seine erste digitale oder physische Veröffentlichung laut TMDB, sonst 90 Tage nach dem Kinostart. Bis dahin fehlt er in Bibliotheken, Zeilen der Startseite, Suchen, ähnlichen Titeln und Personenseiten, hat keine Version und lässt sich nicht abspielen; intelligente Listen mit einer Regel für kommende Titel zeigen ihn mit diesem Tag. Ein Film, den TMDB nicht kennt oder der seit über einem Jahr erschienen ist, bleibt sichtbar. Benötigt den TMDB-API-Schlüssel.',
     mdblistRatingsKey: 'MDBList-API-Schlüssel für Bewertungen',
     mdblistRatingsKeyHelp:
       'Optional. Mit einem Schlüssel eines MDBList-Kontos zeigen Filme und Serien ihre IMDb-Bewertung, Kritikerwertung und Publikumswertung von MDBList, im Hintergrund abgerufen und für alle Benutzer gespeichert. Die eigenen MDBList-Schlüssel der Benutzer für das Tracking werden dafür nie verwendet. Ohne Schlüssel wird MDBList nie abgefragt.',
@@ -848,6 +888,44 @@ const settings: typeof en = {
     cacheSize: 'Speicherplatz für gelesene Dateien (GB)',
     cacheSizeHelp: (r: RangeText) =>
       `Speicherplatz, den Polyfin nutzen darf, um die Teile der abgespielten Dateien zu behalten, damit Spulen und Neustarts sie nicht erneut herunterladen. Teile, die in den letzten 30 Sekunden gelesen wurden, werden auch darüber hinaus behalten. Von ${r.min} bis ${r.max} GB; standardmäßig ${r.default}.`,
+    sourceCacheGroup: 'Gelesene Dateien',
+    sourceCachePreset: 'Speicherplatz und Aufbewahrung',
+    sourceCachePresetHelp: (free: string) =>
+      `Wie viel der abgespielten Dateien Polyfin auf der Festplatte behält und wie lange, auch über Neustarts hinweg: Ein erneut abgespielter oder nach einem Neustart fortgesetzter Titel wird dann von der Festplatte statt von seiner Quelle gelesen. Eine Voreinstellung setzt die Felder darunter; wird eines davon geändert, wird sie zu Benutzerdefiniert. ${free}`,
+    sourceCacheFree: (free: string) =>
+      `${free} frei auf der Festplatte des Ordners für gelesene Dateien.`,
+    sourceCachePresetNames: {
+      off: 'Aus',
+      small: 'Klein',
+      everyday: 'Alltag',
+      large: 'Groß',
+      custom: 'Benutzerdefiniert',
+    },
+    sourceCachePresetChoice: (name: string, size: string, days: number) =>
+      days > 0
+        ? `${name}: ${size} GB, ${days} Tage behalten`
+        : `${name}: ${size} GB, bei jedem Start geleert`,
+    sourceCacheDays: 'Gelesene Teile behalten (Tage)',
+    sourceCacheDaysHelp: (r: RangeText) =>
+      `Wie lange ein Teil einer Datei nach dem letzten Lesen behalten wird, auch über Neustarts hinweg. 0 behält nichts über einen Neustart hinaus: Jeder Start leert den Cache. Von ${r.min} bis ${r.max}; standardmäßig ${r.default}.`,
+    sourceCacheCreditDays: 'Zusätzliche Tage je erneuter Wiedergabe',
+    sourceCacheCreditDaysHelp: (r: RangeText) =>
+      `Ein Titel, der 6 Stunden oder mehr nach seiner letzten Wiedergabe erneut abgespielt wird, behält seine Teile für jede Wiedergabe nach der ersten so viele Tage länger, höchstens 8-mal, und sie machen erst nach denen einmal abgespielter Titel Platz. Von ${r.min} bis ${r.max}; standardmäßig ${r.default}.`,
+    preloadGroup: 'Vorladen der nächsten Folgen',
+    preloadNextEpisodes: 'Nächste Folgen vorladen',
+    preloadNextEpisodesHelp:
+      'Liest, solange nichts abgespielt wird, die nächsten Folgen der Serien vor, die jeder Benutzer in den letzten 14 Tagen abgespielt oder begonnen hat, höchstens 5 Serien pro Benutzer: die erste Version, die Abspielen wählen würde, ihre ersten 128 MiB und ihr Ende oder die ganze Datei. Es stoppt, sobald etwas abgespielt wird, und liest alle 15 Minuten höchstens ein Viertel des Speicherplatzes oben. Torrents werden nie vorgeladen.',
+    preloadEpisodes: 'Folgen pro Serie',
+    preloadEpisodesHelp: (r: RangeText) => `Von ${r.min} bis ${r.max}; standardmäßig ${r.default}.`,
+    preloadMbps: 'Geschwindigkeitsgrenze (Mbit/s)',
+    preloadMbpsHelp: (r: RangeText) =>
+      `Die durchschnittliche Geschwindigkeit des Vorladens, die dem Haushalt den Rest der Verbindung lässt. Von ${r.min} bis ${r.max}; standardmäßig ${r.default}.`,
+    preloadReserveGb: 'Freizuhaltender Speicherplatz (GB)',
+    preloadReserveGbHelp: (r: RangeText) =>
+      `Das Vorladen stoppt, bevor auf der Festplatte des Ordners für gelesene Dateien weniger als so viel frei ist. Von ${r.min} bis ${r.max}; standardmäßig ${r.default}.`,
+    preloadWholeFiles: 'Ganze Dateien vorladen',
+    preloadWholeFilesHelp:
+      'Liest ganze Folgen statt ihres Anfangs und Endes, für eine große Festplatte. Die Voreinstellung Groß schaltet es ein; eine Änderung macht die Voreinstellung zu Benutzerdefiniert.',
     workFolders: {
       conversionFolder: 'Konvertierungsordner',
       conversionFolderHelp:
@@ -1117,6 +1195,34 @@ const settings: typeof en = {
         'Anderen Apps kann keine neue Art von Startseitenbereich hinzugefügt werden: Dadurch wird die Zeile auch zu einer Bibliothek ohne Typ, die sie unter den Bibliotheken des Benutzers auflisten, mit einer Zeile ihrer neuesten Titel auf ihrer Startseite.',
       libraryBadge: 'Bibliothek',
       moveLabel: 'Verschieben',
+      schedule: 'Zeitplan',
+      scheduleHelp:
+        'Wann die Zeile erscheint, in der Zeitzone des Servers. Unverändert erscheint sie immer.',
+      startDate: 'Ab',
+      endDate: 'Bis',
+      datesHelp: 'Beide Daten sind eingeschlossen; jedes darf leer bleiben.',
+      dateOrder: 'Das Enddatum darf nicht vor dem Startdatum liegen.',
+      days: 'Tage',
+      daysHelp: 'Keiner ausgewählt: jeden Tag.',
+      hours: 'Uhrzeiten',
+      allDay: 'Ganztägig',
+      someHours: 'Bestimmte Uhrzeiten',
+      startHour: 'Von',
+      endHour: 'Bis',
+      hoursHelp:
+        'Ein Ende vor dem Beginn geht über Mitternacht, und diese Nacht gehört zum Tag, an dem sie beginnt: von 22:00 bis 02:00 freitags endet samstags um 02:00.',
+      libraryDatesOnly:
+        'Eine Zeile, die auch eine Bibliothek ist, folgt nur ihren Daten, damit sie in anderen Apps nicht stündlich kommt und geht.',
+      scheduled: 'Geplant',
+      notShownNow: 'Gerade nicht angezeigt',
+      preview: 'Vorschau als…',
+      previewTitle: 'Vorschau als Benutzer',
+      previewUser: 'Benutzer',
+      previewHelp:
+        'Die Zeilen, die der Web-Player dieses Benutzers jetzt auf seiner Startseite zeigt, an ihrer Position, mit seiner Kindersicherung, seinen gesperrten Genres, seinen ausgeblendeten Titeln, den vor ihm verborgenen Bibliotheken und den Zeilen, die er ausgeschaltet hat. Die eigenen Bereiche des Web-Players werden nicht gezeigt.',
+      previewChoose: 'Wähle einen Benutzer, um seine Startseitenzeilen zu sehen.',
+      previewLoading: 'Vorschau wird geladen…',
+      previewEmpty: 'Dieser Benutzer sieht gerade keine Startseitenzeile.',
     },
     codeSize: (used: number, max: number) =>
       `${used} KB von ${max >= 1024 ? `${max / 1024} MB` : `${max} KB`}`,
@@ -1160,6 +1266,7 @@ const settings: typeof en = {
       skip: 'Intro und Abspann überspringen',
       titlePages: 'Titelseiten',
       images: 'Bilder',
+      releases: 'Filmveröffentlichungen',
       ratings: 'Bewertungen',
       posters: 'Poster',
       music: 'Musik',

@@ -12,6 +12,7 @@ import (
 	"github.com/moodiness/polyfin/internal/activity"
 	"github.com/moodiness/polyfin/internal/audiosegments"
 	"github.com/moodiness/polyfin/internal/backup"
+	"github.com/moodiness/polyfin/internal/bandwidth"
 	"github.com/moodiness/polyfin/internal/cache"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/commercials"
@@ -150,8 +151,14 @@ type Options struct {
 	// SharePlayed is told of a guest's playback through a share link, at
 	// most once an hour per link; nil tells nothing.
 	SharePlayed func(accounts.ShareLink)
+	// PlayFailed is told of a play that failed: no version played on the
+	// app, a limit refused it, or its stream broke; nil tells nothing.
+	PlayFailed func(plays.Failure)
 	// Reminders keeps the users' programme reminders; nil keeps none.
 	Reminders *reminders.Service
+	// Sent counts the bytes of media sent to apps, by the playback they
+	// serve (see metered); nil counts them for the metrics only.
+	Sent *bandwidth.Meters
 }
 
 // Handler serves the Jellyfin API.
@@ -197,7 +204,8 @@ type Handler struct {
 	// customCss hashes the Custom theme's CSS, for the address the web
 	// client loads it from (see brandingCss).
 	customCss webtheme.Hasher
-	// now tells the time users' allowed hours are checked against.
+	// now tells the time users' allowed hours and the home rows' schedules
+	// are checked against.
 	now func() time.Time
 	// newKeys remembers the API keys made from Jellyfin apps until a
 	// listing shows them.
@@ -235,6 +243,9 @@ type Handler struct {
 	// titles are the play sessions devices reported for the title they
 	// play (see leftplayback.go).
 	titles *titleSessions
+	// decisions are the last plays of each title, what each tried and
+	// chose, for the admin app's Versions page (see playdecisions.go).
+	decisions *playDecisions
 	// draws are the orders listings of libraries' titles at random drew,
 	// kept for drawLife (see randomLibraryListing).
 	draws *cache.Cache[drawKey, draw]
@@ -265,6 +276,7 @@ func New(options Options) *Handler {
 		torrents:       newTorrentPlays(),
 		chosen:         newChosenVersions(),
 		titles:         newTitleSessions(),
+		decisions:      newPlayDecisions(),
 	}
 	// Sessions read the handler's clock, which tests set.
 	h.sessions = playback.NewSessions(func() time.Time { return h.now() })

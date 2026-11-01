@@ -162,6 +162,31 @@ const users: typeof en = {
     removeGenre: (genre: string) => `Retirer ${genre}`,
     noBlockedGenres: 'Aucun genre n’est bloqué.',
     saveBlockedGenres: 'Enregistrer les genres bloqués',
+    liveTvChannelsTitle: 'Chaînes de TV en direct',
+    liveTvChannelsHelp:
+      'Les chaînes des sources de TV en direct du serveur que cet utilisateur voit, choisies par groupe et par chaîne. Les chaînes masquées n’apparaissent ni dans la liste des chaînes, ni dans le guide, les recherches, le Replay, les enregistrements, les programmations ou les rappels, et ne se lisent pas. Les sources propres de l’utilisateur ne sont pas limitées.',
+    channelsMode: 'Chaînes',
+    channelsAll: 'Toutes',
+    channelsOnly: 'Seulement celles-ci',
+    channelsExcept: 'Toutes sauf celles-ci',
+    channelsOnlyHelp: 'Seuls les groupes et les chaînes cochés sont affichés.',
+    channelsExceptHelp: 'Les groupes et les chaînes cochés sont masqués.',
+    channelGroups: 'Groupes',
+    filterChannelGroups: 'Filtrer les groupes',
+    moreChannelGroups: (count: number) => `${count} de plus : filtrez pour les trouver.`,
+    newChannelGroup: 'Nouveau',
+    noChannelGroups: 'Les sources de TV en direct du serveur n’ont encore aucune chaîne.',
+    singleChannels: 'Chaînes',
+    searchChannels: 'Rechercher une chaîne par nom ou par numéro',
+    tickedChannels: 'Chaînes cochées',
+    noTickedChannels: 'Aucune chaîne cochée.',
+    goneChannel: 'Chaîne qui n’est plus listée',
+    removeChannel: (name: string) => `Retirer ${name}`,
+    moreChannels: (count: number) => `${count} de plus : recherchez pour les trouver.`,
+    hideNewChannelGroups: 'Masquer les chaînes des groupes ajoutés plus tard',
+    hideNewChannelGroupsHelp:
+      'Les groupes qu’une source ajoute après l’enregistrement sont masqués. Ils apparaissent ici cochés, marqués « Nouveau », jusqu’au prochain enregistrement.',
+    saveLiveTvChannels: 'Enregistrer les chaînes de TV en direct',
     allowedHoursTitle: 'Horaires autorisés',
     allowedHoursHelp:
       'Si des horaires sont définis, cet utilisateur ne peut se connecter et utiliser le serveur que pendant ces horaires, à l’heure du serveur. En dehors, ses applications sont refusées.',
@@ -232,7 +257,7 @@ const users: typeof en = {
       open: 'Importer depuis un autre serveur',
       title: 'Importer depuis un autre serveur',
       description:
-        'Reprenez les comptes d’un serveur Jellyfin, Emby ou Plex et ce qu’ils ont regardé : noms des comptes et statut d’administrateur, puis pour chaque utilisateur les films et épisodes vus avec leurs dates, les points de reprise et les favoris, reconnus par IMDb, TMDB ou TVDB. Les données de Polyfin sont seulement complétées, et rien n’est écrit sur l’autre serveur. Les serveurs ne donnent pas les mots de passe : vous en choisissez un pour chaque nouveau compte, ou gardez celui avec lequel l’utilisateur se connecte.',
+        'Reprenez les comptes d’un serveur Jellyfin, Emby ou Plex et ce qu’ils ont regardé : noms des comptes et statut d’administrateur, puis pour chaque utilisateur les films et épisodes vus avec leurs dates, les points de reprise et les favoris, reconnus par IMDb, TMDB ou TVDB, et si vous le souhaitez leurs notes, les collections du serveur et leurs playlists. Les données de Polyfin sont seulement complétées, et rien n’est écrit sur l’autre serveur. Les serveurs ne donnent pas les mots de passe : vous en choisissez un pour chaque nouveau compte, ou gardez celui avec lequel l’utilisateur se connecte.',
       serverKind: 'Serveur',
       servers: {
         jellyfin: 'Jellyfin',
@@ -286,6 +311,20 @@ const users: typeof en = {
       plexWatchDataHelp:
         'Les titres que ce compte a lus jusqu’au bout sur ce serveur, d’après l’historique de lecture de Plex, avec leurs dates et leur nombre de lectures. Les titres qu’il a marqués comme vus ou synchronisés depuis son compte Plex, et ses points de reprise, restent sur Plex.',
       watchDataNeeded: 'Sans elles, rien n’est importé pour cet utilisateur.',
+      extras: {
+        title: 'Reprendre aussi',
+        ratings: 'Notes',
+        ratingsHelp:
+          'Les notes de chaque utilisateur, de 0 à 10, telles quelles. Un pouce levé sans note devient un favori. Une note que Polyfin a déjà est gardée.',
+        collections: 'Collections',
+        collectionsHelp:
+          'Les collections du serveur, en collections Polyfin que chaque utilisateur voit, avec les titres trouvés. Une collection dont aucun titre n’est trouvé n’est pas créée.',
+        playlists: 'Playlists',
+        playlistsHelp:
+          'Les playlists vidéo de chaque utilisateur, en playlists à lui, dans leur ordre, avec les titres trouvés.',
+        plexHelp:
+          'Plex ne donne les notes et les playlists que des comptes lus avec leur propre jeton : celui du propriétaire, et ceux des autres une fois que vous vous connectez à Plex en tant que propriétaire.',
+      },
       plexNotice:
         'Avec le jeton du propriétaire, Plex laisse Polyfin lire les titres vus, les points de reprise et les notes du propriétaire. Des autres comptes, il ne donne que leur historique de lecture sur ce serveur : les titres qu’ils y ont lus jusqu’au bout. Les titres qu’ils ont marqués comme vus sans les lire, ceux synchronisés depuis leur compte Plex, leurs points de reprise et leurs notes n’y figurent pas. Pour lire les données de visionnage de chaque compte, connectez-vous avec Plex en tant que propriétaire, ci-dessus. Plex n’a pas de favoris à importer.',
       plexOwner: {
@@ -397,6 +436,20 @@ const users: typeof en = {
         `${played <= 1 ? `${played} marqué vu` : `${played} marqués vus`}, ${resumed <= 1 ? `${resumed} point de reprise` : `${resumed} points de reprise`}, ${favorites <= 1 ? `${favorites} favori` : `${favorites} favoris`}`,
       upToDate: (count: number) => `${count} déjà dans Polyfin`,
       ratings: (count: number) => (count <= 1 ? `${count} noté` : `${count} notés`),
+      collections: (count: number) =>
+        count <= 1 ? `${count} collection créée` : `${count} collections créées`,
+      playlists: (count: number) =>
+        count <= 1 ? `${count} playlist créée` : `${count} playlists créées`,
+      listTitles: (count: number) =>
+        count <= 1
+          ? `${count} titre ajouté aux listes déjà importées`
+          : `${count} titres ajoutés aux listes déjà importées`,
+      skipped: {
+        collection: (name: string) =>
+          `Collection « ${name} » : aucun titre trouvé, elle n’a pas été créée.`,
+        playlist: (name: string) =>
+          `Playlist « ${name} » : aucun titre trouvé, elle n’a pas été créée.`,
+      },
       watchlist: (count: number) =>
         count <= 1 ? `${count} ajouté à « À regarder »` : `${count} ajoutés à « À regarder »`,
       undated: (count: number) =>

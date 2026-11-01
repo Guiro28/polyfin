@@ -108,6 +108,8 @@ func DefaultSettings() Settings {
 		VersionsOffered:     VersionsOfferedChoices[0],
 		StreamProxy:         "",
 		HiddenReleases:      []string{},
+		VersionEditionOrder: slices.Clone(VersionEditions),
+		VersionLabelRules:   []VersionLabelRule{},
 		SyncAddonSubtitles:  true,
 		MaxConversions:      DefaultMaxConversions,
 		MaxConversionHeight: ConversionHeights[0],
@@ -131,6 +133,7 @@ func DefaultSettings() Settings {
 		MaxAudioChannels:           AudioChannelLimits[0],
 		AheadSeconds:               DefaultAheadSeconds,
 		KeepConvertedVideo:         false,
+		FastStart:                  false,
 
 		Trickplay:          false,
 		TrickplayInterval:  DefaultTrickplayInterval,
@@ -234,6 +237,15 @@ func DefaultSettings() Settings {
 		ProviderCreateAccounts: false,
 		ProviderAdminClaim:     "",
 		ProviderAdminValue:     "",
+
+		SourceCachePreset:     SourceCacheSmall,
+		SourceCacheDays:       DefaultSourceCacheDays,
+		SourceCacheCreditDays: DefaultSourceCacheCreditDays,
+		PreloadNextEpisodes:   false,
+		PreloadEpisodes:       DefaultPreloadEpisodes,
+		PreloadMbps:           DefaultPreloadMbps,
+		PreloadReserveGB:      DefaultPreloadReserveGB,
+		PreloadWholeFiles:     false,
 	}
 }
 
@@ -299,6 +311,7 @@ func SettingsBounds() map[string]SettingBounds {
 		"mdblistRatingsKey":     text(MaxRatingsKeyBytes, d.MDBListRatingsKey),
 		"criticRatingShows":     choice(d.CriticRatingShows, anys(CriticRatingChoices)),
 		"tmdbKey":               text(MaxTMDBKeyBytes, d.TMDBKey),
+		"waitDigitalRelease":    is(d.WaitDigitalRelease),
 		"lyrics":                is(d.Lyrics),
 		"evenVolume":            is(d.EvenVolume),
 		"measureLoudness":       choice(d.MeasureLoudness, anys(MeasureLoudnessChoices)),
@@ -341,12 +354,16 @@ func SettingsBounds() map[string]SettingBounds {
 		"versionsOffered":      choice(d.VersionsOffered, anys(VersionsOfferedChoices)),
 		"streamProxy":          text(MaxStreamProxyBytes, d.StreamProxy),
 		"hiddenReleases":       choice(d.HiddenReleases, anys(ReleaseKinds)),
-		"syncAddonSubtitles":   is(d.SyncAddonSubtitles),
-		"maxConversions":       between(MinMaxConversions, MaxMaxConversions, d.MaxConversions),
-		"maxConversionHeight":  choice(d.MaxConversionHeight, anys(ConversionHeights)),
-		"convertedDownloads":   is(d.ConvertedDownloads),
-		"subtitleOcr":          choice(d.SubtitleOCR, anys(SubtitleOCRModes)),
-		"subtitleOcrTracks":    between(MinSubtitleOCRTracks, MaxSubtitleOCRTracks, d.SubtitleOCRTracks),
+		"versionEditionOrder":  choice(d.VersionEditionOrder, anys(VersionEditions)),
+		// Megabytes a minute; 0 puts the largest a minute first.
+		"versionMbPerMinute":  between(0, MaxVersionMBPerMinute, d.VersionMBPerMinute),
+		"versionLabelRules":   between(0, MaxVersionLabelRules, d.VersionLabelRules),
+		"syncAddonSubtitles":  is(d.SyncAddonSubtitles),
+		"maxConversions":      between(MinMaxConversions, MaxMaxConversions, d.MaxConversions),
+		"maxConversionHeight": choice(d.MaxConversionHeight, anys(ConversionHeights)),
+		"convertedDownloads":  is(d.ConvertedDownloads),
+		"subtitleOcr":         choice(d.SubtitleOCR, anys(SubtitleOCRModes)),
+		"subtitleOcrTracks":   between(MinSubtitleOCRTracks, MaxSubtitleOCRTracks, d.SubtitleOCRTracks),
 		// "" or the ISO 639-2/B code of a language (see TrackLanguages).
 		"defaultAudioLanguage":    choice(d.DefaultAudioLanguage, anys(TrackLanguages())),
 		"defaultSubtitleLanguage": choice(d.DefaultSubtitleLanguage, anys(TrackLanguages())),
@@ -373,6 +390,7 @@ func SettingsBounds() map[string]SettingBounds {
 		"encodingThreads":            between(0, MaxEncodingThreads, d.EncodingThreads),
 		"aheadSeconds":               between(MinAheadSeconds, MaxAheadSeconds, d.AheadSeconds),
 		"keepConvertedVideo":         is(d.KeepConvertedVideo),
+		"fastStart":                  is(d.FastStart),
 
 		"trickplay":          is(d.Trickplay),
 		"trickplayInterval":  between(MinTrickplayInterval, MaxTrickplayInterval, d.TrickplayInterval),
@@ -478,6 +496,15 @@ func SettingsBounds() map[string]SettingBounds {
 		"providerCreateAccounts": is(d.ProviderCreateAccounts),
 		"providerAdminClaim":     text(MaxProviderClaimBytes, d.ProviderAdminClaim),
 		"providerAdminValue":     text(MaxProviderValueBytes, d.ProviderAdminValue),
+
+		"sourceCachePreset":     choice(d.SourceCachePreset, anys(SourceCachePresets)),
+		"sourceCacheDays":       between(0, MaxSourceCacheDays, d.SourceCacheDays),
+		"sourceCacheCreditDays": between(0, MaxSourceCacheCreditDays, d.SourceCacheCreditDays),
+		"preloadNextEpisodes":   is(d.PreloadNextEpisodes),
+		"preloadEpisodes":       between(MinPreloadEpisodes, MaxPreloadEpisodes, d.PreloadEpisodes),
+		"preloadMbps":           between(MinPreloadMbps, MaxPreloadMbps, d.PreloadMbps),
+		"preloadReserveGb":      between(MinPreloadReserveGB, MaxPreloadReserveGB, d.PreloadReserveGB),
+		"preloadWholeFiles":     is(d.PreloadWholeFiles),
 	}
 }
 

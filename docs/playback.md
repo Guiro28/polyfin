@@ -64,13 +64,32 @@ Polyfin does nothing to an addon's streams but what this list says, in this orde
 
 Polyfin keeps no maximum of versions, and looks at no seeders, source, size or language unless a setting above says so.
 
-**Why a stream is missing:** apps do not say why. To find out:
+**Why a stream is missing:** apps do not say why. **Content › Versions**, in the admin app, tells it for a movie or an episode (see [Versions of a title](#versions-of-a-title)). Besides:
 
 - An addon that failed, timed out or answered only a notice logs `An addon could not list streams`, at Warn, with the addon and the error, and **System › Health › Addons** shows its last failure.
 - A version a play could not analyze logs `A version could not be analyzed`, at Info, with the addon and why; a source that fails later in a play logs why too, never its address. A torrent that did not start logs `A torrent did not start in time`, and **System › Health** shows it under **Needs attention**.
 - A stream left out as another title's logs `A version names another title`, at Debug, with the addon and the marker that names it (`S01E03`, `S02`, `1998`), once while Polyfin remembers the version.
-- Streams with nothing to play, torrents left out, files listed twice, and the hide rules and quality group log nothing. Compare the addon's list with the steps above: turn the hide rules and the quality group off, and check the addon's configuration where it was installed.
+- Streams with nothing to play, torrents left out, files listed twice, blocked files, and the hide rules and quality group log nothing: the Versions page shows them.
 - `GET /Polyfin/Items/{id}/Versions` tells how many versions are known and how many addons are still asked (see [Title pages](#title-pages)).
+
+#### Versions of a title
+
+**Content › Versions** finds a movie, or a series and then one of its episodes, as a user sees it: the administrator signed in, or the user picked under **As user**, since versions depend on the user's own addons, torrents, quality group and audio language. For that user, it lists every stream each addon listed, source by source, in the addons' order, with:
+
+- its labels as read (height, codec, HDR, audio languages, MULTI, source tier, audio format, edition), and, once analyzed, what the version rules know of it, with its size per minute of runtime;
+- the [label rules](#label-rules) matching it, with its score under them;
+- what became of it: its place among the versions offered, or the step above that left it out: nothing to play, torrents off for the user, the same file listed before, a mirror, a blocked file, failed lately with why (without the source's address), the hide rule that hides it with what it matched, or the quality group. A torrent that did not start lately is marked so: it stays listed, and plays that pick no version pass it over;
+- how versions are ordered: the criteria of **Order versions by**, the user's quality group, and whether the hide rules would hide every version, so that none is hidden;
+- the title's last plays, by any user, kept in memory until a restart, the last 5 of each title: who played it on which device and app, whether the app picked a version in its version menu, each version tried and what came of it (plays, could not be read, did not start, the limit of torrents or conversions at once, a conversion the user may not have, not analyzed before), and the version chosen with how it plays.
+
+Its actions:
+
+- **Pin** a version: for every user, it comes first in the title's details and `PlaybackInfo`, before the order the criteria give, the others keeping theirs, so that Play starts it and the versions tried when it does not work come after it. A version the user picks in the version menu still plays. A pin brings back no version that failed lately, that a hide rule hides, or that the user's quality group leaves out. The pin names the file of that title, by its name and size, else its link: when no addon lists it any more, the page shows it as missing and the usual order applies. **Unpin** ends it.
+- **Block** a file, with a reason, for **This title** or **Every title**: every title blocks the same file name and size wherever an addon lists it. A blocked file is listed nowhere, not in details, `PlaybackInfo`, downloads or trickplay, and its version is refused by its own identifier. Unlike the hide rules, blocks may leave a title with no version. **Unblock** lifts it. The page lists the title's blocks, those of files no addon lists now included; the blocks of every title are listed under the search. Pins and blocks are kept in the database, without links: a file is kept as a hash of its identity.
+- **Analyze now** analyzes a version, its recent failure forgotten, and tells why it could not be analyzed. Torrents are analyzed by plays only.
+- **Ask addons again** asks the user's addons again for the title's streams, as `POST /Polyfin/Items/{id}/Versions/Search` does, once every 20 seconds at most; the page follows the addons still asked.
+
+**Compared with Jellyfin:** Jellyfin 12.4 has no page explaining a title's versions, and no way to pin or block one: a title's versions are the files it found in its folders, listed in the order it gives them. A pin changes only the order of `MediaSources`, which every Jellyfin app reads.
 
 #### Versions of another title
 
@@ -305,13 +324,16 @@ The **Version order** group of **Settings › Playback** orders a movie's or an 
 
 | Setting | Where | Default | What it does |
 |---|---|---|---|
-| **Order versions by** | **Settings › Playback** | None | Up to four criteria, each grouping the versions and the next sorting within them: **Preferred audio language**; **Resolution, highest first** or **Resolution, lowest first**; **File size, largest first** or **File size, smallest first**; **Video codec, in the order below**; **HDR and Dolby Vision first** or **HDR and Dolby Vision last**; **Source, in the order below**. Versions that tie keep the addons' order. |
+| **Order versions by** | **Settings › Playback** | None | Up to six criteria, each grouping the versions and the next sorting within them: **Preferred audio language**; **Resolution, highest first** or **Resolution, lowest first**; **File size, largest first**, **File size, smallest first** or **Size per minute of runtime, as set below**; **Video codec, in the order below**; **HDR and Dolby Vision first** or **HDR and Dolby Vision last**; **Source, in the order below**; **Source: disc copy, Blu-ray, web, DVD, then TV**; **Audio: lossless and Atmos first, then most channels**; **Edition, in the order below**; **Score of the label rules, highest first**. Versions that tie keep the addons' order. |
 | **Order of video codecs** | **Settings › Playback** | AV1, HEVC, VP9, H.264, VC-1, MPEG-4 Part 2, MPEG-2 | The order the video codec criterion puts versions in. |
 | **Order of sources** | **Settings › Playback** | The order of **Content › Sources** | The order the source criterion puts versions in: the server's addons and folders that give versions of movies and episodes, moved by drag or with the arrows. |
+| **Order of editions** | **Settings › Playback** | Theatrical cut, Extended cut, Director's cut, IMAX | The order the edition criterion puts versions in. |
+| **Size per minute to aim at (MB, 0 = largest)** | **Settings › Playback** | 0 (up to 1,000) | The size per minute criterion puts first the versions closest to this many megabytes (10^6 bytes) a minute of runtime; 0 puts the largest a minute first. |
 | **Hide versions larger than (GB, 0 = no limit)** | **Settings › Playback** | 0 (up to 1,000) | Hides the versions known to be larger. |
 | **Hide these video codecs** | **Settings › Playback** | None | Hides the versions known to be in these codecs. |
 | **Hide versions whose labels contain** | **Settings › Playback** | None (up to 50 lines) | Hides the versions whose name, description or file name holds one of these words, one a line, in any letter case: for addons that say in their labels that a file is not ready to play yet. |
 | **Hide low-quality releases** | **Settings › Playback** | None | Hides the versions whose labels tag them as one of the kinds ticked: **Camera copies (CAM, HDCAM)**, **Telesyncs (TS, HDTS, TELESYNC)**, **Telecines (TC, TELECINE)**, **Screeners (SCR, DVDSCR)** and **Early copies (R5, WORKPRINT)**, read as told below. |
+| **Label rules** | **Settings › Playback** | None (up to 40 rules) | Each rule is a word or a regular expression, and either hides the versions whose labels it matches or adds its score, from -100 to 100, to theirs (see [Label rules](#label-rules)). |
 
 **What the rules know of a version.** Nothing is read from the source for them. For each thing they look at, they take the version's analysis when Polyfin has one, else the description of its file from [RemuxDB](#tracks-from-remuxdb) when it is on, else its addon's labels:
 
@@ -319,7 +341,11 @@ The **Version order** group of **Settings › Playback** orders a movie's or an 
 - the size the addon gives (`videoSize`);
 - the codec its labels name: HEVC, x265 or H.265; H.264, x264 or AVC; AV1; VP9; VC-1; MPEG-2; Xvid or DivX;
 - HDR when they name HDR, HDR10, HDR10+, HLG, DV, DoVi or Dolby Vision. Labels that name the height or the codec but no HDR count as SDR;
-- the audio languages they name: language names in English (French, German…), some others used by releases (TRUEFRENCH, VFF, Latino, Castellano…), ISO 639-2 codes in capitals (ENG, ITA, GER…) and flags, with their regional variants (see [Regional audio](#regional-audio)). MULTI and DUAL say a version has several languages. The languages named as the subtitles' (`Sub ITA`, `French Subs`) are not the audio's. A word of the movie's or the series' name is never taken for a language.
+- the audio languages they name: language names in English (French, German…), some others used by releases (TRUEFRENCH, VFF, Latino, Castellano…), ISO 639-2 codes in capitals (ENG, ITA, GER…) and flags, with their regional variants (see [Regional audio](#regional-audio)). MULTI and DUAL say a version has several languages. The languages named as the subtitles' (`Sub ITA`, `French Subs`) are not the audio's. A word of the movie's or the series' name is never taken for a language;
+- the source tier, from the words of its labels after the title's own (read as **Hide low-quality releases** reads its tags, below): a disc's full copy (a release's word for a full copy, `BDMV`, `BD25` to `BD100`, `DVD5`, `DVD9`, `COMPLETE BLURAY`), then a Blu-ray encode (`BluRay`, `Blu-ray`, `BDRip`, `BRRip`), a web copy (`WEB`, `WEB-DL`, `WEBRip`), a DVD encode (`DVD`, `DVDRip`) and a TV capture (`HDTV`, `PDTV`, `SDTV`, `TVRip`, `SATRip`, `DSR`). A DVD's full copy is a disc's full copy: the tier tells the source, not the height. When the labels name several, the best counts, so `BluRay` with a full copy's word is a full copy;
+- the audio format of its best track: lossless (Dolby TrueHD, DTS-HD Master Audio, FLAC, ALAC, PCM), object-based (Dolby Atmos, DTS:X), and its channels. An analysis reads them from the tracks, ffprobe naming Atmos and DTS:X in a track's profile; labels from `TrueHD`, `DTS-HD MA`, `FLAC`, `LPCM`, `Atmos`, `DTS-X` or `DTS:X`, and layouts such as `5.1`, `7.1`, `DDP5.1` or `AAC2.0`. `DTS-HD` without `MA` is lossy;
+- the edition its labels name after the title's own words, the first one: `Theatrical`, `Extended`, `Director's Cut` or `Directors.Cut`, `IMAX`. A version naming none counts as the theatrical cut, which releases do not name;
+- the size per minute: its size divided by its runtime, its analysis's once it has one, else the title's.
 
 A version a criterion knows nothing of comes after those it knows, and a hide rule never hides it.
 
@@ -335,10 +361,16 @@ A line ending with `.ts` names an MPEG-TS file: that extension is no telesync. S
 
 **Source, in the order below** groups a title's versions by the addon or folder that gives them, the next criteria sorting each source's versions; placed after other criteria, it orders the versions they tie on. The sources **Order of sources** lists come first, in its order, then the others in the addons' order: a source added since the list was saved comes after those it lists, until it is moved there, and a user's own addons come after the server's sources. A source removed leaves the list. The list orders versions only: which addon describes a title, the order of the addons' subtitles and that of search results keep the order of **Content › Sources**, as versions do while the criterion is not chosen (see [Addons and libraries](addons-and-libraries.md)). It is how local files come first, whatever the other criteria (see [Local folders](local-folders.md#versions)).
 
+**Audio: lossless and Atmos first, then most channels** puts first the versions whose best track is both lossless and object-based (TrueHD with Atmos, DTS-HD Master Audio with DTS:X), then those that are one of them, then the others; within each, the most channels first. A version whose audio nothing tells comes last.
+
+**Edition, in the order below** groups the versions by their edition in the order of **Order of editions**: put **Extended cut** first to play the extended cut where a title has one, and the theatrical cut elsewhere.
+
+**Size per minute of runtime, as set below** compares versions of titles of any length alike: with **Size per minute to aim at** at 50, a two-hour movie's versions closest to 6 GB come first, and a 45-minute episode's closest to 2.25 GB. At 0 it puts the largest a minute first, which differs from **File size, largest first** only where the versions' runtimes differ, such as an extended cut's. It is one kind with the file size criteria: the order holds one of the three at most.
+
 **In what order things happen:** these steps follow steps 1 to 5 of [Which streams become versions](#which-streams-become-versions).
 
 1. The versions that failed lately are left out (see [Sources that fail](#sources-that-fail)), but the torrents that did not start in time, which stay in place (see [Which streams become versions](#which-streams-become-versions), step 6).
-2. The hide rules apply, with the versions of [another title](#versions-of-another-title), which are hidden whatever the rules. When they would hide every version of a title, none is hidden.
+2. The hide rules apply, with the versions of [another title](#versions-of-another-title), which are hidden whatever the rules, and the [label rules](#label-rules) that hide come last. When they would hide every version of a title, none is hidden.
 3. The user's [quality group](users.md#quality-groups) leaves out the taller versions. When no version fits, the closest height comes first, and the criteria order the versions of the same height.
 4. The criteria order the others.
 
@@ -351,6 +383,18 @@ A line ending with `.ts` names an MPEG-TS file: that extension is no telesync. S
 
 - Jellyfin 12.4 has no setting that hides versions: it lists every version of a title, whatever its size, codec or name (its server and library options have none, [`ServerConfiguration.cs`](https://github.com/jellyfin/jellyfin/blob/v12.4/MediaBrowser.Model/Configuration/ServerConfiguration.cs), [`LibraryOptions.cs`](https://github.com/jellyfin/jellyfin/blob/v12.4/MediaBrowser.Model/Configuration/LibraryOptions.cs)). The version order rules are Polyfin's own.
 - Jellyfin knows the same release tags only to cut them from a file's name when it finds a title's name: its first `CleanStrings` expression ([`NamingOptions.cs`, line 154](https://github.com/jellyfin/jellyfin/blob/v12.4/Emby.Naming/Common/NamingOptions.cs#L152-L154)) ends the name at the first of `cam`, `ts`, `tc`, `r5`, `dvdscr`, `screener`, `telesync` or `telecine`, among many other tags, as a whole word after at least one word of the title, in any letter case. Polyfin reads tags the same way, after the title's words, to hide versions rather than to name titles.
+- Jellyfin 12.4 orders a title's versions itself, the same for every app: the version opened first, then files before disc folders, 2D before 3D, the widest first ([`BaseItem.cs`, lines 1209 to 1212](https://github.com/jellyfin/jellyfin/blob/v12.4/MediaBrowser.Controller/Entities/BaseItem.cs#L1209-L1212)). Polyfin orders them on the server too, so every app's version menu shows the order, but by the criteria chosen here. Jellyfin reads no source tier, audio format, edition or size per minute for the order, and has no label rules.
+
+#### Label rules
+
+**Label rules**, at the end of the **Version order** group, read each version's name, description and file name, as **Hide versions whose labels contain** does. A rule is a word, found anywhere in them in any letter case, or, with **Regular expression** ticked, a regular expression, matched in any letter case: `\bx265\b`, `^\[[^]]*\]`. Expressions take the usual syntax of classes, groups, alternatives, repeats and anchors, without back-references or look-around. Each rule either:
+
+- **Hide**: it hides the versions it matches, after the other hide rules and with them: when they would hide every version of a title, none is hidden;
+- **Add a score**: it adds its score, from -100 to 100 but not 0, to the versions it matches. A version's score is the sum of the scores of the rules it matches, 0 for none.
+
+The criterion **Score of the label rules, highest first** orders versions by their score where it stands among the criteria. With scoring rules and without that criterion, the score orders the versions after every criterion chosen, so that rules alone order them. Ties keep the addons' order.
+
+Up to 40 rules, of 200 characters each at most. A regular expression must be valid when saved, and not too large: Polyfin matches them in a time that grows only with the size of the expression and of the labels, both bounded (the labels read are the first 4,096 bytes), so that no rule can take long whatever it says. Rules apply to every user.
 
 ### Version names
 
@@ -436,6 +480,46 @@ The files of local folders go through it too. Those of S3 buckets, SFTP folders 
 - Once a version's keyframe index is known, Polyfin reads the bytes of its first segment before the app asks for them, 64 MiB at most: from `PlaybackInfo`, and when a title's details open with [Prepare playback in advance](#preparing-playback-in-advance) on. For a resume, it reads the file's head, which FFmpeg probes, and the segment the playback resumes at. The index of a Matroska file is read during its analysis.
 - A file relayed to an app is served from the same cache: what was read before takes no request, and a seek reads only what is missing.
 - Before sending an app to a source for direct play, Polyfin checks that it answers, unless it answered Polyfin's own reads at that address within 2 minutes, as the analysis just did.
+
+### Keeping the files read across restarts
+
+The source cache keeps the parts of the files it read from one start to the next: a title played again, or resumed after a restart or an update, reads from the disk without a request to its source. **Disk space and retention** under **Settings › Playback** chooses a preset, which sets the fields below it; changing one of them makes the preset **Custom**. Its help tells the space free on the disk of the folder for files being read.
+
+| Preset | Disk space | Kept for | Extra days for each play again | Next episodes preloaded |
+|---|---|---|---|---|
+| **Off** | 2 GB | Emptied at each start, as before 0.57 | 0 | Opening and end |
+| **Small** (the default) | 10 GB | 3 days | 1 | Opening and end |
+| **Everyday** | 50 GB | 14 days | 3 | Opening and end |
+| **Large** | 250 GB | 60 days | 7 | Whole files |
+
+| Setting | Where | Default | What it does |
+|---|---|---|---|
+| **Disk space for files being read (GB)** | **Settings › Playback** | 10 GB | Bounds the parts kept, as above. |
+| **Keep parts read for (days)** | **Settings › Playback** | 3 (0 to 365) | How long a part is kept once last read, restarts included. 0 empties the cache at each start. |
+| **Extra days for each play again** | **Settings › Playback** | 1 (0 to 30) | How much longer the parts of a title played again are kept, for each play after the first. |
+
+- **What is kept:** the files of addons, and of S3 buckets, SFTP folders and rclone remotes, by their version, whatever link the addon gives for them next time. A torrent's file is never kept: its pieces are removed as it stops, by design (see [Torrents](torrents.md)). A file whose size was never told, such as a live video, is not kept either.
+- **A link that changed:** after a restart, a file opened at the same link is read from the disk at once. One its addon now gives another link for is asked once, for its size: the same size reads the parts kept, another size is another file, and its parts kept are removed (`A source's link now names a file of another size: the blocks kept of it were removed`, at Info).
+- **Plays again:** a title counts as played again when a playback reads it 6 hours or more after the last one. Each play after the first, 8 at most, adds the extra days to its parts, which are removed after those of titles played once, both when the disk space is full and when their days are over.
+- **Which parts go first:** past the disk space, the parts read longest ago go first, the extra days counted; those read in the last 30 seconds stay. Past their days, parts are removed at start and every hour.
+- **Crashes:** what each file keeps is written beside its parts 30 seconds after a change, and as Polyfin stops, once the parts reached the disk. After a crash, the parts read during the last 30 seconds are read again; a part never claimed is never served.
+- **Health:** **System › Health › Source cache** tells the space used against the disk space, how long parts are kept, the files open and the files kept, and **Read from the disk**: the share of the bytes FFmpeg, ffprobe and the apps read since the start that had been read once already, or were kept from before the start. Bytes fetched from the file's host since the start count as not from the disk the first time they are read, even when they were read ahead of the player or preloaded, so a first play reads close to 0% from the disk.
+
+**For app developers:** `GET /admin/api/health` gives the cache as `cache`: `used`, `limit`, `sources` (files open), `kept` (files with parts kept), `hits` and `misses` (bytes read since the start that were read before or kept from before the start, and bytes read for the first time since they were fetched), `days` and `torrents`. `GET /admin/api/settings` gives `sourceCachePreset`, `sourceCacheDays`, `sourceCacheCreditDays`, each preset's values as `sourceCachePresetLimits`, and `readingFree`, the bytes free on the disk of the folder for files being read. A `PUT` that sets `cacheSizeGb`, `sourceCacheDays`, `sourceCacheCreditDays` or `preloadWholeFiles` to another value than its preset's, without a preset, makes it `custom`.
+
+### Preloading the next episodes
+
+With **Preload the next episodes** on, under **Settings › Playback** and off by default, Polyfin reads ahead the next episodes of the series each user watches, so that they start from the disk, after a restart too:
+
+- every 15 minutes, starting 2 minutes after Polyfin starts, while nothing plays: no playback in **Home › Now playing**;
+- for each user who played or started an episode in the last 14 days, the first 5 series of their Next Up, the latest first: the episode Next Up offers and the ones after it, **Episodes per series** in all (1 by default, 3 at most);
+- the version Play would pick first, under the user's parental control, hidden titles, [version order](#version-order) and quality group: its first 128 MiB and its last 4 MiB, where many files keep their index, or the whole file with **Preload whole files**, which the **Large** preset turns on. A torrent version is never preloaded, nor a version that failed lately;
+- at most a quarter of **Disk space for files being read (GB)** a pass, so that what was played stays;
+- at **Speed limit (Mbit/s)** on average (20 by default), and only while the disk of the folder for files being read keeps **Free space to keep (GB)** free (20 by default).
+
+A playback starting stops it before the next 8 MiB. Its reads are background reads, which give way to playbacks on the same host (see above). What it read is kept as any part read, and preloading the same episodes again asks nothing.
+
+**Compared with Jellyfin:** Jellyfin reads files where they are, and has no source cache to keep or preload (see [Configuration](configuration.md#folders-for-conversion-files-being-read-and-the-cache)). Polyfin's apply to addons' and remote storages' files, which a restart would otherwise download again.
 
 ### Sources that fail
 

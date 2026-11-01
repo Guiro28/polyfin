@@ -12,6 +12,7 @@ import (
 
 	"github.com/moodiness/polyfin/internal/accounts"
 	"github.com/moodiness/polyfin/internal/config"
+	"github.com/moodiness/polyfin/internal/diskspace"
 	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/localization"
 	"github.com/moodiness/polyfin/internal/mediasegments"
@@ -122,6 +123,9 @@ type limitsJSON struct {
 	// QualityGroup is the tallest video the user is offered, in lines: 480,
 	// 720, 1080, 1440 or 2160, or 0 for Original, no limit.
 	QualityGroup int `json:"qualityGroup"`
+	// LiveTvChannels chooses the Live TV channels of the server's sources
+	// the user sees.
+	LiveTvChannels channelRuleJSON `json:"liveTvChannels"`
 }
 
 func newLimitsJSON(limits accounts.Limits) limitsJSON {
@@ -149,6 +153,7 @@ func newLimitsJSON(limits accounts.Limits) limitsJSON {
 		TorrentStreams:       limits.TorrentStreams,
 		RemoteAccess:         limits.RemoteAccess,
 		QualityGroup:         limits.QualityGroup,
+		LiveTvChannels:       newChannelRuleJSON(limits.LiveTvChannels),
 	}
 }
 
@@ -175,6 +180,7 @@ type limitChanges struct {
 	RemoteAccess         *bool                    `json:"remoteAccess"`
 	LiveTvManagement     *bool                    `json:"liveTvManagement"`
 	QualityGroup         *int                     `json:"qualityGroup"`
+	LiveTvChannels       *channelRuleJSON         `json:"liveTvChannels"`
 }
 
 // changes returns what l sets, or answers the request with its error and
@@ -220,6 +226,9 @@ func (l limitChanges) changes(w http.ResponseWriter) (accounts.UserChanges, bool
 			schedules = append(schedules, accounts.AccessSchedule{Day: s.Day, StartHour: s.StartHour, EndHour: s.EndHour})
 		}
 		changes.AccessSchedules = &schedules
+	}
+	if l.LiveTvChannels != nil {
+		changes.LiveTvChannels = new(l.LiveTvChannels.rule())
 	}
 	return changes, true
 }
@@ -499,9 +508,11 @@ type settingsJSON struct {
 	MDBListRatingsKey    *string `json:"mdblistRatingsKey,omitempty"`
 	CriticRatingShows    *string `json:"criticRatingShows"`
 	// TMDBKeySet and TMDBKey are the same for the server's TMDB key, which
-	// TMDB checks too.
-	TMDBKeySet bool    `json:"tmdbKeySet"`
-	TMDBKey    *string `json:"tmdbKey,omitempty"`
+	// TMDB checks too. WaitDigitalRelease hides movies until they are out
+	// at home, as TMDB tells.
+	TMDBKeySet         bool    `json:"tmdbKeySet"`
+	TMDBKey            *string `json:"tmdbKey,omitempty"`
+	WaitDigitalRelease *bool   `json:"waitDigitalRelease"`
 	// The security settings keep their current values when a PUT leaves
 	// them out, too.
 	PersonalAddons     *bool `json:"personalAddons"`
@@ -534,7 +545,7 @@ type settingsJSON struct {
 	VersionAttempts  *int  `json:"versionAttempts"`
 	PreferDirectPlay *bool `json:"preferDirectPlay"`
 	// The version rules keep their current values when a PUT leaves them
-	// out: VersionOrder holds up to four criteria (see
+	// out: VersionOrder holds up to six criteria (see
 	// accounts.VersionCriteria), VersionCodecOrder every video codec once,
 	// VersionSourceOrder the IDs of some of VersionSources, each once, and
 	// HiddenVersionWords the words, one per entry. VersionSources are the
@@ -550,6 +561,14 @@ type settingsJSON struct {
 	// HiddenReleases are kinds of accounts.ReleaseKinds, each once; it keeps
 	// its current value when a PUT leaves it out.
 	HiddenReleases *[]string `json:"hiddenReleases"`
+	// VersionEditionOrder holds every edition once (see
+	// accounts.VersionEditions), VersionMBPerMinute the megabytes a minute
+	// the size-per-minute criterion aims at, 0 for the largest, and
+	// VersionLabelRules the label rules, in order; each keeps its current
+	// value when a PUT leaves it out.
+	VersionEditionOrder *[]string                    `json:"versionEditionOrder"`
+	VersionMBPerMinute  *int                         `json:"versionMbPerMinute"`
+	VersionLabelRules   *[]accounts.VersionLabelRule `json:"versionLabelRules"`
 	// NameHowVersionsPlay keeps its current value when a PUT leaves it out.
 	NameHowVersionsPlay *bool `json:"nameHowVersionsPlay"`
 	// VersionsOffered is "all" or "qualities".
@@ -599,6 +618,7 @@ type settingsJSON struct {
 	EncodingThreads            *int                   `json:"encodingThreads"`
 	AheadSeconds               *int                   `json:"aheadSeconds"`
 	KeepConvertedVideo         *bool                  `json:"keepConvertedVideo"`
+	FastStart                  *bool                  `json:"fastStart"`
 	ConversionHardware         conversionHardwareJSON `json:"conversionHardware"`
 	// The thumbnail settings keep their current values when a PUT leaves
 	// them out.
@@ -780,6 +800,23 @@ type settingsJSON struct {
 	PosterBadges    *bool   `json:"posterBadges"`
 	PosterBadgeSize *string `json:"posterBadgeSize"`
 	PosterTemplate  *string `json:"posterTemplate"`
+	// The source cache and the next-episode preloading keep their current
+	// values when a PUT leaves them out. A preset other than custom sets
+	// cacheSizeGb, sourceCacheDays, sourceCacheCreditDays and
+	// preloadWholeFiles as SourceCachePresetLimits tell; a PUT setting one
+	// of them to another value without a preset makes it custom.
+	// ReadingFree is the space free on the disk of the folder for files
+	// being read, null when unknown; a PUT ignores it and the limits.
+	SourceCachePreset       *string                          `json:"sourceCachePreset"`
+	SourceCacheDays         *int                             `json:"sourceCacheDays"`
+	SourceCacheCreditDays   *int                             `json:"sourceCacheCreditDays"`
+	PreloadNextEpisodes     *bool                            `json:"preloadNextEpisodes"`
+	PreloadEpisodes         *int                             `json:"preloadEpisodes"`
+	PreloadMbps             *int                             `json:"preloadMbps"`
+	PreloadReserveGB        *int                             `json:"preloadReserveGb"`
+	PreloadWholeFiles       *bool                            `json:"preloadWholeFiles"`
+	SourceCachePresetLimits map[string]sourceCacheLimitsJSON `json:"sourceCachePresetLimits,omitempty"`
+	ReadingFree             *int64                           `json:"readingFree"`
 	// The identity provider keeps its current values when a PUT leaves
 	// them out; an empty issuer or client ID turns its sign-in off. The
 	// client secret is never sent back: ProviderClientSecretSet tells
@@ -866,6 +903,7 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		MDBListRatingsKeySet:  settings.MDBListRatingsKey != "",
 		CriticRatingShows:     &settings.CriticRatingShows,
 		TMDBKeySet:            settings.TMDBKey != "",
+		WaitDigitalRelease:    &settings.WaitDigitalRelease,
 		Lyrics:                &settings.Lyrics,
 		EvenVolume:            &settings.EvenVolume,
 		MeasureLoudness:       &settings.MeasureLoudness,
@@ -902,6 +940,9 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		VersionsOffered:       &settings.VersionsOffered,
 		StreamProxy:           &settings.StreamProxy,
 		HiddenReleases:        &settings.HiddenReleases,
+		VersionEditionOrder:   &settings.VersionEditionOrder,
+		VersionMBPerMinute:    &settings.VersionMBPerMinute,
+		VersionLabelRules:     &settings.VersionLabelRules,
 		SyncAddonSubtitles:    &settings.SyncAddonSubtitles,
 		MaxConversions:        &settings.MaxConversions,
 		MaxConversionHeight:   &settings.MaxConversionHeight,
@@ -935,6 +976,7 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		EncodingThreads:            &settings.EncodingThreads,
 		AheadSeconds:               &settings.AheadSeconds,
 		KeepConvertedVideo:         &settings.KeepConvertedVideo,
+		FastStart:                  &settings.FastStart,
 
 		Trickplay:          &settings.Trickplay,
 		TrickplayInterval:  &settings.TrickplayInterval,
@@ -1035,6 +1077,14 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		PosterBadges:            &settings.PosterBadges,
 		PosterBadgeSize:         &settings.PosterBadgeSize,
 		PosterTemplate:          &settings.PosterTemplate,
+		SourceCachePreset:       &settings.SourceCachePreset,
+		SourceCacheDays:         &settings.SourceCacheDays,
+		SourceCacheCreditDays:   &settings.SourceCacheCreditDays,
+		PreloadNextEpisodes:     &settings.PreloadNextEpisodes,
+		PreloadEpisodes:         &settings.PreloadEpisodes,
+		PreloadMbps:             &settings.PreloadMbps,
+		PreloadReserveGB:        &settings.PreloadReserveGB,
+		PreloadWholeFiles:       &settings.PreloadWholeFiles,
 
 		ProviderIssuer:          &settings.ProviderIssuer,
 		ProviderName:            &settings.ProviderName,
@@ -1339,6 +1389,12 @@ func (h *handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !h.knownChannelGroups(w, r, changes.LiveTvChannels, func() (accounts.ChannelRule, error) {
+		user, err := h.Accounts.User(r.Context(), id)
+		return user.LiveTvChannels, err
+	}) {
+		return
+	}
 	if id == session.User.ID && locksOutCaller(r, changes.RemoteAccess) {
 		writeError(w, http.StatusConflict, "remote_access_self")
 		return
@@ -1532,7 +1588,35 @@ func (h *handler) settingsJSON(ctx context.Context, settings accounts.Settings) 
 		body.ConversionHardware.Bwdif = encoder.HasFilters("bwdif")
 		body.ConversionHardware.OlderDriverFFmpeg = newOlderDriverJSON(encoder)
 	}
+	body.SourceCachePresetLimits = map[string]sourceCacheLimitsJSON{}
+	for preset, limits := range accounts.SourceCachePresetLimits {
+		body.SourceCachePresetLimits[preset] = sourceCacheLimitsJSON{SizeGB: limits.SizeGB, Days: limits.Days,
+			CreditDays: limits.CreditDays, WholeFiles: limits.WholeFiles}
+	}
+	if reading := h.Health.Folders.Reading; reading != "" {
+		if free, _, _, ok := diskspace.Measure(reading); ok {
+			body.ReadingFree = &free
+		}
+	}
 	return body, nil
+}
+
+// sourceCacheLimitsJSON is what a source cache preset sets (see
+// accounts.SourceCacheLimits).
+type sourceCacheLimitsJSON struct {
+	SizeGB     int  `json:"cacheSizeGb"`
+	Days       int  `json:"sourceCacheDays"`
+	CreditDays int  `json:"sourceCacheCreditDays"`
+	WholeFiles bool `json:"preloadWholeFiles"`
+}
+
+// presetChanged reports whether settings set a limit of the source cache
+// to another value than their preset's: an older page, or an API client,
+// that changed the limit alone.
+func presetChanged(settings accounts.Settings) bool {
+	limits, ok := accounts.SourceCachePresetLimits[settings.SourceCachePreset]
+	return ok && limits != accounts.SourceCacheLimits{SizeGB: settings.CacheSizeGB, Days: settings.SourceCacheDays,
+		CreditDays: settings.SourceCacheCreditDays, WholeFiles: settings.PreloadWholeFiles}
 }
 
 // conversionHardwareJSON is what conversions run on: the GPU chosen, null
@@ -1629,6 +1713,7 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		MDBListRatingsKey:     ratingsKey,
 		CriticRatingShows:     valueOr(body.CriticRatingShows, current.CriticRatingShows),
 		TMDBKey:               tmdbKey,
+		WaitDigitalRelease:    valueOr(body.WaitDigitalRelease, current.WaitDigitalRelease),
 		Lyrics:                valueOr(body.Lyrics, current.Lyrics),
 		EvenVolume:            valueOr(body.EvenVolume, current.EvenVolume),
 		MeasureLoudness:       valueOr(body.MeasureLoudness, current.MeasureLoudness),
@@ -1667,6 +1752,9 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		VersionsOffered:       valueOr(body.VersionsOffered, current.VersionsOffered),
 		StreamProxy:           valueOr(body.StreamProxy, current.StreamProxy),
 		HiddenReleases:        valueOr(body.HiddenReleases, current.HiddenReleases),
+		VersionEditionOrder:   valueOr(body.VersionEditionOrder, current.VersionEditionOrder),
+		VersionMBPerMinute:    valueOr(body.VersionMBPerMinute, current.VersionMBPerMinute),
+		VersionLabelRules:     valueOr(body.VersionLabelRules, current.VersionLabelRules),
 		SyncAddonSubtitles:    valueOr(body.SyncAddonSubtitles, current.SyncAddonSubtitles),
 		MaxConversions:        valueOr(body.MaxConversions, current.MaxConversions),
 		MaxConversionHeight:   valueOr(body.MaxConversionHeight, current.MaxConversionHeight),
@@ -1699,6 +1787,7 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		EncodingThreads:            valueOr(body.EncodingThreads, current.EncodingThreads),
 		AheadSeconds:               valueOr(body.AheadSeconds, current.AheadSeconds),
 		KeepConvertedVideo:         valueOr(body.KeepConvertedVideo, current.KeepConvertedVideo),
+		FastStart:                  valueOr(body.FastStart, current.FastStart),
 
 		Trickplay:          valueOr(body.Trickplay, current.Trickplay),
 		TrickplayInterval:  valueOr(body.TrickplayInterval, current.TrickplayInterval),
@@ -1797,6 +1886,15 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		PosterBadgeSize:      valueOr(body.PosterBadgeSize, current.PosterBadgeSize),
 		PosterTemplate:       valueOr(body.PosterTemplate, current.PosterTemplate),
 
+		SourceCachePreset:     valueOr(body.SourceCachePreset, current.SourceCachePreset),
+		SourceCacheDays:       valueOr(body.SourceCacheDays, current.SourceCacheDays),
+		SourceCacheCreditDays: valueOr(body.SourceCacheCreditDays, current.SourceCacheCreditDays),
+		PreloadNextEpisodes:   valueOr(body.PreloadNextEpisodes, current.PreloadNextEpisodes),
+		PreloadEpisodes:       valueOr(body.PreloadEpisodes, current.PreloadEpisodes),
+		PreloadMbps:           valueOr(body.PreloadMbps, current.PreloadMbps),
+		PreloadReserveGB:      valueOr(body.PreloadReserveGB, current.PreloadReserveGB),
+		PreloadWholeFiles:     valueOr(body.PreloadWholeFiles, current.PreloadWholeFiles),
+
 		ProviderIssuer:         valueOr(body.ProviderIssuer, current.ProviderIssuer),
 		ProviderName:           valueOr(body.ProviderName, current.ProviderName),
 		ProviderClientID:       valueOr(body.ProviderClientID, current.ProviderClientID),
@@ -1805,6 +1903,9 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		ProviderCreateAccounts: valueOr(body.ProviderCreateAccounts, current.ProviderCreateAccounts),
 		ProviderAdminClaim:     valueOr(body.ProviderAdminClaim, current.ProviderAdminClaim),
 		ProviderAdminValue:     valueOr(body.ProviderAdminValue, current.ProviderAdminValue),
+	}
+	if body.SourceCachePreset == nil && presetChanged(next) {
+		next.SourceCachePreset = accounts.SourceCacheCustom
 	}
 	if code := h.unwritableFolder(next, current); code != "" {
 		writeError(w, http.StatusBadRequest, code)

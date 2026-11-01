@@ -72,6 +72,9 @@ func TestSettingsBoundsAreThoseChecked(t *testing.T) {
 		// Each way of serving HTTPS needs what it serves with.
 		changed.HTTPSCertificate, changed.HTTPSPrivateKey = systemPath("/certs/fullchain.pem"), systemPath("/certs/privkey.pem")
 		changed.ACMEHosts, changed.ACMETerms = []string{"media.example.org"}, true
+		// The source cache's limits are checked as set, which only the
+		// custom preset keeps.
+		changed.SourceCachePreset = SourceCacheCustom
 		field, _ := boundField(&changed, name)
 		field.Set(reflect.ValueOf(value).Convert(field.Type()))
 		_, err := store.UpdateSettings(ctx, changed)
@@ -126,6 +129,9 @@ func TestSettingsBoundsAreThoseChecked(t *testing.T) {
 			case "torrentProxy":
 				// A proxy is a host and a port.
 				end = ":1080"
+			case "streamProxy":
+				// A proxy's address, its scheme, host and port.
+				start, end = "socks5://", ":1080"
 			case "posterTemplate":
 				// The template names an identifier to fill in.
 				start, end = "https://", "/{imdb_id}"
@@ -178,6 +184,8 @@ func TestSettingsBoundsAreThoseChecked(t *testing.T) {
 					entries = append(entries, "App "+strconv.Itoa(i))
 				case field.Type().Elem() == reflect.TypeFor[ID]():
 					entries = append(entries, ID{byte(i >> 8), byte(i), 1})
+				case field.Type().Elem() == reflect.TypeFor[VersionLabelRule]():
+					entries = append(entries, VersionLabelRule{Text: "rule " + strconv.Itoa(i), Hide: true})
 				default:
 					entries = append(entries, netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 0, byte(i >> 8), byte(i)}), 32))
 				}

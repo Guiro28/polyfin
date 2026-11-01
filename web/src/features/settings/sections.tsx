@@ -34,6 +34,7 @@ import {
   TextInput,
 } from '@/ui'
 import NotificationTargets from '@/features/notifications/NotificationTargets'
+import SummaryPreview from '@/features/notifications/SummaryPreview'
 import { computer, useServerSystem } from '@/features/sources/LocalFolders'
 import CodeEditor from './CodeEditor'
 import CollectionLibraryApps from './CollectionLibraryApps'
@@ -48,8 +49,10 @@ import MetricsToken from './MetricsToken'
 import { FieldRow, SettingRow, SettingsGroup, SwitchRow, TextRow } from './parts'
 import type { SectionFormApi } from './SectionForm'
 import SegmentSources from './SegmentSources'
+import LabelRules from './LabelRules'
+import SourceCache from './SourceCache'
 import StreamProxyRow from './StreamProxyRow'
-import VersionOrder, { CodecOrder, SourceOrder } from './VersionOrder'
+import VersionOrder, { CodecOrder, EditionOrder, SourceOrder } from './VersionOrder'
 import { EditAsCustom, shownTexts, ThemeCopyPanel } from './WebTheme'
 import WorkFolderRow from './WorkFolders'
 import WordList from './WordList'
@@ -346,27 +349,6 @@ function Playback(api: SectionFormApi) {
             )}
           />
         </FieldRow>
-        <FieldRow
-          anchor="cache-size"
-          label={s.cacheSize}
-          help={s.cacheSizeHelp(range('cacheSizeGb'))}
-          error={error('cache-size')}
-        >
-          <NumberInput
-            {...limits('cacheSizeGb')}
-            step={1}
-            {...number('cache-size', form.cacheSizeGb, (value) =>
-              update({ cacheSizeGb: Math.trunc(value) }),
-            )}
-          />
-        </FieldRow>
-        <WorkFolderRow
-          folder="readingFolder"
-          form={form}
-          update={update}
-          error={error}
-          limits={limits}
-        />
         <SwitchRow
           anchor="remuxdb"
           label={s.remuxDb}
@@ -393,6 +375,14 @@ function Playback(api: SectionFormApi) {
           />
         </FieldRow>
       </SettingsGroup>
+      <SourceCache
+        form={form}
+        update={update}
+        error={error}
+        number={number}
+        range={range}
+        limits={limits}
+      />
       <SettingsGroup title={s.versionOrderGroup}>
         <SettingRow anchor="version-order">
           <VersionOrder
@@ -417,6 +407,27 @@ function Playback(api: SectionFormApi) {
             error={error('version-source-order')}
           />
         </SettingRow>
+        <SettingRow anchor="version-edition-order">
+          <EditionOrder
+            order={form.versionEditionOrder}
+            onChange={(versionEditionOrder) => update({ versionEditionOrder })}
+            error={error('version-edition-order')}
+          />
+        </SettingRow>
+        <FieldRow
+          anchor="version-mb-per-minute"
+          label={s.versionMbPerMinute}
+          help={s.versionMbPerMinuteHelp(range('versionMbPerMinute'))}
+          error={error('version-mb-per-minute')}
+        >
+          <NumberInput
+            {...limits('versionMbPerMinute')}
+            step={1}
+            {...number('version-mb-per-minute', form.versionMbPerMinute, (value) =>
+              update({ versionMbPerMinute: Math.trunc(value) }),
+            )}
+          />
+        </FieldRow>
         <FieldRow
           anchor="hide-versions-larger"
           label={s.hideVersionsLarger}
@@ -507,6 +518,14 @@ function Playback(api: SectionFormApi) {
               </div>
             )}
           </fieldset>
+        </SettingRow>
+        <SettingRow anchor="version-label-rules">
+          <LabelRules
+            rules={form.versionLabelRules}
+            max={limits('versionLabelRules').max ?? 0}
+            onChange={(versionLabelRules) => update({ versionLabelRules })}
+            error={error('version-label-rules')}
+          />
         </SettingRow>
       </SettingsGroup>
       <SettingsGroup title={s.playbackHistoryGroup}>
@@ -669,6 +688,16 @@ function Content({ form, update, error, number, range, limits }: SectionFormApi)
             reveal={() => revealServerSecret('tmdbKey')}
           />
         </SettingRow>
+      </SettingsGroup>
+      <SettingsGroup title={groups.releases}>
+        <SwitchRow
+          anchor="wait-digital-release"
+          label={s.waitDigitalRelease}
+          help={s.waitDigitalReleaseHelp}
+          checked={form.waitDigitalRelease}
+          onChange={(waitDigitalRelease) => update({ waitDigitalRelease })}
+          disabled={!form.tmdbKeySet && !form.tmdbKey}
+        />
       </SettingsGroup>
       <SettingsGroup title={groups.ratings}>
         <SettingRow
@@ -2048,6 +2077,10 @@ function Notifications({ form, update, error, number, limits }: SectionFormApi) 
             className="max-w-[10rem]"
           />
         </FieldRow>
+        <SettingRow anchor="summary-preview">
+          <h3 className="mb-2 text-[15px] font-medium text-ink">{text.preview.title}</h3>
+          <SummaryPreview />
+        </SettingRow>
       </SettingsGroup>
       <SettingsGroup title={s.email}>
         <TextRow anchor="email-setup">

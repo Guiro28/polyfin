@@ -45,6 +45,12 @@ type fakeSessions struct {
 	err      error
 	stopped  []accounts.ID
 	messages []string
+	// sent and received are what Bandwidth answers.
+	sent, received float64
+}
+
+func (f *fakeSessions) Bandwidth() (sent, received float64) {
+	return f.sent, f.received
 }
 
 func (f *fakeSessions) LiveSessions(context.Context) ([]jellyfin.LiveSession, error) {
@@ -79,6 +85,7 @@ func TestDashboardRoutesAreForAdministratorsOnly(t *testing.T) {
 		{http.MethodGet, "/sessions"},
 		{http.MethodPost, "/sessions/" + id + "/stop"},
 		{http.MethodPost, "/sessions/" + id + "/message"},
+		{http.MethodGet, "/bandwidth"},
 		{http.MethodGet, "/tasks"},
 		{http.MethodPost, "/tasks/" + tasks.ID("Any") + "/run"},
 		{http.MethodPost, "/tasks/" + tasks.ID("Any") + "/stop"},
@@ -405,7 +412,7 @@ func TestHealthDescribesTheServerFromWhatItRecords(t *testing.T) {
 	t.Cleanup(encoder.Close)
 	encoder.LimitConversions(func() int { return 3 })
 	api := newTestAPI(t, 10, func(o *Options, deps testDeps) {
-		sources, err := source.New(cacheDir, func() int64 { return 1 << 30 }, deps.client, logger)
+		sources, err := source.New(cacheDir, func() source.Policy { return source.Policy{Limit: 1 << 30} }, deps.client, logger)
 		if err != nil {
 			t.Fatal(err)
 		}

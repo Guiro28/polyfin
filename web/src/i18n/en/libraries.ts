@@ -224,6 +224,7 @@ const libraries = {
       rank: 'Place in its catalog',
       state: 'Watch state',
       released: 'Release date',
+      homeRelease: 'Home release',
       votes: 'IMDb votes',
       runtime: 'Runtime',
       contentRating: 'Content rating',
@@ -242,6 +243,11 @@ const libraries = {
     atMost: 'At most',
     releasedWhen: 'When',
     releasedWithin: { last: 'In the last', next: 'In the next' } as Record<string, string>,
+    homeReleaseWithin: {
+      released: 'Out in the last',
+      upcoming: 'Coming in the next',
+      both: 'Within',
+    } as Record<string, string>,
     days: 'days',
     namePlaceholder: { person: 'Their name', studio: 'Its name' } as Record<string, string>,
     types: { movie: 'A movie', series: 'A series' } as Record<string, string>,
@@ -259,6 +265,8 @@ const libraries = {
       'IMDb votes come from MDBList, with the MDBList API key for ratings under Settings › Content, looked up in the background. Without that key, no title has votes.',
     studioHelp:
       'Studios and networks come from TMDB, with the TMDB API key under Settings › Content, looked up in the background and kept: the list grows as they come. Without that key, only the studios an administrator set in a title’s metadata count.',
+    homeReleaseHelp:
+      'A movie’s home release is its first digital or physical release, else 90 days after it came out in cinemas, as TMDB tells with the TMDB API key under Settings › Content, looked up in the background and kept: the list grows as they come. A series’ is its premiere date. With Wait for the digital release on, a movie not out yet is listed only by lists with a rule of upcoming titles.',
     sort: 'Sort',
     sorts: {
       catalog: 'As its catalogs list them, one of each in turn',
@@ -305,6 +313,49 @@ const libraries = {
       genres: 'Genres',
       languages: 'Language',
     },
+  },
+  /** Episode orders: the order a series shows its seasons and episodes in, for every user. */
+  episodeOrders: {
+    title: 'Episode orders',
+    help: 'A series shows its seasons and episodes as its addon numbers them, as aired. Show one in another order from TMDB, such as DVD, absolute or story arc, for every user, as the Display order of jellyfin-web’s metadata editor does. Its episodes keep their own season and number for playback, watch history and tracking.',
+    loading: 'Loading episode orders…',
+    emptyTitle: 'Every series shows as aired',
+    emptyHow: 'Find a series below to show it in another order.',
+    search: 'Find a series',
+    searchPlaceholder: 'Series name',
+    searchButton: 'Search',
+    searching: 'Searching…',
+    results: 'Series found',
+    noSeries: 'No series matches this name.',
+    editTitle: (name: string) => `Episode order of ${name}`,
+    order: 'Order',
+    orderHelp:
+      'The episode groups TMDB gives this series. The parts of a group become its seasons.',
+    aired: 'As aired',
+    types: {
+      originalAirDate: 'Original air date',
+      absolute: 'Absolute',
+      dvd: 'DVD',
+      digital: 'Digital',
+      storyArc: 'Story arc',
+      production: 'Production',
+      tv: 'TV',
+    },
+    counts: (seasons: number, episodes: number) =>
+      `${seasons === 1 ? '1 season' : `${seasons} seasons`}, ${episodes === 1 ? '1 episode' : `${episodes} episodes`}`,
+    lookup: {
+      no_key: 'Add a TMDB key in Settings › Content to list this series’ orders.',
+      unknown: 'TMDB does not know this series: it shows as aired.',
+      failed: 'TMDB could not be reached to list this series’ orders. Try again in a moment.',
+    },
+    specials: 'Specials',
+    specialsHelp:
+      'Where season 0 shows among the seasons. Hidden specials still play from Continue Watching or a link.',
+    specialsFirst: 'First',
+    specialsLast: 'Last',
+    specialsHidden: 'Hidden',
+    specialsSummary: { last: 'Specials last', hidden: 'Specials hidden' },
+    saved: (name: string) => `${name}: episode order saved.`,
   },
 }
 

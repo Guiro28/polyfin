@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/bandwidth"
 	"github.com/moodiness/polyfin/internal/cache"
 	"github.com/moodiness/polyfin/internal/container"
 	"github.com/moodiness/polyfin/internal/hls"
@@ -139,6 +140,9 @@ type Service struct {
 	// switches are the versions play sessions went on from once theirs
 	// failed (see switch.go).
 	switches switchState
+	// received counts the bytes the versions' sources send, nil when
+	// nothing is counted (see CountReceived).
+	received *bandwidth.Meters
 }
 
 // New returns a playback service running ffprobe from ffprobePath, reading
@@ -345,14 +349,15 @@ var errNoTorrents = errors.New("this server plays no torrent")
 // its swarm, which the playbacks reading it join (see source.Location's
 // Playing) and nothing else. A swarm is given longer than a host to
 // answer (see torrent.StartTimeout and torrent.PieceTimeout): the engine
-// tells why a torrent did not start before the cache stops waiting.
+// tells why a torrent did not start before the cache stops waiting. Its
+// blocks are not kept across restarts, as its pieces are not.
 func (s *Service) torrentLocation(version library.Version) source.Location {
 	spec, err := torrentSpec(version)
 	if err == nil && s.torrents == nil {
 		err = errNoTorrents
 	}
 	engine := s.torrents
-	location := source.Location{URL: version.URL, Size: version.Size, Announcer: version.Addon,
+	location := source.Location{URL: version.URL, Size: version.Size, Announcer: version.Addon, Transient: true,
 		HeaderTimeout: torrentHeaders, StallTimeout: torrent.PieceTimeout,
 		Opener: source.FileOpener(func(ctx context.Context, _ string) (source.RandomFile, int64, error) {
 			if err != nil {
@@ -983,6 +988,19 @@ func (s *Service) RetryItem(addon, item accounts.ID) {
 	s.failures.DeleteFunc(func(_ accounts.ID, failure versionFailure) bool {
 		return failure.addon == addon && failure.item == item
 	})
+}
+
+// RetryVersion forgets that a version failed lately, so that it is tried
+// again at once, its source's cooldown included: an administrator asked to
+// analyze it now.
+func (s *Service) RetryVersion(version library.Version) {
+	if _, failed := s.failures.Get(version.ID); !failed {
+		return
+	}
+	s.failures.Delete(version.ID)
+	src := s.open(version)
+	src.Retry()
+	src.Release()
 }
 
 // RetryUnstarted forgets that a torrent version did not start (see

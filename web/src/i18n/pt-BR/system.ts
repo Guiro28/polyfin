@@ -335,7 +335,7 @@ const system: typeof en = {
       size: 'Tamanho',
       cacheTitle: 'Cache das fontes',
       cacheHelp:
-        'Partes dos arquivos em reprodução, mantidas em disco até o tamanho definido em Configurações › Reprodução. Um cache cheio é normal: as partes mais antigas abrem espaço.',
+        'Partes dos arquivos reproduzidos, mantidas em disco até o tamanho definido em Configurações › Reprodução, de uma inicialização para a outra. Um cache cheio é normal: as partes lidas há mais tempo abrem espaço, as dos títulos reproduzidos de novo por último.',
       cacheUse: (used: string, limit: string) => `${used} de ${limit}`,
       imagesTitle: 'Cache de imagens',
       imagesHelp:
@@ -347,6 +347,14 @@ const system: typeof en = {
         `Cache de imagens esvaziado: ${images} imagens, ${bytes} liberados em disco.`,
       sourcesOpen: 'Arquivos abertos',
       torrentPieces: 'Dos quais partes de torrents',
+      sourcesKept: 'Arquivos mantidos',
+      hitRatio: 'Lido do disco',
+      hitRatioValue: (percent: string, read: string) =>
+        `${percent} dos ${read} lidos desde a inicialização`,
+      keptFor: (days: number) =>
+        days > 0
+          ? `Mantidos ${days} dias após a última leitura, reinicializações incluídas`
+          : 'Esvaziado a cada inicialização',
       torrentsTitle: 'Torrents',
       torrentsHelp:
         'Os torrents que a reprodução está lendo agora, somente pela rota deles. Um torrent para quando a reprodução dele termina: sem mais pares, sem mais compartilhamento.',
@@ -429,6 +437,10 @@ const system: typeof en = {
       goroutinesDownload: 'Baixar as goroutines',
       goroutinesHelp:
         'Quando uma solicitação nunca recebe resposta, baixe o que o servidor está fazendo e envie com seu relato. Não contém endereços nem segredos.',
+      lastCrash: 'Última falha',
+      noCrash: 'Nenhuma',
+      lastCrashHelp:
+        'O começo do rastreamento do erro que parou o Polyfin pela última vez, lido ao reiniciar. Os endereços mantêm apenas o host, e tokens e chaves ficam ocultos.',
       secretsTitle: 'Chaves armazenadas',
       secretsHelp:
         'As chaves do servidor, os tokens e chaves de rastreamento dos usuários e as senhas dos compartilhamentos de rede, criptografados no banco de dados com POLYFIN_SECRET_KEY (openssl rand -base64 32).',

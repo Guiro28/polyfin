@@ -119,6 +119,9 @@ type Service struct {
 	// releaseStatuses remembers what series' posters tell of their
 	// newest episodes, by series (see ReleaseStatuses).
 	releaseStatuses *cache.Cache[string, ReleaseStatus]
+	// choices are the versions administrators pinned and the files they
+	// blocked (see versionchoices.go).
+	choices versionChoices
 
 	// streamLists and subtitleLists are the addons' lists for each title,
 	// kept stale once expired (see staleLists).
@@ -190,6 +193,9 @@ type Service struct {
 	smartCache   *cache.Cache[smartKey, []smartTitle]
 	smartFetches chan struct{}
 	smartWait    time.Duration
+	// plain holds the searches in plain words users made lately, which
+	// stand for smart lists (see plainsearch.go).
+	plain plainSearches
 	// userData tells the users' state of titles, which smart lists judge
 	// by, and holds the titles each user hid, which their listings leave
 	// out (see hidden.go).
@@ -437,6 +443,9 @@ type view struct {
 	// virtual are the channels Polyfin airs that the user sees, in order
 	// (see virtualchannels.go).
 	virtual []virtualtv.Channel
+	// channelFilter is the user's channel rule, which hides channels of
+	// the server's sources (see channellimits.go); nil hides none.
+	channelFilter *accounts.ChannelFilter
 	// smart are the smart lists the user sees, in order (see
 	// smartlists.go).
 	smart []smartList
@@ -457,6 +466,11 @@ type view struct {
 	// addons.UsedBy), in order: the view holds nothing of theirs, and the
 	// titles only they know are out of the user's reach (see withholds).
 	withheld []accounts.ID
+	// waitRelease is set while movies wait for their digital release, and
+	// upcoming for a view whose listings keep those it holds back: a smart
+	// list's read (see releases.go).
+	waitRelease bool
+	upcoming    bool
 	// catalogLimit and channelLimit are the settings' limits when the
 	// request came (see limit).
 	catalogLimit int
@@ -525,6 +539,13 @@ func viewSources(user accounts.User, settings accounts.Settings) (shared, person
 	return user.UseSharedAddons, true
 }
 
+// browsesOwnAddons reports whether user browses their own addons, and so
+// sees their own smart lists (see buildView).
+func browsesOwnAddons(user accounts.User, settings accounts.Settings) bool {
+	_, personal := viewSources(user, settings)
+	return personal
+}
+
 func (s *Service) buildView(ctx context.Context, user accounts.User) (view, error) {
 	settings := s.settings()
 	shared, personal := viewSources(user, settings)
@@ -536,7 +557,8 @@ func (s *Service) buildView(ctx context.Context, user accounts.User) (view, erro
 		scopes = append(scopes, addons.Personal(user.ID))
 	}
 	v := view{user: user.ID, parental: user.Parental, genres: user.BlockedGenres, deadline: time.Now().Add(s.ratingWait), lookups: new(atomic.Int32), held: new(atomic.Bool),
-		catalogLimit: settings.CatalogLimit, channelLimit: settings.ChannelLimit}
+		catalogLimit: settings.CatalogLimit, channelLimit: settings.ChannelLimit, channelFilter: user.LiveTvChannels.Filter(),
+		waitRelease: settings.WaitDigitalRelease && s.tmdb.Enabled()}
 	if user.ID != (accounts.ID{}) {
 		hidden, err := s.hiddenTitles(ctx, user.ID)
 		if err != nil {
@@ -635,6 +657,7 @@ func (s *Service) buildView(ctx context.Context, user accounts.User) (view, erro
 	if err := s.virtualChannels(ctx, &v, user); err != nil {
 		return view{}, err
 	}
+	s.plainSearchLists(&v, user.ID)
 	return v, nil
 }
 
@@ -1237,6 +1260,13 @@ func slicePage(items []Item, start, count int) Page {
 }
 
 func (r record) seriesItemID() accounts.ID { return itemID(titleKey(KindSeries, r.SeriesID)) }
+
+// covers reports whether the series or season of r holds a video of its
+// series' description. A season of an episode order is taken to hold all
+// of them: which it holds is TMDB's to tell.
+func (r record) covers(video stremio.Video) bool {
+	return r.Kind == KindSeries || r.Group != "" || int(video.Season) == r.Season
+}
 
 func (s *Service) libraryChildren(ctx context.Context, v view, l library, start, count int, genre string, first bool) (Page, error) {
 	if l.addon.addon.HasMusic() {
@@ -2021,7 +2051,9 @@ func (s *Service) serverMeta(ctx context.Context, v view, metaType, id string) (
 }
 
 // Item describes one item. Titles are completed with their addon's full
-// metadata when available.
+// metadata when available. A movie waiting for its digital release has
+// the day it is out at home as its premiere date, and first in its
+// overview (see releases.go).
 func (s *Service) Item(ctx context.Context, user accounts.User, id accounts.ID) (Item, error) {
 	v, err := s.view(ctx, user)
 	if err != nil {
@@ -2031,7 +2063,18 @@ func (s *Service) Item(ctx context.Context, user accounts.User, id accounts.ID) 
 	if err != nil {
 		return Item{}, err
 	}
-	return s.overriddenItem(item), nil
+	item = s.overriddenItem(item)
+	if item.Kind == KindMovie {
+		day, held, err := s.upcoming(ctx, v, id)
+		if err != nil {
+			return Item{}, err
+		}
+		if held && !day.IsZero() {
+			item.PremiereDate = &day
+			homeReleaseNote(&item, v.words, day)
+		}
+	}
+	return item, nil
 }
 
 // Original describes one item as its addon and MDBList do, without what
@@ -2301,19 +2344,31 @@ func (s *Service) described(ctx context.Context, v view, r record) (Item, error)
 		}
 		return item, nil
 	case KindSeason, KindEpisode:
-		series, meta, _, err := s.series(ctx, v, r.seriesItemID())
+		series, meta, full, err := s.series(ctx, v, r.seriesItemID())
 		if err != nil {
 			return Item{}, err
 		}
-		if r.Kind == KindSeason {
+		switch {
+		case r.Group != "":
+			// A season of an episode order is one while the series shows
+			// in it.
+			if layout := s.layoutOf(ctx, series.ID, full, v.words); layout != nil && layout.group == r.Group {
+				if season, ok := layout.season(id); ok {
+					return layout.seasonItem(season, series, meta, videosByID(meta), s.now()), nil
+				}
+			}
+		case r.Kind == KindSeason:
 			for _, season := range seasons(series, meta, seasonPosters(meta), v.words, s.now()) {
 				if season.ID == id {
 					return season, nil
 				}
 			}
-		} else {
+		default:
 			for _, episode := range episodes(series, meta, seasonPosters(meta), nil, v.words, s.now()) {
 				if episode.ID == id {
+					if layout := s.layoutOf(ctx, series.ID, full, v.words); layout != nil {
+						layout.place(&episode)
+					}
 					return episode, nil
 				}
 			}
@@ -2521,7 +2576,7 @@ func episodes(series Item, meta stremio.Meta, posters map[int]string, season *in
 	return result
 }
 
-// Seasons lists a series' seasons.
+// Seasons lists a series' seasons, in its order (see episodeorder.go).
 func (s *Service) Seasons(ctx context.Context, user accounts.User, seriesID accounts.ID) ([]Item, error) {
 	v, err := s.view(ctx, user)
 	if err != nil {
@@ -2538,25 +2593,66 @@ func (s *Service) Seasons(ctx context.Context, user accounts.User, seriesID acco
 		records = append(records, record{ID: season.ID, Key: seasonKey(meta.ID, season.IndexNumber), Kind: KindSeason,
 			Parent: &series.ID, SeriesID: meta.ID, Season: season.IndexNumber, Poster: posters[season.IndexNumber]})
 	}
+	if layout := s.layoutOf(ctx, series.ID, meta, v.words); layout != nil {
+		result = layout.seasonItems(result, series, shown, s.now())
+		records = append(records, layout.records(series.ID, meta.ID)...)
+	}
 	return s.overridden(result), s.save(ctx, records)
 }
 
-// Episodes lists a series' episodes, of one season when seasonID is set.
+// Episodes lists a series' episodes, of one season when seasonID is set:
+// in the series' order (see episodeorder.go), where seasonID may be one of
+// the order's seasons, unless ctx is marked InAiredOrder.
 func (s *Service) Episodes(ctx context.Context, user accounts.User, seriesID accounts.ID, seasonID *accounts.ID) ([]Item, error) {
 	v, err := s.view(ctx, user)
 	if err != nil {
 		return nil, err
 	}
-	return s.episodes(ctx, v, seriesID, seasonID)
+	if inAiredOrder(ctx) {
+		return s.episodes(ctx, v, seriesID, seasonID)
+	}
+	series, shown, meta, err := s.series(ctx, v, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	layout := s.layoutOf(ctx, series.ID, meta, v.words)
+	if layout == nil {
+		return s.seriesEpisodes(ctx, v, series, shown, meta, seasonID)
+	}
+	result, records, err := listEpisodes(series, shown, meta, nil, v.words, s.now())
+	if err != nil {
+		return nil, err
+	}
+	result, found := layout.arrange(result, seasonID)
+	if !found {
+		return nil, ErrSeasonNotFound
+	}
+	return s.overridden(result), s.save(ctx, append(records, layout.records(series.ID, meta.ID)...))
 }
 
-// episodes lists a series' episodes for v, of one season when seasonID is
-// set, and records them and the series' seasons.
+// episodes lists a series' episodes for v as aired, of one season when
+// seasonID is set, and records them and the series' seasons.
 func (s *Service) episodes(ctx context.Context, v view, seriesID accounts.ID, seasonID *accounts.ID) ([]Item, error) {
 	series, shown, meta, err := s.series(ctx, v, seriesID)
 	if err != nil {
 		return nil, err
 	}
+	return s.seriesEpisodes(ctx, v, series, shown, meta, seasonID)
+}
+
+// seriesEpisodes is episodes for a series described (see series).
+func (s *Service) seriesEpisodes(ctx context.Context, v view, series Item, shown, meta stremio.Meta, seasonID *accounts.ID) ([]Item, error) {
+	result, records, err := listEpisodes(series, shown, meta, seasonID, v.words, s.now())
+	if err != nil {
+		return nil, err
+	}
+	return s.overridden(result), s.save(ctx, records)
+}
+
+// listEpisodes lists the episodes of a series described (see series) as
+// aired, of one season when seasonID is set, with the records of them and
+// of the series' seasons.
+func listEpisodes(series Item, shown, meta stremio.Meta, seasonID *accounts.ID, w words, now time.Time) ([]Item, []record, error) {
 	var season *int
 	if seasonID != nil {
 		for _, number := range seasonNumbers(meta) {
@@ -2566,13 +2662,13 @@ func (s *Service) episodes(ctx context.Context, v view, seriesID accounts.ID, se
 			}
 		}
 		if season == nil {
-			return nil, ErrSeasonNotFound
+			return nil, nil, ErrSeasonNotFound
 		}
 	}
 	posters := seasonPosters(meta)
 	// The episodes show the user's language; their records keep the
 	// description's names and images.
-	result := episodes(series, shown, posters, season, v.words, s.now())
+	result := episodes(series, shown, posters, season, w, now)
 	records := make([]record, 0, len(result)+len(seasonNumbers(meta)))
 	for _, number := range seasonNumbers(meta) {
 		records = append(records, record{ID: itemID(seasonKey(meta.ID, number)), Key: seasonKey(meta.ID, number), Kind: KindSeason,
@@ -2587,7 +2683,7 @@ func (s *Service) episodes(ctx context.Context, v view, seriesID accounts.ID, se
 		records = append(records, record{ID: episode.ID, Key: episodeKey(video.ID), Kind: KindEpisode,
 			Parent: &result[i].SeasonID, SeriesID: meta.ID, Season: episode.ParentIndexNumber, Video: &video})
 	}
-	return s.overridden(result), s.save(ctx, records)
+	return result, records, nil
 }
 
 // Search looks a term up in the search catalogs of the user's addons, for
@@ -2985,7 +3081,7 @@ func (s *Service) Artwork(ctx context.Context, id accounts.ID, imageType string)
 			}
 		}
 		poster := r.Poster
-		if described {
+		if described && r.Group == "" {
 			poster = seasonPosters(full)[r.Season]
 		}
 		if poster != "" {

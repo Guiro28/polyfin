@@ -181,9 +181,11 @@ type Options struct {
 	Playouts        Playouts
 	// HomeRows keeps the rows of the web player's home page, and the rows
 	// each user turned off; nil keeps none. HomeRowChoices tells the
-	// collections they may list.
-	HomeRows       *homerows.Store
-	HomeRowChoices HomeRowChoices
+	// collections they may list, and HomeRowPreviews a user's rows as the
+	// web player shows them; nil previews none.
+	HomeRows        *homerows.Store
+	HomeRowChoices  HomeRowChoices
+	HomeRowPreviews HomeRowPreviews
 	// Taste keeps the users' taste profiles, which My account shows each
 	// their own; nil keeps none.
 	Taste *taste.Service
@@ -193,6 +195,11 @@ type Options struct {
 	// Sharing finds the titles users give through share links; nil lets
 	// no one make a link.
 	Sharing Sharing
+	// Versions explains titles' versions, pins and blocks them, for the
+	// Versions page, and Titles finds the titles it explains; nil offers
+	// no page.
+	Versions Versions
+	Titles   Titles
 	// Restart stops Polyfin as a signal does, for its container's restart
 	// policy, its service manager or Polyfin Desktop to start it again; it
 	// returns at once. Nil offers no restart.
@@ -213,6 +220,13 @@ type Options struct {
 	// from Jellyfin apps, for Apply this order to every user under Content
 	// › Libraries; nil has none.
 	LibraryOrders LibraryOrders
+	// EpisodeOrders shows and sets the order series show their episodes
+	// in, under Content › Libraries; nil offers none.
+	EpisodeOrders EpisodeOrders
+	// ChannelChoices lists the channel groups and channels of the server's
+	// Live TV sources, which users' and groups' channel rules name; nil
+	// lists none.
+	ChannelChoices ChannelChoices
 }
 
 type handler struct {
@@ -300,6 +314,7 @@ func New(options Options) http.Handler {
 	mux.Handle("PATCH /admin/api/account/notifications/targets/{id}", h.signedIn(own.update))
 	mux.Handle("DELETE /admin/api/account/notifications/targets/{id}", h.signedIn(own.remove))
 	mux.Handle("POST /admin/api/account/notifications/targets/{id}/test", h.signedIn(own.test))
+	mux.Handle("GET /admin/api/account/notifications/targets/{id}/deliveries", h.signedIn(own.deliveries))
 	mux.Handle("GET /admin/api/account/reminders", h.signedIn(h.ownReminders))
 	mux.Handle("DELETE /admin/api/account/reminders/{id}", h.signedIn(h.deleteOwnReminder))
 	mux.Handle("GET /admin/api/account/reminders/settings", h.signedIn(h.ownReminderSettings))
@@ -335,6 +350,19 @@ func New(options Options) http.Handler {
 	mux.Handle("GET /admin/api/account/share-titles/{id}/episodes", h.signedIn(h.shareEpisodes))
 	mux.Handle("GET /admin/api/quick-connect/{code}", h.signedIn(h.quickConnectRequest))
 	mux.Handle("POST /admin/api/quick-connect", h.signedIn(h.quickConnectApprove))
+	if options.Versions != nil && options.Titles != nil {
+		mux.Handle("GET /admin/api/titles", h.administrator(h.versionTitles))
+		mux.Handle("GET /admin/api/titles/{id}", h.administrator(h.versionTitle))
+		mux.Handle("GET /admin/api/titles/{id}/episodes", h.administrator(h.versionEpisodes))
+		mux.Handle("GET /admin/api/titles/{id}/versions", h.administrator(h.titleVersions))
+		mux.Handle("POST /admin/api/titles/{id}/versions/search", h.administrator(h.askVersionsAgain))
+		mux.Handle("PUT /admin/api/titles/{id}/versions/pin", h.administrator(h.pinVersion))
+		mux.Handle("DELETE /admin/api/titles/{id}/versions/pin", h.administrator(h.unpinVersion))
+		mux.Handle("POST /admin/api/titles/{id}/versions/blocks", h.administrator(h.blockVersion))
+		mux.Handle("POST /admin/api/titles/{id}/versions/{versionId}/analyze", h.administrator(h.analyzeVersion))
+		mux.Handle("GET /admin/api/version-blocks", h.administrator(h.versionBlocks))
+		mux.Handle("DELETE /admin/api/version-blocks/{id}", h.administrator(h.unblockVersion))
+	}
 
 	mux.Handle("GET /admin/api/users", h.administrator(h.users))
 	mux.Handle("POST /admin/api/users", h.administrator(h.createUser))
@@ -357,6 +385,7 @@ func New(options Options) http.Handler {
 	mux.Handle("GET /admin/api/invites", h.administrator(h.invites))
 	mux.Handle("POST /admin/api/invites", h.administrator(h.createInvite))
 	mux.Handle("POST /admin/api/invites/{id}/revoke", h.administrator(h.revokeInvite))
+	mux.Handle("GET /admin/api/live-tv/channel-choices", h.administrator(h.channelChoices))
 	mux.Handle("GET /admin/api/groups", h.administrator(h.groups))
 	mux.Handle("POST /admin/api/groups", h.administrator(h.createGroup))
 	mux.Handle("GET /admin/api/groups/{id}", h.administrator(h.group))
@@ -402,6 +431,7 @@ func New(options Options) http.Handler {
 	mux.Handle("GET /admin/api/sessions", h.administrator(h.liveSessions))
 	mux.Handle("POST /admin/api/sessions/{id}/stop", h.administrator(h.stopSession))
 	mux.Handle("POST /admin/api/sessions/{id}/message", h.administrator(h.messageSession))
+	mux.Handle("GET /admin/api/bandwidth", h.administrator(h.bandwidth))
 	mux.Handle("GET /admin/api/tasks", h.administrator(h.scheduledTasks))
 	mux.Handle("POST /admin/api/tasks/{id}/run", h.administrator(h.runTask))
 	mux.Handle("POST /admin/api/tasks/{id}/stop", h.administrator(h.stopTask))
@@ -475,12 +505,15 @@ func New(options Options) http.Handler {
 	mux.Handle("PUT /admin/api/home-rows/order", homeRows(h.orderHomeRows))
 	mux.Handle("PATCH /admin/api/home-rows/{id}", homeRows(h.updateHomeRow))
 	mux.Handle("DELETE /admin/api/home-rows/{id}", homeRows(h.deleteHomeRow))
+	mux.Handle("GET /admin/api/home-rows/preview/{id}", homeRows(h.previewHomeRows))
 	server := notificationRoutes{h: h, owner: serverTargets}
 	mux.Handle("GET /admin/api/notifications", h.administrator(server.list))
 	mux.Handle("POST /admin/api/notifications/targets", h.administrator(server.create))
 	mux.Handle("PATCH /admin/api/notifications/targets/{id}", h.administrator(server.update))
 	mux.Handle("DELETE /admin/api/notifications/targets/{id}", h.administrator(server.remove))
 	mux.Handle("POST /admin/api/notifications/targets/{id}/test", h.administrator(server.test))
+	mux.Handle("GET /admin/api/notifications/targets/{id}/deliveries", h.administrator(server.deliveries))
+	mux.Handle("GET /admin/api/notifications/preview", h.administrator(h.summaryPreview))
 	allPlays := statisticsRoutes{h: h, scope: func(*http.Request) *accounts.ID { return nil }}
 	mux.Handle("GET /admin/api/statistics", h.administrator(allPlays.statistics))
 	mux.Handle("GET /admin/api/history", h.administrator(allPlays.history))
@@ -514,6 +547,10 @@ func New(options Options) http.Handler {
 	mux.Handle("POST /admin/api/scopes/shared/libraries/refresh/stop", h.administrator(h.stopLibraryRefresh))
 	mux.Handle("GET /admin/api/scopes/shared/libraries/user-orders", h.administrator(h.libraryOrders))
 	mux.Handle("DELETE /admin/api/scopes/shared/libraries/user-orders", h.administrator(h.clearLibraryOrders))
+	mux.Handle("GET /admin/api/episode-orders", h.administrator(h.episodeOrders))
+	mux.Handle("GET /admin/api/episode-orders/series", h.administrator(h.searchOrderedSeries))
+	mux.Handle("GET /admin/api/titles/{id}/episode-order", h.administrator(h.episodeOrder))
+	mux.Handle("PUT /admin/api/titles/{id}/episode-order", h.administrator(h.setEpisodeOrder))
 	mux.Handle("GET /admin/api/scopes/{scope}/smart-lists", h.signedIn(h.smartLists))
 	mux.Handle("POST /admin/api/scopes/{scope}/smart-lists", h.signedIn(h.createSmartList))
 	mux.Handle("GET /admin/api/scopes/{scope}/smart-lists/catalogs", h.signedIn(h.smartCatalogs))
@@ -687,6 +724,9 @@ func accountError(w http.ResponseWriter, err error) bool {
 		{accounts.ErrInvalidHiddenVersionCodecs, http.StatusBadRequest, "invalid_hidden_version_codecs"},
 		{accounts.ErrInvalidHiddenVersionWords, http.StatusBadRequest, "invalid_hidden_version_words"},
 		{accounts.ErrInvalidHiddenReleases, http.StatusBadRequest, "invalid_hidden_releases"},
+		{accounts.ErrInvalidVersionEditionOrder, http.StatusBadRequest, "invalid_version_edition_order"},
+		{accounts.ErrInvalidVersionMBPerMinute, http.StatusBadRequest, "invalid_version_mb_per_minute"},
+		{accounts.ErrInvalidVersionLabelRules, http.StatusBadRequest, "invalid_version_label_rules"},
 		{accounts.ErrInvalidMaxConversions, http.StatusBadRequest, "invalid_max_conversions"},
 		{accounts.ErrInvalidMaxConversionHeight, http.StatusBadRequest, "invalid_max_conversion_height"},
 		{accounts.ErrInvalidSubtitleOCR, http.StatusBadRequest, "invalid_subtitle_ocr"},
@@ -748,6 +788,8 @@ func accountError(w http.ResponseWriter, err error) bool {
 		{accounts.ErrInvalidUpdateToolToken, http.StatusBadRequest, "invalid_update_tool_token"},
 		{accounts.ErrInvalidProvider, http.StatusBadRequest, "invalid_provider"},
 		{accounts.ErrInvalidCacheSize, http.StatusBadRequest, "invalid_cache_size"},
+		{accounts.ErrInvalidSourceCache, http.StatusBadRequest, "invalid_source_cache"},
+		{accounts.ErrInvalidPreload, http.StatusBadRequest, "invalid_preload"},
 		{accounts.ErrInvalidTorrentRoute, http.StatusBadRequest, "invalid_torrent_route"},
 		{accounts.ErrInvalidTorrentLimit, http.StatusBadRequest, "invalid_torrent_limit"},
 		{accounts.ErrInvalidTorrentTrackers, http.StatusBadRequest, "invalid_torrent_trackers"},
@@ -764,6 +806,7 @@ func accountError(w http.ResponseWriter, err error) bool {
 		{accounts.ErrInvalidSyncPlay, http.StatusBadRequest, "invalid_sync_play"},
 		{accounts.ErrInvalidQualityGroup, http.StatusBadRequest, "invalid_quality_group"},
 		{accounts.ErrInvalidBlockedGenres, http.StatusBadRequest, "invalid_blocked_genres"},
+		{accounts.ErrInvalidChannelRule, http.StatusBadRequest, "invalid_live_tv_channels"},
 		{accounts.ErrInvalidMetadataLanguage, http.StatusBadRequest, "invalid_language"},
 		{accounts.ErrInvalidAudioRegion, http.StatusBadRequest, "invalid_audio_region"},
 		{accounts.ErrInvalidAccessSchedule, http.StatusBadRequest, "invalid_access_schedules"},

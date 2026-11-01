@@ -102,7 +102,7 @@ const common = {
       'The time to analyze a version must be a whole number of seconds from 5 to 120.',
     invalid_version_attempts: 'Versions tried must be a whole number from 1 to 10.',
     invalid_version_order:
-      'Choose at most four criteria to order versions, one of each kind. Reload the page.',
+      'Choose at most six criteria to order versions, one of each kind. Reload the page.',
     invalid_version_codec_order:
       'The order of the video codecs must list each codec once. Reload the page.',
     invalid_version_source_order:
@@ -114,6 +114,12 @@ const common = {
       'Enter at most 50 words hiding versions, one a line, each at most 100 characters.',
     invalid_hidden_releases:
       'This list of hidden kinds of releases is not supported. Reload the page.',
+    invalid_version_edition_order:
+      'The order of editions must list each edition once. Reload the page.',
+    invalid_version_mb_per_minute:
+      'The size per minute must be a whole number of MB from 0 to 1,000.',
+    invalid_version_label_rules:
+      'Enter at most 40 label rules, each at most 200 characters, a valid regular expression where ticked, and a score from −100 to 100 other than 0 unless it hides.',
     invalid_max_conversions: 'Video conversions at once must be a whole number from 0 to 32.',
     invalid_max_conversion_height: 'Choose the maximum quality of converted video from the list.',
     invalid_subtitle_ocr: 'Choose from the list when picture subtitles are turned into text.',
@@ -215,6 +221,8 @@ const common = {
     invalid_hidden_libraries: 'The library list changed in the meantime. Reload the page.',
     invalid_blocked_genres:
       'Genres must be 1 to 100 characters long, and at most 100 can be blocked.',
+    invalid_live_tv_channels:
+      'The channel choice is not valid: All, Only these or All except these, with at most 10,000 groups and 10,000 channels.',
     invalid_access_schedules:
       'Hours run from 00:00 to 24:00, and each end must come after its start (50 rows at most).',
     outside_allowed_hours:
@@ -265,6 +273,11 @@ const common = {
       'MDBList could not be reached to check the key. Nothing was saved: try again later.',
     invalid_tmdb_key:
       'TMDB did not accept this key. Copy the API key or the read access token again from your TMDB account. Nothing was saved.',
+    unknown_episode_group:
+      'TMDB no longer gives this series this order. Open it again and choose another one.',
+    episode_groups_unreachable:
+      'TMDB could not be reached to list this series’ orders. Nothing was saved: try again later.',
+    no_tmdb_key: 'Add a TMDB key in Settings › Content first: the orders come from TMDB.',
     tmdb_unreachable:
       'TMDB could not be reached to check the key. Nothing was saved: try again later.',
     invalid_route: 'Choose the video route from the list.',
@@ -290,6 +303,10 @@ const common = {
     invalid_torrent_trackers:
       'Enter at most 30 trackers, each an HTTP, HTTPS or UDP announce URL, UDP with its port, of at most 500 characters.',
     invalid_cache_size: 'The disk space must be a whole number of GB from 1 to 2000.',
+    invalid_source_cache:
+      'Parts read are kept a whole number of days from 0 to 365, with 0 to 30 extra days for each play again.',
+    invalid_preload:
+      'Preloading takes 1 to 3 episodes per series, a speed limit of 1 to 1000 Mbit/s and 1 to 1000 GB of free space to keep.',
     invalid_vaapi_device: 'Choose the graphics card from the list.',
     invalid_recordings_folder:
       'The recordings folder must be an absolute path to a folder Polyfin can write to.',
@@ -397,6 +414,9 @@ const common = {
     invalid_events: 'One of the events chosen is not available for this target.',
     invalid_reminder_settings: 'Choose 1, 5, 10, 15, 30 or 60 minutes.',
     too_many_targets: 'There are 20 targets already. Delete one to add another.',
+    invalid_per_minute: 'Messages a minute: 1 to 60, or empty for no limit.',
+    invalid_group_minutes: 'Grouping: 1 to 1,440 minutes, or empty to send each at once.',
+    invalid_summary: 'Only the weekly summary, the month and the year in review have a preview.',
     target_unreadable:
       'This target’s address or token cannot be decrypted with POLYFIN_SECRET_KEY. Enter it again.',
     invalid_source_name: 'Source names must be 1 to 64 characters long.',
