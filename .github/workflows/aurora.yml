@@ -1,13 +1,11 @@
 # The Aurora build of this fork: the `aurora` branch, Polyfin with the Aurora look of the admin app.
-# Each day it merges Polyfin's main branch, then publishes ghcr.io/<owner>/polyfin:aurora when
-# anything changed. A merge that conflicts fails the run, and the branch stays as it was.
+# Each push publishes ghcr.io/<owner>/polyfin:aurora from exactly what was pushed: Polyfin's main
+# branch is merged by hand, its conflicts resolved, before pushing.
 name: Aurora image
 
 on:
   push:
     branches: [aurora]
-  schedule:
-    - cron: "17 4 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -16,11 +14,11 @@ concurrency:
 
 jobs:
   image:
-    name: Merge Polyfin and publish the image
+    name: Publish the image
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
-      contents: write
+      contents: read
       packages: write
     steps:
       - name: Check out the aurora branch
@@ -29,25 +27,14 @@ jobs:
           ref: aurora
           fetch-depth: 0
 
-      - name: Merge Polyfin's main branch
-        id: merge
+      # The version of the last Polyfin release merged: its tags are Polyfin's.
+      - name: Read the version
+        id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/moodiness/polyfin.git
-          git fetch --quiet --tags upstream main
-          before=$(git rev-parse HEAD)
-          git merge --no-edit upstream/main
-          if [ "$(git rev-parse HEAD)" != "$before" ]; then
-            git push origin HEAD:aurora
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "version=$(git describe --tags --abbrev=0 upstream/main)-aurora" >> "$GITHUB_OUTPUT"
+          git fetch --quiet --tags https://github.com/moodiness/polyfin.git main
+          echo "version=$(git describe --tags --abbrev=0 HEAD)-aurora" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        if: github.event_name != 'schedule' || steps.merge.outputs.changed == 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           buildkitd-config-inline: |
@@ -55,17 +42,15 @@ jobs:
               mirrors = ["mirror.gcr.io"]
 
       - name: Log in to GHCR
-        if: github.event_name != 'schedule' || steps.merge.outputs.changed == 'true'
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_USER: ${{ github.actor }}
         run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
 
       - name: Choose image tags
-        if: github.event_name != 'schedule' || steps.merge.outputs.changed == 'true'
         id: tags
         env:
-          VERSION: ${{ steps.merge.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           {
@@ -77,16 +62,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push linux/amd64 and linux/arm64
-        if: github.event_name != 'schedule' || steps.merge.outputs.changed == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
-          build-args: VERSION=${{ steps.merge.outputs.version }}
+          build-args: VERSION=${{ steps.version.outputs.version }}
           labels: |
             org.opencontainers.image.title=Polyfin Aurora
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.merge.outputs.version }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.licenses=MIT
