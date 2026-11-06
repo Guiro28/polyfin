@@ -1,26 +1,31 @@
 import {
   ArrowCounterClockwiseIcon,
+  ImageIcon,
   ListBulletsIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusIcon,
   TrashIcon,
+  XIcon,
 } from '@phosphor-icons/react'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   bulkLineupCategories,
   createLineupCategory,
+  deleteChannelGroupImage,
   deleteLineupCategory,
   fetchLineupCategories,
   orderLineupCategories,
   queryClient,
   queryKeys,
+  setChannelGroupImage,
   updateLineupCategory,
   type LineupCategory,
   type Scope,
 } from '@/api'
 import { invalidateLineup, lineupPath } from '@/features/iptv/lineup'
+import { readPicture } from '@/features/users/AvatarDialog'
 import { errorMessage } from '@/format'
 import { useI18n } from '@/i18n'
 import {
@@ -364,6 +369,13 @@ function CategoryRow({
           disabled={update.isPending}
           onChange={(enabled) => update.mutate({ enabled })}
         />
+        {scope === 'shared' && category.name !== '' && category.image !== null && (
+          <img
+            src={category.image}
+            alt=""
+            className="size-10 shrink-0 rounded-field object-cover"
+          />
+        )}
         <div className="min-w-0 flex-1 basis-48">
           {renaming ? (
             <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
@@ -416,6 +428,9 @@ function CategoryRow({
           >
             {text.channels}
           </ButtonLink>
+          {scope === 'shared' && category.name !== '' && (
+            <GroupImage scope={scope} id={id} category={category} shown={shown} />
+          )}
           {!renaming && (
             <IconButton
               size="sm"
@@ -467,5 +482,80 @@ function CategoryRow({
         error={remove.isError ? errorMessage(t, remove.error) : undefined}
       />
     </li>
+  )
+}
+
+/** The largest picture of a group sent, as the server keeps it (library.MaxUploadedImageBytes). */
+const maxGroupImageBytes = 10 << 20
+
+/**
+ * The picture of a category's group of channels, which Emby's apps show on its tag: sent from the
+ * device, or removed. It follows the category's name.
+ */
+function GroupImage({
+  scope,
+  id,
+  category,
+  shown,
+}: {
+  scope: Scope
+  id: string
+  category: LineupCategory
+  shown: string
+}) {
+  const { t } = useI18n()
+  const text = t.lineup.categories
+  const toast = useToast()
+  const file = useRef<HTMLInputElement>(null)
+  const save = useMutation({
+    mutationFn: (data: string) => setChannelGroupImage(category.name, data),
+    onSuccess: () => toast(text.imageSaved(shown)),
+    onError: (error) => toast(errorMessage(t, error), { tone: 'danger' }),
+    onSettled: () => invalidateLineup(scope, id),
+  })
+  const remove = useMutation({
+    mutationFn: () => deleteChannelGroupImage(category.name),
+    onSuccess: () => toast(text.imageRemoved(shown)),
+    onError: (error) => toast(errorMessage(t, error), { tone: 'danger' }),
+    onSettled: () => invalidateLineup(scope, id),
+  })
+
+  async function sent(event: ChangeEvent<HTMLInputElement>) {
+    const picture = event.target.files?.[0]
+    event.target.value = ''
+    if (!picture) return
+    if (picture.size > maxGroupImageBytes) {
+      toast(text.imageTooLarge, { tone: 'danger' })
+      return
+    }
+    save.mutate((await readPicture(picture)).data)
+  }
+
+  return (
+    <>
+      <input
+        ref={file}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(event) => void sent(event)}
+      />
+      <IconButton
+        size="sm"
+        icon={ImageIcon}
+        label={text.imageLabel(shown)}
+        disabled={save.isPending}
+        onClick={() => file.current?.click()}
+      />
+      {category.image !== null && (
+        <IconButton
+          size="sm"
+          icon={XIcon}
+          label={text.imageRemoveLabel(shown)}
+          disabled={remove.isPending}
+          onClick={() => remove.mutate()}
+        />
+      )}
+    </>
   )
 }

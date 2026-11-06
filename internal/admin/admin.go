@@ -422,6 +422,8 @@ func New(options Options) http.Handler {
 	h.dlnaRoutes(mux)
 	mux.Handle("PUT /admin/api/settings", h.administrator(h.updateSettings))
 	mux.Handle("GET /admin/api/settings/apps", h.administrator(h.settingsApps))
+	mux.Handle("PUT /admin/api/channel-groups/image", h.administrator(h.setChannelGroupImage))
+	mux.Handle("DELETE /admin/api/channel-groups/image", h.administrator(h.deleteChannelGroupImage))
 	mux.Handle("POST /admin/api/settings/stream-proxy/check", h.administrator(h.checkStreamProxy))
 	mux.Handle("POST /admin/api/settings/stream-proxy/detect", h.administrator(h.detectWarp))
 	mux.Handle("GET /admin/api/settings/poster-previews", h.administrator(h.posterPreviews))

@@ -10,6 +10,7 @@ import (
 
 	"github.com/moodiness/polyfin/internal/accounts"
 	"github.com/moodiness/polyfin/internal/embyapp"
+	"github.com/moodiness/polyfin/internal/library"
 	"github.com/moodiness/polyfin/internal/mediasegments"
 )
 
@@ -170,4 +171,49 @@ func (h *Handler) embyMarkers(ctx context.Context, dto *BaseItemDto, opened acco
 // than showing it loading.
 func (h *Handler) embySectionItems(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, QueryResult{Items: []BaseItemDto{}})
+}
+
+// embyChannelTags answers Emby's tags of its Live TV channels: the groups
+// of the channels the user sees, by name. Emby for Android TV lists them in
+// its Tags tab, and asks for them before it draws its guide, staying
+// loading on an error.
+func (h *Handler) embyChannelTags(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.viewer(w, r, bindErrors{}, unknownListingUser)
+	if !ok {
+		return
+	}
+	channels, err := h.Library.Channels(r.Context(), user)
+	if err != nil {
+		h.browseError(w, r, err)
+		return
+	}
+	var names []string
+	for _, channel := range channels {
+		if channel.ChannelGroup != "" && !slices.Contains(names, channel.ChannelGroup) {
+			names = append(names, channel.ChannelGroup)
+		}
+	}
+	slices.SortFunc(names, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	tags := make([]BaseItemDto, len(names))
+	for i, name := range names {
+		tags[i] = BaseItemDto{Name: name, Id: channelTagID(name), ServerId: h.ServerID, Type: "Tag", ImageTags: map[string]string{}}
+		// The picture an administrator gave the group, if any.
+		if url, ok := h.Library.UploadedArtwork(library.ChannelGroupID(name), "Primary"); ok {
+			tags[i].ImageTags["Primary"] = library.ImageTag(url)
+		}
+	}
+	writeJSON(w, http.StatusOK, QueryResult{Items: tags, TotalRecordCount: len(tags)})
+}
+
+// channelTagID names a group of channels among Emby's tags, by its name.
+func channelTagID(group string) string {
+	return library.ChannelGroupID(group).String()
+}
+
+// channelsTagged keeps the channels of the groups tags names (see
+// channelTagID), as Emby's apps ask for a tag's channels.
+func channelsTagged(channels []library.Item, tags []string) []library.Item {
+	return slices.DeleteFunc(slices.Clone(channels), func(c library.Item) bool {
+		return !slices.Contains(tags, channelTagID(c.ChannelGroup))
+	})
 }

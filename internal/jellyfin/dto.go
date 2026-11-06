@@ -44,10 +44,11 @@ func (t *Time) UnmarshalJSON(data []byte) error {
 }
 
 // parseTime reads a date as ASP.NET binds one: RFC 3339 with any precision,
-// a date and time without a zone, read as UTC, or a date alone.
+// a date and time without a zone, read as UTC, or a date alone. Seconds may
+// be left out, as Emby for Android TV leaves them out of its guide's dates.
 func parseTime(text string) (time.Time, bool) {
 	text = strings.TrimSpace(text)
-	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999", "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999", "2006-01-02T15:04Z07:00", "2006-01-02T15:04", "2006-01-02"} {
 		if parsed, err := time.Parse(layout, text); err == nil {
 			return parsed.UTC(), true
 		}

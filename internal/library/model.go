@@ -86,6 +86,10 @@ type Item struct {
 	ID   accounts.ID
 	Kind Kind
 	Name string
+	// ChannelGroup is the name of a channel's group (see channelGroup):
+	// the category of an IPTV source, as Emby's apps list it among their
+	// tags.
+	ChannelGroup string
 	// ParentID is the folder the item was listed in; zero for libraries.
 	ParentID accounts.ID
 	// CollectionType is the content of a library: "movies", "tvshows",

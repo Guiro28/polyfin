@@ -87,7 +87,7 @@ func (s *Service) channels(ctx context.Context, v view) ([]Item, []record) {
 			if meta.Type == "" {
 				meta.Type = src.catalog.Type
 			}
-			group, _ := channelGroup(src, meta)
+			group, groupName := channelGroup(src, meta)
 			if meta.Poster == "" && meta.Logo == "" {
 				meta.Logo = icons[i][itemID(channelKey(meta.ID))]
 			}
@@ -102,6 +102,7 @@ func (s *Service) channels(ctx context.Context, v view) ([]Item, []record) {
 				number = meta.ChannelNumber
 			}
 			item := channelItem(meta, number)
+			item.ChannelGroup = groupName
 			preview := meta
 			items = append(items, item)
 			records = append(records, record{ID: item.ID, Key: channelKey(meta.ID), Kind: KindChannel, Addon: &addon,

@@ -333,6 +333,9 @@ func (h *Handler) liveChannels(w http.ResponseWriter, r *http.Request) {
 	if favoriteSet {
 		channels = slices.DeleteFunc(channels, func(c library.Item) bool { return state.of(c).IsFavorite != favorite })
 	}
+	if tags := listQuery(r, "tagIds"); len(tags) > 0 {
+		channels = channelsTagged(channels, tags)
+	}
 	from, to := bounds(len(channels), start, limit)
 	fields := requestedFields(r)
 	var airing map[accounts.ID]library.Item

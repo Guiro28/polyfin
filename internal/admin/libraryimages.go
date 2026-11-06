@@ -23,6 +23,7 @@ type LibraryImages interface {
 	UploadImage(ctx context.Context, id accounts.ID, imageType string, data []byte) error
 	DownloadImage(ctx context.Context, id accounts.ID, imageType, address string, confined bool) error
 	DeleteUploadedImage(ctx context.Context, id accounts.ID, imageType string) error
+	UploadedArtwork(id accounts.ID, imageType string) (string, bool)
 	DeleteLibraryImages(ctx context.Context, addon addons.Addon) error
 	LookUpGeneratedImage(id accounts.ID)
 }

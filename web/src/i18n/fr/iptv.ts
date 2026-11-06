@@ -251,6 +251,11 @@ const iptv: typeof en = {
       tooMany: 'Au plus 5 000 catégories peuvent être exclues.',
     },
     categories: {
+      imageLabel: (name: string) => `Changer l’image de ${name}`,
+      imageRemoveLabel: (name: string) => `Retirer l’image de ${name}`,
+      imageSaved: (name: string) => `L’image de ${name} a été enregistrée.`,
+      imageRemoved: (name: string) => `L’image de ${name} a été retirée.`,
+      imageTooLarge: 'Image trop lourde (10 Mo max.).',
       title: 'Catégories',
       help: 'Affichées dans cet ordre dans les applis Jellyfin. Faites glisser une catégorie, ou utilisez ses flèches, pour la déplacer.',
       reorderOff: 'Videz la recherche pour changer l’ordre.',

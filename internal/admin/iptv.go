@@ -236,16 +236,19 @@ type categoryJSON struct {
 	Position        int    `json:"position"`
 	Channels        int    `json:"channels"`
 	EnabledChannels int    `json:"enabledChannels"`
+	// Image is the address of the picture of its group of channels, nil
+	// without one (see setChannelGroupImage).
+	Image *string `json:"image"`
 }
 
-func newCategoryJSON(c iptv.Category) categoryJSON {
+func (h *handler) newCategoryJSON(c iptv.Category) categoryJSON {
 	return categoryJSON{ID: c.ID.String(), Key: c.Key, Name: c.Name, ProviderName: c.ProviderName, Custom: c.Custom, Enabled: c.Enabled,
-		Position: c.Position, Channels: c.Channels, EnabledChannels: c.EnabledChannels}
+		Position: c.Position, Channels: c.Channels, EnabledChannels: c.EnabledChannels, Image: h.channelGroupImage(c.Name)}
 }
 
 func (h *handler) answerCategory(w http.ResponseWriter, r *http.Request, status int, c iptv.Category, err error) {
 	if !h.answerFailure(w, r, err) {
-		writeJSON(w, status, newCategoryJSON(c))
+		writeJSON(w, status, h.newCategoryJSON(c))
 	}
 }
 
@@ -260,7 +263,7 @@ func (h *handler) listCategories(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]categoryJSON, 0, len(categories))
 	for _, c := range categories {
-		items = append(items, newCategoryJSON(c))
+		items = append(items, h.newCategoryJSON(c))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

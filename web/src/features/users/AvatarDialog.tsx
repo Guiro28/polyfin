@@ -36,7 +36,7 @@ export function saveChoice(user: string, choice: AvatarChoice) {
 }
 
 /** Reads a picture of the device as base64, with its preview. */
-function readPicture(file: File): Promise<{ data: string; preview: string }> {
+export function readPicture(file: File): Promise<{ data: string; preview: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {

@@ -328,6 +328,7 @@ func New(options Options) *Handler {
 	anonymous(http.MethodGet, "/System/Ping", h.ping)
 	signedIn(http.MethodGet, "/System/WakeOnLanInfo", h.wakeOnLanInfo)
 	signedIn(http.MethodGet, "/Users/{userId}/Sections/{sectionId}/Items", h.embySectionItems)
+	signedIn(http.MethodGet, "/LiveTv/ChannelTags", h.embyChannelTags)
 	anonymous(http.MethodPost, "/System/Ping", h.ping)
 
 	anonymous(http.MethodGet, "/Branding/Configuration", h.brandingConfiguration)

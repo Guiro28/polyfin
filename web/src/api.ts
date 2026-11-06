@@ -1541,7 +1541,16 @@ export type LineupCategory = {
   position: number
   channels: number
   enabledChannels: number
+  /** The address of the picture of its group of channels, shown on Emby's tags; null without one. */
+  image: string | null
 }
+
+/** Keeps a picture, in base64, as the one of the group of channels of this name. */
+export const setChannelGroupImage = (name: string, data: string) =>
+  request<{ image: string | null }>('PUT', '/channel-groups/image', { name, data })
+
+export const deleteChannelGroupImage = (name: string) =>
+  request<void>('DELETE', `/channel-groups/image?name=${encodeURIComponent(name)}`)
 
 /** How a stream last answered when its channel was opened. */
 export type StreamHealth = {

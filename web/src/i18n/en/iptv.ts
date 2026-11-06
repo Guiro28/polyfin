@@ -235,6 +235,11 @@ const iptv = {
       tooMany: 'At most 5,000 categories can be left out.',
     },
     categories: {
+      imageLabel: (name: string) => `Change the picture of ${name}`,
+      imageRemoveLabel: (name: string) => `Remove the picture of ${name}`,
+      imageSaved: (name: string) => `The picture of ${name} was saved.`,
+      imageRemoved: (name: string) => `The picture of ${name} was removed.`,
+      imageTooLarge: 'Picture too large (10 MB at most).',
       title: 'Categories',
       help: 'Shown in this order in Jellyfin apps. Drag a category, or use its arrows, to move it.',
       reorderOff: 'Clear the search to change the order.',
