@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/moodiness/polyfin/internal/accounts"
+	"github.com/moodiness/polyfin/internal/basepath"
 	"github.com/moodiness/polyfin/internal/embyapp"
 )
 
@@ -13,15 +14,16 @@ func (h *Handler) publicInfo(r *http.Request) PublicSystemInfo {
 	settings := h.Accounts.Settings()
 	// The address on the local network the settings give, as Jellyfin's
 	// PublishedServerUrl, which discovery answers announce too; else the
-	// address this request reached, which apps can use to reach the server
-	// again from the same network.
+	// address this request reached, with the base path it came under, as
+	// Jellyfin's carries its BaseUrl, which apps can use to reach the
+	// server again from the same network.
 	local := settings.LocalAddress
 	if local == "" {
 		scheme := "http"
 		if r.TLS != nil {
 			scheme = "https"
 		}
-		local = scheme + "://" + r.Host
+		local = scheme + "://" + r.Host + basepath.Of(r)
 	}
 	if embyapp.In(r.Context()) {
 		return embyPublicInfo(local, settings.ServerName, h.ServerID)

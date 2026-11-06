@@ -241,12 +241,15 @@ jobs:
         with:
           path: ${{ steps.go-env.outputs.paths }}
           # Saved by each run on main under a key of its own, so that the
-          # next runs start from the latest build.
+          # next runs start from the latest build; else a sibling leg's on
+          # the same system, such as a new leg of a split job.
           key: &go-cache-key go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.run_id }}
           restore-keys: |
             go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('go.mod', 'go.sum') }}-
             go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ strategy.job-index }}-
-      - name: Set up Node
+            go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
+      - &setup-node
+        name: Set up Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
@@ -351,11 +354,87 @@ jobs:
           done
           echo "POLYFIN_TEST_PG_DUMP=$client/pg_dump" >> "$GITHUB_ENV"
           echo "POLYFIN_TEST_PG_RESTORE=$client/pg_restore" >> "$GITHUB_ENV"
-      - name: Install Tesseract with English and French data for the OCR tests
+      - name: List the Tesseract packages apt would fetch
+        # apt's index comes from the mirror in a second or two, but its
+        # packages have taken 4 to 8 minutes in about one run in six, at 16
+        # to 40 kB/s. The packages this runner lacks, with the checksums the
+        # index gives them, key a cache of them, which the next step fills
+        # apt's archive from.
+        id: tesseract
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
+          uris="$RUNNER_TEMP/tesseract.uris"
+          sudo apt-get install --print-uris -qq --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra | tee "$uris"
+          if [ -s "$uris" ]; then
+            prefix="apt-tesseract-$ImageOS-$RUNNER_ARCH-"
+            {
+              echo "prefix=$prefix"
+              echo "key=$prefix$(sha256sum < "$uris" | cut -c1-16)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+      - name: Restore the Tesseract packages
+        id: tesseract-cache
+        if: steps.tesseract.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: &tesseract-debs ${{ runner.temp }}/tesseract-debs/*.deb
+          key: ${{ steps.tesseract.outputs.key }}
+          # An older set still holds most of them: apt fetches the rest.
+          restore-keys: ${{ steps.tesseract.outputs.prefix }}
+      - name: Install Tesseract with English and French data for the OCR tests
+        id: tesseract-install
+        run: |
+          debs="$RUNNER_TEMP/tesseract-debs"
+          mkdir -p "$debs/partial"
+          # Only the cached packages apt would fetch, with the checksum it
+          # expects, stay; it fetches any other.
+          declare -A wanted=()
+          while read -r _ file _ checksum; do
+            wanted[$file]=1
+            # apt prints one checksum of the index, MD5Sum on Ubuntu 24.04.
+            case "$checksum" in
+              SHA512:*) sum=sha512sum ;;
+              SHA256:*) sum=sha256sum ;;
+              SHA1:*) sum=sha1sum ;;
+              MD5Sum:*) sum=md5sum ;;
+              *) sum="" ;;
+            esac
+            if [ -f "$debs/$file" ] && { [ -z "$sum" ] || [ "$("$sum" < "$debs/$file" | cut -d' ' -f1)" != "${checksum#*:}" ]; }; then
+              echo "Not the package apt expects: $file"
+              rm -f "$debs/$file"
+            fi
+          done < "$RUNNER_TEMP/tesseract.uris"
+          for deb in "$debs"/*.deb; do
+            if [ -f "$deb" ] && [ -z "${wanted[$(basename "$deb")]:-}" ]; then rm -f "$deb"; fi
+          done
+          apt_install() {
+            sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$debs/" \
+              -o APT::Keep-Downloaded-Packages=true "$@"
+          }
+          packages=(tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra)
+          # A cached set that fails to install is fetched again, once what it
+          # left half installed is mended: a stale cache never fails the run.
+          if ! apt_install "${packages[@]}"; then
+            echo "::warning::Tesseract did not install from the cached packages: fetching them again"
+            sudo rm -f "$debs"/*.deb
+            apt_install --fix-broken
+            apt_install "${packages[@]}"
+            # The folder then lacks what was installed before the failure.
+            echo "fell-back=true" >> "$GITHUB_OUTPUT"
+          fi
           echo "POLYFIN_TEST_TESSERACT=/usr/bin/tesseract" >> "$GITHUB_ENV"
+      - name: Keep the Tesseract packages for the next runs
+        # From any run that missed them, a pull request's too: they are
+        # about 9 MB. Main's serve every pull request, a pull request's
+        # its own next runs. Before the tests, so that a failing test does
+        # not lose them.
+        if: >-
+          steps.tesseract.outputs.key != '' && steps.tesseract-cache.outputs.cache-hit != 'true'
+          && steps.tesseract-install.outputs.fell-back != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: *tesseract-debs
+          key: ${{ steps.tesseract.outputs.key }}
       - name: Test
         env:
           PART: ${{ matrix.part }}
@@ -394,12 +473,25 @@ jobs:
     # code (disk space, folder watching, process control, FFmpeg's outputs)
     # and local folders with Windows paths, against a PostgreSQL 18 and the
     # image's FFmpeg built for Windows. The rest of the suite fakes its tools
-    # with shell scripts, which Windows cannot run.
-    name: Windows build and system tests
+    # with shell scripts, which Windows cannot run. In two parts, balanced by
+    # the packages' times on this runner, each about 3.3 minutes of tests:
+    # internal/playback alone, beside the rest of part 1, and
+    # internal/localfiles beside internal/hls in part 2.
+    name: Windows build and system tests, part ${{ matrix.part }} of 2
     needs: tested
     if: needs.tested.outputs.run == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: 1
+            packages: >-
+              ./internal/playback ./internal/torrent/... ./internal/thumbnails ./cmd/polyfin ./internal/process
+              ./internal/diskspace ./internal/accounts ./internal/config ./internal/netfail
+          - part: 2
+            packages: ./internal/localfiles ./internal/hls ./internal/media
     env:
       POLYFIN_TEST_DATABASE_URL: postgresql://polyfin:polyfin@127.0.0.1:5432/polyfin
     defaults:
@@ -440,6 +532,7 @@ jobs:
           # The tests of the GPU methods look FFmpeg up in PATH.
           echo "$windows/ffmpeg/bin" >> "$GITHUB_PATH"
       - name: Build and vet
+        if: matrix.part == 1
         run: |
           go build ./...
           go vet ./...
@@ -447,10 +540,14 @@ jobs:
         # Torrents run on Polyfin Desktop for Windows: their routes, the
         # WireGuard tunnel among them, are tested here too, as are the
         # socket errors by which a connection's failure is told.
+        env:
+          PACKAGES: ${{ matrix.packages }}
         run: |
-          go test -p 2 ./cmd/polyfin ./internal/process ./internal/diskspace ./internal/media ./internal/localfiles \
-            ./internal/hls ./internal/thumbnails ./internal/accounts ./internal/config ./internal/playback ./internal/torrent/... \
-            ./internal/netfail
+          read -ra packages <<< "$PACKAGES"
+          go test -p 2 "${packages[@]}"
+      - name: Test the admin app's, the migrations' and the Jellyfin API's per-system tests
+        if: matrix.part == 2
+        run: |
           go test ./internal/admin -run '^(TestStatusTellsTheSystem|TestUnwatchedFolderText|TestHealthTellsWhyTorrentsDoNotPlay|TestWireGuardSettingsAndHealth)$'
           go test ./internal/database -run '^TestMigrationsEndTheirLinesWithLF$'
           go test ./internal/jellyfin -run '^TestOverloadedByAResetConnection$'
@@ -741,6 +838,9 @@ jobs:
       - name: Start the app twice, and quit it
         env:
           DESKTOP_SMOKE_NO_TRAY: ${{ matrix.no-tray && '1' || '' }}
+          # The smoke's lines as they come, so that the log's times are
+          # theirs.
+          PYTHONUNBUFFERED: "1"
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             python scripts/desktop-smoke.py "$(cygpath -w "$DESKTOP_TEMP/polyfin-desktop.exe")" \
@@ -806,6 +906,29 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  desktop-admin-app:
+    # The admin app every package of Polyfin Desktop embeds, built once, as
+    # the check job builds it, for the packages' SKIP_WEB: npm ci alone
+    # takes about 1.5 minutes on Windows on Arm, a few seconds here.
+    name: Polyfin Desktop's admin app
+    needs: tested
+    if: needs.tested.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - *checkout
+      - *setup-node
+      - name: Build the admin app
+        run: make web
+      - name: Keep it for the packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-admin-app
+          path: web/dist
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
   desktop-package:
     # Each package of Polyfin Desktop, built by scripts/packaging as anyone
     # builds them, then installed and smoked on its system: each package's
@@ -814,7 +937,7 @@ jobs:
     # Windows on Arm, which builds its PostgreSQL from source. The Macs'
     # are desktop-package-macos.
     name: Package Polyfin Desktop for ${{ matrix.name }}
-    needs: [tested, desktop-files]
+    needs: [tested, desktop-files, desktop-admin-app]
     if: needs.tested.outputs.run == 'true'
     strategy:
       fail-fast: false
@@ -854,7 +977,7 @@ jobs:
   desktop-package-macos:
     # The Macs' packages, outside pull requests only (see macos).
     name: Package Polyfin Desktop for ${{ matrix.name }}
-    needs: [tested, desktop-files]
+    needs: [tested, desktop-files, desktop-admin-app]
     if: needs.tested.outputs.macos == 'true'
     strategy:
       fail-fast: false
