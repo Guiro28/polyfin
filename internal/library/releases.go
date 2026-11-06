@@ -258,8 +258,9 @@ func (s *Service) held(ctx context.Context, v view, records []record) (held map[
 			}
 		}
 	}
+	series := s.heldSeries(v, records)
 	if len(waiting) == 0 {
-		return nil, false, nil
+		return series, false, nil
 	}
 	kept, err := s.keptReleases(ctx, keys)
 	if err != nil {
@@ -300,7 +301,7 @@ func (s *Service) held(ctx context.Context, v view, records []record) (held map[
 			return nil, false, err
 		}
 	}
-	held = map[accounts.ID]time.Time{}
+	held = series
 	for _, r := range waiting {
 		known, ok := keptRelease(kept, releaseKeys(providerIDs(*r.Meta)))
 		switch {
@@ -346,7 +347,7 @@ func (s *Service) releasedMetas(ctx context.Context, v view, src source, metas [
 	}
 	var movies []record
 	for _, meta := range metas {
-		if _, r, err := titleItem(src.addon, src.catalog, meta, accounts.ID{}); err == nil && r.Kind == KindMovie {
+		if _, r, err := titleItem(src.addon, src.catalog, meta, accounts.ID{}); err == nil && (r.Kind == KindMovie || r.Kind == KindSeries) {
 			movies = append(movies, r)
 		}
 	}

@@ -315,6 +315,7 @@ const (
 	releaseCinemas  = 3
 	releaseDigital  = 4
 	releasePhysical = 5
+	releaseTV       = 6
 )
 
 // ReleaseDates returns the release dates of the movie TMDB identifies as
@@ -348,7 +349,7 @@ func (c *Client) ReleaseDates(ctx context.Context, id string) (Releases, error) 
 			date = date.UTC().Truncate(24 * time.Hour)
 			earliest(&releases.First, date)
 			switch d.Type {
-			case releaseDigital, releasePhysical:
+			case releaseDigital, releasePhysical, releaseTV:
 				earliest(&releases.Home, date)
 			case releaseLimited, releaseCinemas:
 				earliest(&releases.Theatrical, date)

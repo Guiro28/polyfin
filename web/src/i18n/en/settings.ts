@@ -701,6 +701,9 @@ const settings = {
     tmdbKey: 'TMDB API key',
     tmdbKeyHelp:
       'Optional: Polyfin bundles no key. An API key or a read access token from a TMDB account brings people’s photos and biographies, each title’s cast and crew from TMDB in billing order with photos, person pages listing every library title they are credited in and the titles TMDB knows them best for, beyond the libraries, posters for movies and series whose addon gives none, box sets in Silo’s apps, and TMDB images in jellyfin-web’s Edit images, which Polyfin relays. It also matches a local folder’s files whose search every metadata addon fails. Without a key, TMDB is never asked.',
+    onlyReleased: 'Only what is out (VOD, DVD or TV)',
+    onlyReleasedHelp:
+      'A release on television counts too, and a series shows only once the day it first airs has passed, when its addon gives it.',
     waitDigitalRelease: 'Wait for the digital release',
     waitDigitalReleaseHelp:
       'A movie of the addons’ catalogs shows once it is out at home: its first digital or physical release, as TMDB tells, else 90 days after it came out in cinemas. Until then it is left out of libraries, home rows, searches, similar titles and person pages, has no version and does not play; smart lists with a rule of upcoming titles list it, with that day. A movie TMDB does not know, and one out for over a year, stays listed. Needs the TMDB API key.',

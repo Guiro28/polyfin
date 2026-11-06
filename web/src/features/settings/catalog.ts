@@ -739,9 +739,11 @@ export const settingEntries: readonly SettingEntry[] = [
   {
     section: 'content',
     anchor: 'wait-digital-release',
-    label: (t) => s(t).waitDigitalRelease,
-    help: (t) => s(t).waitDigitalReleaseHelp,
+    label: (t) => s(t).onlyReleased,
+    help: (t) => `${s(t).waitDigitalReleaseHelp} ${s(t).onlyReleasedHelp}`,
     keywords: [
+      'VOD',
+      'DVD',
       'TMDB',
       'digital release',
       'cinema',

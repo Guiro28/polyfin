@@ -703,8 +703,8 @@ function Content({ form, update, error, number, range, limits }: SectionFormApi)
       <SettingsGroup title={groups.releases}>
         <SwitchRow
           anchor="wait-digital-release"
-          label={s.waitDigitalRelease}
-          help={s.waitDigitalReleaseHelp}
+          label={s.onlyReleased}
+          help={`${s.waitDigitalReleaseHelp} ${s.onlyReleasedHelp}`}
           checked={form.waitDigitalRelease}
           onChange={(waitDigitalRelease) => update({ waitDigitalRelease })}
           disabled={!form.tmdbKeySet && !form.tmdbKey}

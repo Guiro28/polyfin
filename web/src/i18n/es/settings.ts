@@ -708,6 +708,9 @@ const settings: typeof en = {
     tmdbKey: 'Clave API de TMDB',
     tmdbKeyHelp:
       'Opcional: Polyfin no incluye ninguna clave. Una clave API o un token de acceso de lectura de una cuenta de TMDB aporta fotos y biografías de las personas, el reparto y el equipo de cada título desde TMDB en el orden de los créditos con fotos, páginas de personas con cada título de las bibliotecas en que aparecen y los títulos por los que TMDB mejor las conoce, más allá de las bibliotecas, pósteres de películas y series cuya extensión no da ninguno, colecciones en las apps de Silo e imágenes de TMDB en «Edit images» de jellyfin-web, que Polyfin transmite. También busca en TMDB los archivos de una carpeta local cuya búsqueda falla en todas las extensiones de metadatos. Sin clave, nunca se consulta TMDB.',
+    onlyReleased: 'Solo lo que ya ha salido (VOD, DVD o TV)',
+    onlyReleasedHelp:
+      'Un estreno en televisión también cuenta, y una serie solo aparece una vez pasado el día de su primera emisión, si su addon lo indica.',
     waitDigitalRelease: 'Esperar al estreno digital',
     waitDigitalReleaseHelp:
       'Una película de los catálogos de los addons aparece solo cuando ya está disponible en casa: su primer estreno digital o físico, según TMDB, o si no 90 días después de su estreno en cines. Hasta entonces no aparece en las bibliotecas, las filas de inicio, las búsquedas, los títulos similares ni las páginas de personas, no tiene ninguna versión y no se reproduce; las listas inteligentes con una regla de títulos próximos la muestran, con ese día. Una película que TMDB no conoce, o estrenada hace más de un año, sigue apareciendo. Necesita la clave API de TMDB.',
