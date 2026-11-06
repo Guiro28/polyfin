@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -88,12 +89,22 @@ type Service struct {
 	// (see LearnMasteringDisplay).
 	unmastered *cache.Cache[accounts.ID, error]
 	live       *cache.Cache[accounts.ID, struct{}]
-	hosts      *cache.Cache[string, bool]
+	// silent are the versions whose analysis was logged as finding video
+	// and no audio, so that it is logged once (see keepAnalysis).
+	silent sync.Map
+	hosts  *cache.Cache[string, bool]
 	// indexes are keyframe times, unindexed the versions whose index
-	// cannot be read, and offsets where the keyframes start in the file.
+	// cannot be read, unscanned those whose keyframes could not be read
+	// from the whole file (see scannedKeyframes), and offsets where the
+	// keyframes start in the file.
 	indexes   *cache.Cache[accounts.ID, []time.Duration]
 	unindexed *cache.Cache[accounts.ID, error]
+	unscanned *cache.Cache[accounts.ID, error]
 	offsets   *cache.Cache[accounts.ID, []container.Keyframe]
+	// playPlans are the plans the plays of files whose keyframes are read
+	// from the whole file started with, which they keep (see playPlan).
+	playPlansMu sync.Mutex
+	playPlans   *cache.Cache[playPlanKey, hls.Plan]
 	// warming are the warms under way, by version, and warmed the start
 	// each version was warmed from lately (see Warm).
 	warmMu  sync.Mutex
@@ -107,6 +118,11 @@ type Service struct {
 	// unlocated the versions whose index could not be read.
 	locations *cache.Cache[accounts.ID, []int]
 	unlocated *cache.Cache[accounts.ID, error]
+	// numbered are the container's own numbers of versions' tracks, by
+	// FFmpeg index (see ContainerTracks), and unnumbered the versions whose
+	// numbers could not be read.
+	numbered   *cache.Cache[accounts.ID, map[int]uint64]
+	unnumbered *cache.Cache[accounts.ID, error]
 	// tracks are subtitle tracks read whole through indexes, untracked
 	// those that could not be, and trackReads and hostReads bound the
 	// reads under way, over every host and from each.
@@ -143,6 +159,8 @@ type Service struct {
 	// received counts the bytes the versions' sources send, nil when
 	// nothing is counted (see CountReceived).
 	received *bandwidth.Meters
+	// analyzed is told each version analyzed (see OnAnalyzed).
+	analyzed atomic.Pointer[func(version library.Version)]
 }
 
 // New returns a playback service running ffprobe from ffprobePath, reading
@@ -181,12 +199,16 @@ func New(db *pgxpool.Pool, opener source.Opener, ffprobePath string, signer Sign
 		hosts:       cache.New[string, bool](500, 5*time.Minute),
 		indexes:     cache.New[accounts.ID, []time.Duration](200, time.Hour),
 		unindexed:   cache.New[accounts.ID, error](2000, failureTTL),
+		unscanned:   cache.New[accounts.ID, error](2000, scanFailureTTL),
+		playPlans:   cache.New[playPlanKey, hls.Plan](2000, scanFailureTTL),
 		offsets:     cache.New[accounts.ID, []container.Keyframe](50, time.Hour),
 		warming:     map[accounts.ID]*warmRun{},
 		warmed:      cache.New[accounts.ID, time.Duration](500, warmedFor),
 		extractions: cache.New[accounts.ID, *extracted](200, 6*time.Hour),
 		locations:   cache.New[accounts.ID, []int](2000, time.Hour),
 		unlocated:   cache.New[accounts.ID, error](2000, failureTTL),
+		numbered:    cache.New[accounts.ID, map[int]uint64](2000, time.Hour),
+		unnumbered:  cache.New[accounts.ID, error](2000, failureTTL),
 		tracks:      cache.New[trackKey, Track](100, time.Hour).Sized(maxKeptTracks, func(t Track) int { return len(t.Data) }),
 		untracked:   cache.New[trackKey, error](2000, failureTTL),
 		trackReads:  make(chan struct{}, maxTrackReads),
@@ -214,7 +236,7 @@ func (s *Service) open(version library.Version) *source.Source {
 		src := s.sources.Open(version.ID, s.torrentLocation(version), nil)
 		// A torrent that failed for its route is tried again as soon as the
 		// route is back, not after the source's cooldown.
-		if failure := src.Failure(); failure != nil && torrent.RouteFailure(failure) && s.torrentReady() == nil {
+		if failure := src.Failure(); failure != nil && torrent.RouteFailure(failure) && s.torrentReady(version) == nil {
 			src.Retry()
 		}
 		return src
@@ -430,10 +452,9 @@ func (s *Service) TorrentPlayMost() time.Duration {
 	return 2 * s.TorrentPlayWait()
 }
 
-// torrentPatience returns ctx, canceled with errTorrentSlow once the
-// torrent of version, past its start, 15 seconds and a piece's wait,
-// receives nothing for a piece's wait, or at TorrentPlayMost: a read of it
-// waits as the play does (see TorrentReceiving). stop ends the watch.
+// torrentPatience returns ctx, canceled with errTorrentSlow once a wait
+// for the torrent of version begun now is over (see torrentWaited): a read
+// of it waits as the play does. stop ends the watch.
 func (s *Service) torrentPatience(ctx context.Context, version library.Version) (patient context.Context, stop func()) {
 	patient, cancel := context.WithCancelCause(ctx)
 	if s.torrents == nil {
@@ -441,7 +462,7 @@ func (s *Service) torrentPatience(ctx context.Context, version library.Version) 
 	}
 	started, most := time.Now(), s.TorrentPlayMost()
 	go func() {
-		timer := time.NewTimer(min(s.torrents.StartTimeout()+15*time.Second+torrent.PieceTimeout, most))
+		timer := time.NewTimer(min(s.torrentGrace(), most))
 		defer timer.Stop()
 		for {
 			select {
@@ -449,7 +470,7 @@ func (s *Service) torrentPatience(ctx context.Context, version library.Version) 
 				return
 			case <-timer.C:
 			}
-			if time.Since(started) >= most || !s.TorrentReceiving(version) {
+			if s.torrentWaited(version, started) {
 				cancel(errTorrentSlow)
 				return
 			}
@@ -459,10 +480,30 @@ func (s *Service) torrentPatience(ctx context.Context, version library.Version) 
 	return patient, func() { cancel(nil) }
 }
 
+// torrentGrace is how long a wait for a torrent goes on before it looks
+// whether the torrent receives its pieces: its start, 15 seconds and a
+// piece's wait, 105 seconds by default.
+func (s *Service) torrentGrace() time.Duration {
+	return s.torrents.StartTimeout() + 15*time.Second + torrent.PieceTimeout
+}
+
+// torrentWaited reports whether a wait for the torrent of version begun at
+// since is over, as a play's is: at TorrentPlayMost, or past torrentGrace
+// once the torrent receives nothing (see TorrentReceiving). Always without
+// torrents.
+func (s *Service) torrentWaited(version library.Version, since time.Time) bool {
+	if s.torrents == nil {
+		return true
+	}
+	waited := time.Since(since)
+	return waited >= s.TorrentPlayMost() || waited >= s.torrentGrace() && !s.TorrentReceiving(version)
+}
+
 // TorrentReceiving reports whether the torrent of a torrent version
 // receives its pieces: a byte of them arrived within a piece's wait, the
 // time a read waits before it is taken as stalled (see
-// torrent.PieceTimeout).
+// torrent.PieceTimeout), or its route, found down within a piece's wait,
+// is still within its grace (see torrent.Engine.Received).
 func (s *Service) TorrentReceiving(version library.Version) bool {
 	if version.Torrent == nil || s.torrents == nil {
 		return false
@@ -508,16 +549,22 @@ func (s *Service) Unstarted(version accounts.ID) bool {
 // routeCheck bounds the check of the torrents' route before a read.
 const routeCheck = 10 * time.Second
 
-// torrentReady reports why torrents cannot play now, nil when they can:
-// a torrent version is skipped meanwhile, as one that cannot be read,
-// without that counting as its failure.
-func (s *Service) torrentReady() error {
+// torrentReady reports why the torrent of version cannot play now, nil
+// when it can: a torrent version is skipped meanwhile, as one that cannot
+// be read, without that counting as its failure. A torrent that runs can
+// at once: it watches its route itself, and plays on through an outage
+// (see torrent.Engine.ReadyFor).
+func (s *Service) torrentReady(version library.Version) error {
 	if s.torrents == nil {
 		return errNoTorrents
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), routeCheck)
 	defer cancel()
-	return s.torrents.Ready(ctx)
+	hash, err := torrent.ParseHash(version.Torrent.InfoHash)
+	if err != nil {
+		return s.torrents.Ready(ctx)
+	}
+	return s.torrents.ReadyFor(ctx, hash)
 }
 
 // TorrentAdmitted reports why a torrent version cannot start now:
@@ -616,8 +663,9 @@ func (s *Service) Analyze(ctx context.Context, version library.Version) (media.A
 	if version.Torrent != nil {
 		// Over a route that cannot carry it, a torrent's file is not read:
 		// it plays again once the route is back. Nor while as many torrents
-		// run as the settings allow: it plays once one stops.
-		if err := s.torrentReady(); err != nil {
+		// run as the settings allow: it plays once one stops. A torrent
+		// that runs plays on through an outage of its route.
+		if err := s.torrentReady(version); err != nil {
 			return media.Analysis{}, err
 		}
 		if err := s.TorrentAdmitted(version); err != nil {
@@ -693,7 +741,7 @@ func (s *Service) analyze(ctx context.Context, version library.Version, probe fu
 		defer src.Release()
 		defer src.Urge()()
 	}
-	result, err := s.shared(ctx, "analyze "+version.ID.String(), func() (any, error) {
+	result, err := s.sharedRead(ctx, "analyze "+version.ID.String(), version, func() (any, error) {
 		// Requests for the version share this analysis, and it is kept: it
 		// runs to the end, and is saved, even once the request that started
 		// it is canceled, as when an app stops waiting. Started for a
@@ -784,8 +832,15 @@ func (s *Service) analyze(ctx context.Context, version library.Version, probe fu
 	return result.(media.Analysis), nil
 }
 
+// OnAnalyzed has analyzed told each version analyzed, once its analysis
+// is kept: the tracks item details list for it may have changed. analyzed
+// runs on the goroutine that analyzed it, so it must return quickly.
+func (s *Service) OnAnalyzed(analyzed func(version library.Version)) {
+	s.analyzed.Store(&analyzed)
+}
+
 // keepAnalysis saves and remembers the analysis of a version, started at
-// a time, and returns it.
+// a time, tells it (see OnAnalyzed), and returns it.
 func (s *Service) keepAnalysis(ctx context.Context, version library.Version, analysis media.Analysis, started time.Time) media.Analysis {
 	data, err := json.Marshal(analysis)
 	if err == nil {
@@ -797,6 +852,18 @@ func (s *Service) keepAnalysis(ctx context.Context, version library.Version, ana
 	}
 	s.analyses.Put(version.ID, analysis)
 	s.logger.Debug("Analyzed a version", "addon", version.Addon, "duration", time.Since(started))
+	// A file with video and no audio plays silent everywhere: said once
+	// per version, for a user who reports it to tell the file from a play.
+	video := slices.ContainsFunc(analysis.Streams, func(s media.Stream) bool { return s.Type == "video" && !s.AttachedPicture })
+	audio := slices.ContainsFunc(analysis.Streams, func(s media.Stream) bool { return s.Type == "audio" })
+	if video && !audio {
+		if _, logged := s.silent.LoadOrStore(version.ID, struct{}{}); !logged {
+			s.logger.Info("A version has no audio track", "version", version.Name, "addon", version.Addon, "tracks", len(analysis.Streams))
+		}
+	}
+	if analyzed := s.analyzed.Load(); analyzed != nil {
+		(*analyzed)(version)
+	}
 	return analysis
 }
 
@@ -913,6 +980,23 @@ func (s *Service) shared(ctx context.Context, key string, fn func() (any, error)
 		return result.Val, result.Err
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+// sharedRead is shared for a read of version's file that waits for its
+// torrent as a play does (see torrentPatience). That wait begins with the
+// read, which later requests join: when it gives up on the torrent, a
+// request whose own wait, begun as it asked, is not over (see
+// torrentWaited) is not handed a verdict on an earlier request's wait, as
+// a play asked just as the previous one gave up, and the file is read
+// again for it.
+func (s *Service) sharedRead(ctx context.Context, key string, version library.Version, fn func() (any, error)) (any, error) {
+	asked := time.Now()
+	for {
+		result, err := s.shared(ctx, key, fn)
+		if !errors.Is(err, errTorrentSlow) || s.torrentWaited(version, asked) {
+			return result, err
+		}
 	}
 }
 

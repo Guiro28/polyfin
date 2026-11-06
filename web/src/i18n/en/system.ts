@@ -144,6 +144,8 @@ const system = {
           `Polyfin cannot listen on UDP port ${port}, so Jellyfin apps on the local network do not find it by themselves. Another program probably uses it, such as a Jellyfin server on the same host. Saving the settings tries again.`,
         torrentRoute: (why: string) =>
           `Torrent streams do not play: ${why}. Nothing is sent another way; check the route under Settings › Torrents.`,
+        torrentRouteRiding: (why: string, seconds: number) =>
+          `${why}. The torrents playing go on for up to ${seconds} s; new ones cannot start. Nothing is sent another way; check the route under Settings › Torrents.`,
         torrentWhy: {
           interface_missing: (name: string) => `the network interface ${name} is missing`,
           interface_down: (name: string) => `the network interface ${name} is down`,
@@ -168,6 +170,21 @@ const system = {
           no_peers: 'its trackers and the DHT found no peer',
           no_trackers: 'the addon named no tracker, and the DHT found no peer',
           silent: 'peers were found, but none sent it',
+        },
+        torrentStopped: (at: string, why: string) =>
+          `A torrent stopped while playing at ${at}: ${why}. Nothing was sent another way. Check that the route stays reachable; the next play starts the torrent again.`,
+        torrentStoppedWhy: {
+          interface_missing: (name: string) => `the network interface ${name} went missing`,
+          interface_down: (name: string) => `the network interface ${name} went down`,
+          interface_no_address: (name: string) => `the network interface ${name} lost its address`,
+          proxy_unreachable: (name: string) => `the SOCKS5 proxy ${name} did not answer`,
+          proxy_refused: (name: string) => `the SOCKS5 proxy ${name} refused the user and password`,
+          wireguard_endpoint: (name: string) =>
+            `the WireGuard server ${name} could not be looked up`,
+          wireguard_down: (name: string) => `the WireGuard tunnel to ${name} stopped`,
+          wireguard_handshake: (name: string) =>
+            `the WireGuard server ${name} did not answer the handshake`,
+          route: () => 'its route did not answer',
         },
         torrentStartPeers: (found: number, why: string) =>
           `${found} ${found === 1 ? 'peer' : 'peers'} found: ${why}`,
@@ -203,8 +220,12 @@ const system = {
         httpsExpired: (date: string) => `The HTTPS certificate expired on ${date}.`,
         subtitleOcrLanguage: (name: string, file: string) =>
           `Picture subtitles in ${name} are not read into text: Tesseract has no data for this language. Add the file ${file} to the folder POLYFIN_TESSDATA_DIR names.`,
+        subtitleOcrDownloadFailed: (error: string) =>
+          `The last download of its data failed: ${error}`,
         metadataLanguages: (name: string) =>
           `${name}: every metadata addon of the server has a language, so they describe titles in their language for every user, whatever their metadata language. Keep Language of its descriptions at None on this addon, or on one more metadata addon.`,
+        desktopRolledBack: (version: string, previous: string, error: string) =>
+          `Polyfin Desktop went back to version ${previous}, as version ${version} did not start: ${error}. That version is no longer offered; the next one will be.`,
         themeCopyMissing: (missing: number, files: number) =>
           `The copy of the web player theme misses ${missing} of its ${files} files in Polyfin’s data folder, as after a backup restored on another system: browsers load them from their original addresses meanwhile, which needs the internet. Update the copy under Settings › Web player, or choose another theme.`,
         folderUnwritable: (name: string, path: string) =>
@@ -258,6 +279,9 @@ const system = {
       check: 'Check',
       checkLabel: (name: string) => `Check ${name} now`,
       checking: 'Checking…',
+      downloadLanguage: 'Download',
+      downloadLanguageLabel: (name: string) => `Download Tesseract’s data for ${name}`,
+      downloadingLanguage: 'Downloading…',
       iptvTitle: 'IPTV sources',
       guidesTitle: 'Programme guides',
       sharesTitle: 'Network shares',
@@ -361,6 +385,15 @@ const system = {
       torrentPeers: 'Peers',
       torrentUTPPeers: 'Peers over uTP',
       torrentsShared: 'Shared since the start',
+      torrentOutageAt: (at: string) => `Outage at ${at}`,
+      torrentOutage: {
+        interface: (span: string) =>
+          `the network interface did not answer for ${span}; the play went on`,
+        proxy: (span: string) => `the proxy did not answer for ${span}; the play went on`,
+        wireguard: (span: string) =>
+          `the WireGuard server did not answer for ${span}; the play went on`,
+        '': (span: string) => `the route did not answer for ${span}; the play went on`,
+      },
       disksTitle: 'Disk space',
       folders: {
         cache: 'cache',
@@ -403,6 +436,48 @@ const system = {
       notHeld: 'Now',
       titlesWaiting: 'Titles waiting',
       titlesKept: 'Titles with ratings kept',
+      artworkTitle: 'Artwork',
+      artworkHelp:
+        'Artwork downloads from addons’ image servers that failed in the last hour. A failed image is asked for again later, longer each time it fails; a server that asks to wait is asked nothing until then.',
+      artworkFailed: 'Failed in the last hour',
+      artworkKinds: {
+        not_found: 'Not found',
+        rate_limited: 'Asked to slow down',
+        timeout: 'Timed out',
+        server_error: 'Server errors',
+        other: 'Other failures',
+      } as Record<string, string>,
+      artworkHosts: 'Servers that failed',
+      artworkNoFailures: 'No artwork download failed in the last hour.',
+      artworkWaiting: 'Servers waited for',
+      artworkNoWaiting: 'No server is waited for.',
+      artworkWaitingUntil: (time: string) => `asked nothing until ${time}`,
+      artworkSparedUntil: (time: string) => `asked less at once until ${time}`,
+      peopleTitle: 'People',
+      peopleHelp:
+        'Photos and biographies of people from TMDB. A person is looked up once a title’s cast shows them without a photo, or their page opens.',
+      peopleNoKey:
+        'No TMDB API key is saved under Settings › Content: people and casts show only what the addons give. A key from a free TMDB account brings:',
+      peopleNoKeyBrings: [
+        'People’s photos and biographies',
+        'Each title’s cast and crew from TMDB, in billing order, with photos',
+        'Person pages listing every library title they are credited in',
+        'The titles TMDB knows each person best for, on their page, beyond the libraries',
+        'Posters for movies and series whose addon gives none',
+        'Box sets in Silo’s apps',
+        'TMDB images in Edit images',
+      ],
+      peopleNoKeyLink: 'Add the key in Settings › Content',
+      tmdbKey: 'TMDB API key',
+      tmdbKeySaved: 'Saved',
+      peopleFound: 'Found on TMDB',
+      peopleNotFound: 'Not found',
+      peopleFailing: 'Lookups failing',
+      peopleWaiting: 'Lookups waiting',
+      tmdbLimited: 'TMDB’s last rate limit',
+      tmdbNeverLimited: 'None since the server started',
+      tmdbLimitedAt: (time: string, wait: string) =>
+        wait ? `${time}, asked to wait ${wait}` : time,
       backupTitle: 'Backups',
       backupOff: 'Backups are off. Turn them on under Settings › Backups.',
       backup: {

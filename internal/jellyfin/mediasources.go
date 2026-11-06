@@ -91,7 +91,7 @@ func (h *Handler) playable(ctx context.Context, user accounts.User, item library
 		}
 	})
 	wg.Wait()
-	p.versions = h.offered(ctx, user, p.versions)
+	p.versions = h.offered(ctx, user, item, p.versions)
 	h.keepSubtitles(user, item.ID, p.subtitles)
 	return p, versionsErr
 }
@@ -113,9 +113,9 @@ func (h *Handler) knownPlayable(ctx context.Context, user accounts.User, item li
 		h.watch(user, item.ID, opened)
 	}
 	h.RemuxDB.Describe(ctx, versions)
-	p.versions = h.offered(ctx, user, versions)
+	p.versions = h.offered(ctx, user, item, versions)
 	if err == nil {
-		h.watched.show(user.ID, item.ID, p.versions, h.rulesFor(ctx, user).key())
+		h.watched.show(user.ID, item.ID, p.versions, h.pageKey(ctx, user))
 	}
 	if subtitles, listed, err := h.Library.SubtitlesNow(ctx, user, item.ID); err == nil {
 		p.subtitles = subtitles
@@ -137,25 +137,25 @@ func (h *Handler) cachedPlayable(ctx context.Context, user accounts.User, item l
 		return p
 	}
 	if versions, ok := h.Library.CachedVersions(ctx, user, item.ID); ok {
-		p.versions = h.offered(ctx, user, versions)
+		p.versions = h.offered(ctx, user, item, versions)
 	}
 	p.subtitles, _ = h.keptSubtitles(user, item.ID)
 	return p
 }
 
-// offered leaves out of a title's versions those that recently failed,
-// but the torrents that did not start in time (see playback.Unstarted),
-// which stay in place for the user to pick, a play that picks none
-// skipping them (see choose); and, with the version rules or the user's
-// quality group, or versions naming another title, those they hide,
-// ordering the others, or offering the best of each quality (see
-// ordered). The version an administrator pinned for the title comes
-// first (see pinnedFirst), but by quality; a movie's or an episode's
+// offered leaves out of item's versions those that recently failed, but
+// the torrents that did not start in time (see playback.Unstarted), which
+// stay in place for the user to pick, a play that picks none skipping
+// them (see choose); and, with the version rules or the user's quality
+// group, or versions naming another title, those they hide, ordering the
+// others, for the app asking (see appOrder), or offering the best of each
+// quality (see ordered). The version an administrator pinned for the title
+// comes first (see pinnedFirst), but by quality; a movie's or an episode's
 // versions are then named for version menus (see labeled).
-func (h *Handler) offered(ctx context.Context, user accounts.User, versions []library.Version) []library.Version {
+func (h *Handler) offered(ctx context.Context, user accounts.User, item library.Item, versions []library.Version) []library.Version {
 	versions = slices.DeleteFunc(versions, func(v library.Version) bool { return h.Playback.Failed(v.ID) && !h.didNotStart(v) })
-	if h.reordered(user) || slices.ContainsFunc(versions, elsewhere) {
-		versions = h.ordered(ctx, user, versions)
+	if h.reordered(ctx, user) || slices.ContainsFunc(versions, elsewhere) {
+		versions = h.ordered(ctx, user, item, versions)
 	}
 	if h.Accounts.Settings().VersionsOffered != "qualities" {
 		// By quality, each version stands for its quality (see labeled):
@@ -349,7 +349,7 @@ func (h *Handler) baseSource(r *http.Request, p playable, version library.Versio
 		RequiredHttpHeaders:    map[string]string{},
 		TranscodingSubProtocol: "http",
 	}
-	source.Path = h.streamURL(r, p.item.ID, id, version, source.Container, mustRelay(r, version))
+	source.Path = h.streamURL(r, p.item.ID, id, version, source.Container, mustRelay(r, version) || h.boostRelay(r))
 	// jellyfin-web asks for the segments of the version it plays only when
 	// the version says it has some: movies and episodes may, while the skip
 	// buttons are on and a segment database is asked, or the version's own
@@ -437,15 +437,21 @@ func textCopyOf(streams []playback.MediaStream, index int) int {
 // streamURL is the address players fetch a version from when they use a
 // media source's Path. Players send no credentials with it, so it carries a
 // grant signed for the caller, which tells whether Polyfin must relay the
-// source rather than redirect the player to it.
+// source rather than redirect the player to it; a relayed one also says
+// so in relayParameter, for Polyfin's script (see boostRelay). The grant
+// names the caller's device: the bytes of the address are that device's
+// playback's (see mediaDevice).
 func (h *Handler) streamURL(r *http.Request, item, sourceID accounts.ID, version library.Version, container string, relay bool) string {
-	user := callerFrom(r.Context()).User
-	grant := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Relay: relay})
+	caller := callerFrom(r.Context())
+	grant := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: caller.User.ID, Device: caller.Device.ID, Relay: relay})
 	query := url.Values{
 		"static":        {"true"},
 		"mediaSourceId": {sourceID.String()},
 		"Tag":           {version.ID.String()},
 		grantParameter:  {grant},
+	}
+	if relay {
+		query.Set(relayParameter, "1")
 	}
 	extension := container
 	if container == "hls" {
@@ -457,6 +463,10 @@ func (h *Handler) streamURL(r *http.Request, item, sourceID accounts.ID, version
 
 // grantParameter carries a signed grant in the URLs Polyfin makes.
 const grantParameter = "PolyfinGrant"
+
+// relayParameter marks the address of a version Polyfin relays rather
+// than redirecting the player to its source.
+const relayParameter = "PolyfinRelay"
 
 // mustRelay reports whether a player cannot follow a redirect to the
 // version's source. Findroid's ExoPlayer refuses redirects from http to

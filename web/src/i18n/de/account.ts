@@ -9,6 +9,7 @@ const account: typeof en = {
       statistics: 'Statistiken',
       tracking: 'Tracking',
       resume: 'Weiterschauen',
+      nextUp: 'Als Nächstes',
       hidden: 'Ausgeblendete Titel',
       homeRows: 'Startseitenzeilen',
       trackChoices: 'Spurauswahl',
@@ -16,6 +17,7 @@ const account: typeof en = {
       metadataLanguage: 'Metadatensprache',
       webTheme: 'Theme des Web-Players',
       audioRegion: 'Audioregion',
+      sound: 'Ton',
       sharedLinks: 'Freigabelinks',
       reminders: 'Erinnerungen',
       import: 'Von einem anderen Server importieren',
@@ -58,6 +60,17 @@ const account: typeof en = {
         'pt-BR': 'Portugiesisch (Brasilien)',
         'pt-PT': 'Portugiesisch (Portugal)',
       },
+    },
+    sound: {
+      help: 'Zwei Wege, Ihre Videos lauter und gleichmäßiger zu machen, als Ihre Apps sie abspielen, jeder mit seinem Preis. Sie gelten ab Ihrer nächsten Wiedergabe.',
+      boostVolume: 'Lautstärke im Web-Player anheben',
+      boostVolumeHelp:
+        'Macht Videos im Web-Player lauter, im Browser und in den Jellyfin-Apps für Android und iOS: etwa 8 dB bei leisen Stellen und 5 dB bei lauten, ein Kompressor hält die Spitzen, und die Lautstärke des Players funktioniert weiter. Die Arbeit macht Ihr Browser, doch damit sie die Streams der Add-ons erreicht, sendet der Server Ihrem Web-Player diese Streams selbst, statt ihn zu ihrer Quelle zu schicken, was Bandbreite des Servers beansprucht. Die eigenen Player der Apps erreicht es nicht, ebenso wenig Streams, die ein iPhone oder iPad als HLS abspielt. Das Einstellungsmenü des Players schaltet es ebenfalls ein und aus.',
+      convertSound: 'Ton konvertieren und angleichen',
+      convertSoundHelp:
+        'Der Server konvertiert den Ton Ihrer Videos und Sender und gleicht ihn auf -16 LUFS an, das Bild wird kopiert, sodass jede App ihn lauter und gleichmäßig abspielt. Der Preis: Nichts wird direkt abgespielt, jede Wiedergabe beansprucht etwas vom Prozessor des Servers, und Surround-Ton erreicht einen Receiver konvertiert statt als Originalspur.',
+      saved: 'Ton gespeichert.',
+      group: 'Ihre Gruppe legt diese fest: Ein Administrator ändert sie auf ihrer Seite.',
     },
     taste: {
       help: 'Was Polyfin über deinen Geschmack gelernt hat, aus den Filmen und Serien, die du zu Ende gesehen, erneut gesehen, früh abgebrochen, gemocht, nicht gemocht, zu Favoriten gemacht und ausgeblendet hast, die neuesten zählen am meisten. Sobald es dich gut genug kennt, ordnet es Top-Tipps für dich sowie ähnliche Titel und Vorschläge. Es bleibt auf dem Server: Nur du siehst es.',
@@ -125,6 +138,21 @@ const account: typeof en = {
       hiddenEmpty: 'Kein ausgeblendeter Titel',
       hiddenEmptyHelp: 'Blende einen Titel über sein ⋮-Menü im Web-Player aus.',
       hiddenOn: 'Ausgeblendet',
+      nextUpHelp:
+        'Die nächste Folge jeder Serie, die du schaust, wie deine Apps „Als Nächstes“ anzeigen. Entfernen nimmt eine Serie aus „Als Nächstes“, ohne zu ändern, was du gesehen hast, bis du eine ihrer Folgen abspielst oder eine neue erscheint; ihre Seite öffnet weiterhin ihre nächste Folge. Im Web-Player tut das ⋮-Menü einer Karte in „Als Nächstes“ dasselbe.',
+      nextUpRemoveLabel: (name: string) => `${name} aus „Als Nächstes“ entfernen`,
+      nextUpRemoved: (name: string) => `${name} ist nicht mehr in „Als Nächstes“.`,
+      nextUpEmpty: 'Nichts als Nächstes',
+      nextUpEmptyHelp: 'Die Serien, die du schaust, erscheinen hier mit ihrer nächsten Folge.',
+      nextUpRemovedList: 'Aus „Als Nächstes“ entfernte Serien',
+      nextUpRemovedOn: 'Entfernt',
+      nextUpShowLabel: (name: string) => `${name} wieder in „Als Nächstes“ anzeigen`,
+      nextUpShown: (name: string) => `${name} ist wieder in „Als Nächstes“.`,
+      withResume: 'Aus Weiterschauen entfernen nimmt die Serie auch aus „Als Nächstes“',
+      withResumeHelp:
+        'Eine Folge aus Weiterschauen zu entfernen nimmt dann auch ihre Serie aus „Als Nächstes“, auf dieselbe Weise, bis du eine ihrer Folgen abspielst oder eine neue erscheint.',
+      withResumeOn: 'Aus Weiterschauen entfernen nimmt die Serie jetzt auch aus „Als Nächstes“.',
+      withResumeOff: 'Aus Weiterschauen entfernen nimmt die Serie nicht mehr aus „Als Nächstes“.',
       kinds: {
         movie: 'Film',
         series: 'Serie',
@@ -608,6 +636,10 @@ const account: typeof en = {
         `${name} ist auf diesem Server nicht eingerichtet: Ein Administrator muss zuerst die ${name}-App hinzufügen.`,
       appRefused: (name: string) =>
         `${name} hat die App dieses Servers abgelehnt. Ein Administrator muss ihre Zugangsdaten unter Einstellungen › Tracking prüfen.`,
+      traktCodeEnded:
+        'Der Code ist abgelaufen, oder Trakt hat ihn abgelehnt. Falls Trakt deine Anmeldung abgelehnt hat, prüfe zweierlei: Ein Administrator hat deinen Trakt-Benutzernamen unter Members zur Trakt-App dieses Servers hinzugefügt; und bei einem kostenlosen Trakt-Konto ist keine andere App verbunden, da Trakt nur eine erlaubt (trenne sie auf Trakt unter Settings › Connected apps oder nutze Trakt VIP). Fordere dann einen neuen Code an.',
+      traktAppRefused:
+        'Trakt hat diese Anmeldung abgelehnt. Prüfe, ob ein Administrator deinen Trakt-Benutzernamen unter Members zur Trakt-App dieses Servers hinzugefügt hat und ob mit deinem kostenlosen Trakt-Konto keine andere App verbunden ist, da Trakt nur eine erlaubt. Andernfalls muss ein Administrator die Zugangsdaten der App unter Einstellungen › Tracking prüfen.',
       history: {
         toggle: (name: string) => `Meinen ${name}-Verlauf importieren`,
         toggleHelp: (name: string, every: string) =>
@@ -716,6 +748,7 @@ const account: typeof en = {
     webTheme: 'Theme des Web-Players: Das des Servers, außer Ihr Administrator hat Ihres gewählt',
     audioRegion: 'Audioregion: Keine',
     homeRows: 'Startseitenzeilen: Alle Zeilen werden wieder angezeigt',
+    nextUpWithResume: 'Aus Weiterschauen entfernen: lässt „Als Nächstes“ unverändert',
     trackChoices: 'Spurauswahl: für alle Serien und Filme vergessen',
     appPreferences:
       'Die Einstellungen, die Jellyfin-Apps in Ihrem Konto gespeichert haben: Audio- und Untertitelsprachen und -modus, Startbildschirm- und Anzeigeeinstellungen',

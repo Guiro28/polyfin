@@ -8,6 +8,7 @@ const account = {
       statistics: 'Statistics',
       tracking: 'Tracking',
       resume: 'Continue Watching',
+      nextUp: 'Next Up',
       hidden: 'Hidden titles',
       homeRows: 'Home rows',
       trackChoices: 'Track choices',
@@ -15,6 +16,7 @@ const account = {
       metadataLanguage: 'Metadata language',
       webTheme: 'Web player theme',
       audioRegion: 'Audio region',
+      sound: 'Sound',
       sharedLinks: 'Shared links',
       reminders: 'Reminders',
       import: 'Import from another server',
@@ -56,6 +58,18 @@ const account = {
         'pt-BR': 'Portuguese (Brazil)',
         'pt-PT': 'Portuguese (Portugal)',
       } as Record<string, string>,
+    },
+    /** My account › Sound. */
+    sound: {
+      help: 'Two ways to make your videos louder and more even than your apps play them, each with its cost. They apply from your next play.',
+      boostVolume: 'Boost the volume in the web player',
+      boostVolumeHelp:
+        'Makes videos louder in the web player, in a browser and in the Jellyfin apps for Android and iOS: about 8 dB on quiet passages and 5 dB on loud ones, a compressor holding the peaks, and the player’s volume still works. Your browser does the work, but for it to reach the streams of addons, the server sends your web player those streams itself rather than sending it to their source, which takes the server’s bandwidth. It does not reach the apps’ own players, nor streams an iPhone or iPad plays as HLS. The player’s settings menu turns it on and off too.',
+      convertSound: 'Convert the sound to even it',
+      convertSoundHelp:
+        'The server converts the audio of your videos and channels and evens it at -16 LUFS, the picture copied, so that every app plays it louder and evenly. The cost: nothing plays directly, each play takes a little of the server’s processor, and surround sound reaches a receiver converted rather than as the original track.',
+      saved: 'Sound saved.',
+      group: 'Your group sets these: an administrator changes them on the group’s page.',
     },
     /** My account › Taste profile. */
     taste: {
@@ -125,6 +139,21 @@ const account = {
       hiddenEmpty: 'No hidden title',
       hiddenEmptyHelp: 'Hide a title from its ⋮ menu in the web player.',
       hiddenOn: 'Hidden',
+      nextUpHelp:
+        'The next episode of each series you are watching, as your apps list Next Up. Remove takes a series off Next Up without changing what you watched, until you play one of its episodes or a new one comes out; its page still opens on its next episode. In the web player, a Next Up card’s ⋮ menu does the same.',
+      nextUpRemoveLabel: (name: string) => `Remove ${name} from Next Up`,
+      nextUpRemoved: (name: string) => `${name} is off Next Up.`,
+      nextUpEmpty: 'Nothing up next',
+      nextUpEmptyHelp: 'The series you are watching show here with their next episode.',
+      nextUpRemovedList: 'Series taken off Next Up',
+      nextUpRemovedOn: 'Removed',
+      nextUpShowLabel: (name: string) => `Show ${name} in Next Up again`,
+      nextUpShown: (name: string) => `${name} is back in Next Up.`,
+      withResume: 'Remove from Continue Watching also takes the series off Next Up',
+      withResumeHelp:
+        'Taking an episode off Continue Watching then takes its series off Next Up too, the same way, until you play one of its episodes or a new one comes out.',
+      withResumeOn: 'Remove from Continue Watching now takes the series off Next Up too.',
+      withResumeOff: 'Remove from Continue Watching no longer takes the series off Next Up.',
       kinds: {
         movie: 'Movie',
         series: 'Series',
@@ -595,6 +624,10 @@ const account = {
         `${name} is not set up on this server: an administrator has to add the ${name} app first.`,
       appRefused: (name: string) =>
         `${name} refused this server’s app. An administrator has to check its credentials under Settings › Tracking.`,
+      traktCodeEnded:
+        'The code expired, or Trakt refused it. If Trakt refused your sign-in, check two things: an administrator has added your Trakt username to this server’s Trakt app, under Members; and, on a free Trakt account, no other app is connected, as Trakt allows only one (disconnect it on Trakt under Settings › Connected apps, or use Trakt VIP). Then get a new code.',
+      traktAppRefused:
+        'Trakt refused this sign-in. Check that an administrator added your Trakt username to this server’s Trakt app, under Members, and that your free Trakt account has no other app connected, as Trakt allows only one. If neither applies, an administrator has to check the app’s credentials under Settings › Tracking.',
       history: {
         toggle: (name: string) => `Import my ${name} history`,
         toggleHelp: (name: string, every: string) =>
@@ -703,6 +736,7 @@ const account = {
     webTheme: 'Web player theme: The server’s, unless your administrator chose yours',
     audioRegion: 'Audio region: None',
     homeRows: 'Home rows: every row is shown again',
+    nextUpWithResume: 'Remove from Continue Watching: leaves Next Up as it is',
     trackChoices: 'Track choices: forgotten for every series and movie',
     appPreferences:
       'The preferences Jellyfin apps saved in your account: audio and subtitle languages and mode, home screen and display preferences',

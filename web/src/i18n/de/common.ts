@@ -138,6 +138,15 @@ const common: typeof en = {
     invalid_subtitle_ocr: 'Wähle aus der Liste, wann Bilduntertitel in Text umgewandelt werden.',
     invalid_subtitle_ocr_tracks:
       'Die Anzahl gleichzeitig gelesener Bilduntertitelspuren muss eine ganze Zahl von 1 bis 4 sein.',
+    tessdata_unknown_language:
+      'Polyfin hat keine Tesseract-Daten für diese Sprache zum Herunterladen.',
+    tessdata_no_folder:
+      'Setze POLYFIN_TESSDATA_DIR auf den Ordner für Tesseract-Daten und starte Polyfin dann neu.',
+    tessdata_folder:
+      'In den Ordner, den POLYFIN_TESSDATA_DIR angibt, kann nicht geschrieben werden.',
+    tessdata_download: 'Die Daten der Sprache konnten nicht heruntergeladen werden.',
+    tessdata_checksum:
+      'Die heruntergeladene Datei sind nicht die Tesseract-Daten, da ihr SHA-256 abweicht: Sie wurde nicht behalten.',
     invalid_default_language: 'Wähle eine Standardsprache aus der Liste.',
     invalid_encoder_preset: 'Wähle eine Kodierungsgeschwindigkeit aus der Liste.',
     invalid_video_quality: 'Die Videoqualität muss 0 oder eine ganze Zahl von 1 bis 51 sein.',
@@ -306,6 +315,8 @@ const common: typeof en = {
       'TMDB bietet diese Reihenfolge für diese Serie nicht mehr an. Öffne sie erneut und wähle eine andere.',
     episode_groups_unreachable:
       'TMDB war nicht erreichbar, um die Reihenfolgen dieser Serie aufzulisten. Nichts wurde gespeichert: Versuche es später noch einmal.',
+    invalid_numbering:
+      'Wähle wie der Katalog, pro Staffel, fortlaufend ab Staffel 1, absolut oder eine Folgenreihenfolge.',
     no_tmdb_key:
       'Füge zuerst unter Einstellungen › Inhalte einen TMDB-Schlüssel hinzu: Die Reihenfolgen kommen von TMDB.',
     tmdb_unreachable:

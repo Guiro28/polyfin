@@ -15,18 +15,22 @@ import {
   WarningIcon,
 } from '@phosphor-icons/react'
 import {
+  ApiError,
   checkAddon,
   clearImageCache,
+  downloadLanguage,
   fetchSources,
   goroutinesDownloadUrl,
   queryClient,
   queryKeys,
   type AddonHealth,
   type Health,
+  type HealthProblem,
   type ShareHealth,
   type Sources,
 } from '@/api'
 import { PageLayout } from '@/app/PageLayout'
+import { settingsPath } from '@/app/navigation'
 import {
   Badge,
   Block,
@@ -46,11 +50,13 @@ import {
   StatusPill,
   type StatusTone,
   RelativeTime,
+  TextLink,
   useToast,
 } from '@/ui'
 import { lineupPath } from '@/features/iptv/lineup'
 import { hdrPathText } from '@/features/settings/hdrPath'
 import {
+  ocrLanguageName,
   problemText,
   unreadableName,
   useHealth,
@@ -112,6 +118,8 @@ export default function HealthRoute() {
               <Backups health={health.data} />
               <Thumbnails health={health.data} />
               <Ratings health={health.data} />
+              <Artwork health={health.data} />
+              <People health={health.data} />
               <Process health={health.data} />
               <Secrets health={health.data} />
               <ProxyNames health={health.data} />
@@ -151,6 +159,12 @@ function Problems({ health }: { health: Health }) {
   const text = t.system.health
   const query = useHealthProblems()
   const problems = query.data ?? []
+  // A language's data downloaded, its warning goes, and the tracks waiting for it are read.
+  const download = useMutation({
+    mutationFn: downloadLanguage,
+    onSettled: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.healthProblems(language) }),
+  })
   const items = problems.length + (health.update ? 1 : 0)
   const checked = text.checkedAt(
     new Intl.DateTimeFormat(language, { timeStyle: 'medium' }).format(new Date(health.checkedAt)),
@@ -170,50 +184,101 @@ function Problems({ health }: { health: Health }) {
       ) : problems.length === 0 && !health.update ? (
         <Notice tone="ok">{text.allGood}</Notice>
       ) : (
-        <RowList aria-label={text.problemsTitle}>
-          {problems.map((problem) => (
-            <Row
-              key={problem.key}
-              to={problem.to}
-              leading={
-                <IconTile
-                  icon={problem.tone === 'error' ? WarningCircleIcon : WarningIcon}
-                  tone="warn"
-                />
-              }
-              title={<span className="whitespace-normal">{problemText(t, language, problem)}</span>}
-              trailing={
+        <>
+          {download.isError && (
+            <InlineError className="mb-3">{downloadError(t, download.error)}</InlineError>
+          )}
+          <RowList aria-label={text.problemsTitle}>
+            {problems.map((problem) => {
+              const pill =
                 problem.tone === 'error' ? (
                   <StatusPill tone="danger">{text.error}</StatusPill>
                 ) : (
                   <StatusPill tone="warn">{text.warning}</StatusPill>
                 )
-              }
-              className="[&_.truncate]:whitespace-normal"
-            />
-          ))}
-          {health.update && (
-            <Row
-              leading={ArrowCircleUpIcon}
-              title={text.update(health.update.version)}
-              meta={text.updateRunning(health.process.version)}
-              trailing={
-                <ExternalButtonLink
-                  href={health.update.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="sm"
-                  iconEnd={ArrowSquareOutIcon}
-                >
-                  {text.releaseNotes}
-                </ExternalButtonLink>
-              }
-            />
-          )}
-        </RowList>
+              const missing = downloadable(problem, language)
+              const downloading = download.isPending && download.variables === missing?.code
+              return (
+                <Row
+                  key={problem.key}
+                  // A row with a button is not a link (see Row).
+                  to={missing === null ? problem.to : undefined}
+                  leading={
+                    <IconTile
+                      icon={problem.tone === 'error' ? WarningCircleIcon : WarningIcon}
+                      tone="warn"
+                    />
+                  }
+                  title={
+                    <span className="whitespace-normal">{problemText(t, language, problem)}</span>
+                  }
+                  trailing={
+                    missing === null ? (
+                      pill
+                    ) : (
+                      <>
+                        {pill}
+                        <Button
+                          size="sm"
+                          icon={DownloadSimpleIcon}
+                          aria-label={text.downloadLanguageLabel(missing.name)}
+                          loading={downloading}
+                          disabled={download.isPending && !downloading}
+                          onClick={() => download.mutate(missing.code)}
+                        >
+                          {downloading ? text.downloadingLanguage : text.downloadLanguage}
+                        </Button>
+                      </>
+                    )
+                  }
+                  className="[&_.truncate]:whitespace-normal"
+                />
+              )
+            })}
+            {health.update && (
+              <Row
+                leading={ArrowCircleUpIcon}
+                title={text.update(health.update.version)}
+                meta={text.updateRunning(health.process.version)}
+                trailing={
+                  <ExternalButtonLink
+                    href={health.update.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="sm"
+                    iconEnd={ArrowSquareOutIcon}
+                  >
+                    {text.releaseNotes}
+                  </ExternalButtonLink>
+                }
+              />
+            )}
+          </RowList>
+        </>
       )}
     </Block>
   )
+}
+
+/**
+ * The Tesseract code and name of a missing language Polyfin can download the data of, named in
+ * `language`; null for any other problem.
+ */
+function downloadable(
+  problem: HealthProblem,
+  language: string,
+): { code: string; name: string } | null {
+  if (problem.code !== 'subtitle_ocr_language' || !problem.download) return null
+  return {
+    code: problem.file.replace(/\.traineddata$/, ''),
+    name: ocrLanguageName(language, problem),
+  }
+}
+
+/** Why a download failed, with the cause the server names: the folder, or the download's error. */
+function downloadError(t: Messages, error: unknown): string {
+  const message = errorMessage(t, error)
+  return error instanceof ApiError && error.detail ? `${message} ${error.detail}` : message
 }
 
 function addonTone(
@@ -806,7 +871,8 @@ function ImageCache({ health }: { health: Health }) {
 
 /**
  * How torrent streams play: their route, a WireGuard tunnel's addresses and last handshake, the
- * torrents playing, their peers and those reached over uTP, what was shared.
+ * torrents playing, their peers and those reached over uTP, what was shared, and the outages of
+ * the route the plays went on through lately.
  */
 function Torrents({ health }: { health: Health }) {
   const { language, t } = useI18n()
@@ -825,6 +891,14 @@ function Torrents({ health }: { health: Health }) {
           ],
         ]
       : []
+  const time = new Intl.DateTimeFormat(language, { timeStyle: 'short' })
+  const outages = (torrents.outages ?? []).map(
+    (outage) =>
+      [
+        text.torrentOutageAt(time.format(new Date(outage.at))),
+        text.torrentOutage[torrents.route](formatSpan(outage.seconds, language)),
+      ] as const,
+  )
   const rows = [
     [text.torrentRoute[torrents.route], torrents.name],
     ...tunnel,
@@ -837,13 +911,14 @@ function Torrents({ health }: { health: Health }) {
     [text.torrentPeers, String(torrents.peers)],
     [text.torrentUTPPeers, String(torrents.utpPeers)],
     [text.torrentsShared, formatBytes(torrents.uploaded, language)],
+    ...outages,
   ] as const
   return (
     <Anchor id="torrents">
       <Panel title={text.torrentsTitle} titleAs="h3" description={text.torrentsHelp}>
         <ul className="space-y-1.5">
-          {rows.map(([label, value]) => (
-            <li key={label} className="text-small text-ink-3 tabular-nums">
+          {rows.map(([label, value], index) => (
+            <li key={`${index}-${label}`} className="text-small text-ink-3 tabular-nums">
               {label}
               {value !== '' && (
                 <>
@@ -1076,6 +1151,153 @@ function Ratings({ health }: { health: Health }) {
             { label: text.titlesKept, value: number.format(ratings.kept) },
           ]}
         />
+      </Panel>
+    </Anchor>
+  )
+}
+
+/** The kinds of artwork download failures, in the order the server tells them. */
+const artworkKinds = ['not_found', 'rate_limited', 'timeout', 'server_error', 'other'] as const
+
+/**
+ * How artwork downloads fared in the last hour: those that failed, by kind and by server, and the
+ * servers waited for. Only host names are shown, never an address.
+ */
+function Artwork({ health }: { health: Health }) {
+  const { language, t } = useI18n()
+  const text = t.system.health
+  const artwork = health.artwork
+  if (artwork === null) return null
+  const time = new Intl.DateTimeFormat(language, { timeStyle: 'short' })
+  const number = new Intl.NumberFormat(language)
+  const held = [
+    ...artwork.waiting.map((host) => ({
+      ...host,
+      kind: 'waiting',
+      label: text.artworkWaitingUntil,
+    })),
+    ...artwork.spared.map((host) => ({ ...host, kind: 'spared', label: text.artworkSparedUntil })),
+  ]
+  return (
+    <Anchor id="artwork">
+      <Panel title={text.artworkTitle} titleAs="h3" description={text.artworkHelp}>
+        <div className="space-y-5">
+          {artwork.failed === 0 ? (
+            <p className="text-body text-ink">{text.artworkNoFailures}</p>
+          ) : (
+            <>
+              <Facts
+                items={[
+                  { label: text.artworkFailed, value: number.format(artwork.failed) },
+                  ...artworkKinds
+                    .filter((kind) => (artwork.kinds[kind] ?? 0) > 0)
+                    .map((kind) => ({
+                      label: text.artworkKinds[kind] ?? kind,
+                      value: number.format(artwork.kinds[kind] ?? 0),
+                    })),
+                ]}
+              />
+              <div>
+                <h4 className="text-small text-ink-3">{text.artworkHosts}</h4>
+                <ul className="mt-1.5 space-y-1.5">
+                  {artwork.hosts.map((host) => (
+                    <li key={host.host} className="flex flex-wrap justify-between gap-2">
+                      <span className="font-mono text-small text-ink">{host.host}</span>
+                      <span className="text-small text-ink-3 tabular-nums">
+                        {number.format(host.failed)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
+          <div>
+            <h4 className="text-small text-ink-3">{text.artworkWaiting}</h4>
+            {held.length === 0 ? (
+              <p className="mt-1 text-body text-ink">{text.artworkNoWaiting}</p>
+            ) : (
+              <ul className="mt-1.5 space-y-1.5">
+                {held.map((host) => (
+                  <li
+                    key={`${host.kind} ${host.host}`}
+                    className="flex flex-wrap justify-between gap-2"
+                  >
+                    <span className="inline-flex items-center gap-1.5 font-mono text-small text-warn">
+                      <WarningIcon size={14} aria-hidden="true" />
+                      {host.host}
+                    </span>
+                    <span className="text-small text-ink-3 tabular-nums">
+                      {host.label(time.format(new Date(host.until)))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Panel>
+    </Anchor>
+  )
+}
+
+/** How people's lookups on TMDB stand: their photos and biographies, while a TMDB key is saved. */
+function People({ health }: { health: Health }) {
+  const { language, t } = useI18n()
+  const text = t.system.health
+  const people = health.people
+  if (people === null) return null
+  const time = new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' })
+  const number = new Intl.NumberFormat(language)
+  return (
+    <Anchor id="people">
+      <Panel title={text.peopleTitle} titleAs="h3" description={text.peopleHelp}>
+        {!people.keySaved ? (
+          <div className="space-y-2 text-small text-ink-2">
+            <p>{text.peopleNoKey}</p>
+            <ul className="list-disc space-y-1 pl-5">
+              {text.peopleNoKeyBrings.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <p>
+              <TextLink to={settingsPath('content', 'tmdb-key')} arrow>
+                {text.peopleNoKeyLink}
+              </TextLink>
+            </p>
+          </div>
+        ) : (
+          <Facts
+            items={[
+              {
+                label: text.tmdbKey,
+                value: <StatusPill tone="live">{text.tmdbKeySaved}</StatusPill>,
+              },
+              { label: text.peopleFound, value: number.format(people.found) },
+              { label: text.peopleNotFound, value: number.format(people.notFound) },
+              {
+                label: text.peopleFailing,
+                value:
+                  people.failing > 0 ? (
+                    <StatusPill tone="warn">{number.format(people.failing)}</StatusPill>
+                  ) : (
+                    number.format(0)
+                  ),
+              },
+              { label: text.peopleWaiting, value: number.format(people.waiting) },
+              {
+                label: text.tmdbLimited,
+                value:
+                  people.limitedAt !== null
+                    ? text.tmdbLimitedAt(
+                        time.format(new Date(people.limitedAt)),
+                        people.limitWait > 0 ? formatSpan(people.limitWait, language) : '',
+                      )
+                    : text.tmdbNeverLimited,
+              },
+            ]}
+          />
+        )}
       </Panel>
     </Anchor>
   )

@@ -50,6 +50,15 @@ type TextReader interface {
 	Read(ctx context.Context, pictures []ocr.Picture, language string) ([]subtitles.Cue, error)
 }
 
+// LanguageFetcher downloads the data of languages the reader lacks:
+// *ocr.Downloader.
+type LanguageFetcher interface {
+	// Downloadable reports whether the data of language can be downloaded.
+	Downloadable(language string) bool
+	// Download downloads the data of language where the reader finds it.
+	Download(ctx context.Context, language string) error
+}
+
 const (
 	// ocrReadTime bounds the reading of a track: copying it out of its
 	// file, and Tesseract reading a movie's pictures, a thousand or two,
@@ -68,6 +77,12 @@ const (
 	// ocrFailureTTL is how long a track that could not be read is not
 	// queued again.
 	ocrFailureTTL = 6 * time.Hour
+	// fetchRetry is how long after a failed download of a language's data
+	// it is not downloaded again by itself.
+	fetchRetry = time.Hour
+	// maxWaiting bounds the tracks remembered as waiting for a language's
+	// data, read once it is there.
+	maxWaiting = 1000
 )
 
 // The kinds of files the text of a track is kept by (see seekFileOf).
@@ -132,12 +147,41 @@ type pictureReader struct {
 	// missing are the languages tracks were in without data, by their
 	// Tesseract code, with the track's code for those Tesseract has none.
 	missing map[string]bool
-	failed  *cache.Cache[ocrKey, error]
+	// waiting are the tracks left unread for want of a language's data, by
+	// language, read once it is there.
+	waiting map[string][]ocrJob
+	// languagesAdded counts the languages whose data arrived, downloaded
+	// or added by hand, which tells a read that found its language
+	// missing whether data arrived since it began.
+	languagesAdded int
+	// fetcher downloads the data of missing languages, nil for none;
+	// fetching are the languages it downloads by itself, and fetchFailed
+	// how their last download failed, which now times.
+	fetcher     LanguageFetcher
+	fetching    map[string]bool
+	fetchFailed map[string]fetchFailure
+	now         func() time.Time
+	failed      *cache.Cache[ocrKey, error]
 	// ready remembers the copies found for a version, until generation
 	// changes, as a track is read.
 	ready      *cache.Cache[readyKey, readyCopies]
 	generation int
 	texts      *cache.Cache[ocrKey, []subtitles.Cue]
+}
+
+// fetchFailure is how a language's data last failed to download.
+type fetchFailure struct {
+	at  time.Time
+	err error
+}
+
+// MissingLanguage is a language tracks were in without its data: its
+// Tesseract code, whether its data can be downloaded, and why its last
+// download failed, empty when none did.
+type MissingLanguage struct {
+	Language     string
+	Downloadable bool
+	Error        string
 }
 
 // readyKey names a version with its count of subtitle files, which its
@@ -163,10 +207,23 @@ func (s *Service) UseTesseract(ffmpeg, dir string, reader TextReader) {
 	if s.pictures.queued == nil {
 		s.pictures.queued = map[ocrKey]bool{}
 		s.pictures.missing = map[string]bool{}
+		s.pictures.waiting = map[string][]ocrJob{}
+		s.pictures.fetching = map[string]bool{}
+		s.pictures.fetchFailed = map[string]fetchFailure{}
+		s.pictures.now = time.Now
 		s.pictures.failed = cache.New[ocrKey, error](2000, ocrFailureTTL)
 		s.pictures.ready = cache.New[readyKey, readyCopies](2000, readyFor)
 		s.pictures.texts = cache.New[ocrKey, []subtitles.Cue](200, time.Hour)
 	}
+}
+
+// FetchLanguagesWith has the data of missing languages downloaded by
+// fetcher: from Health, and by itself with the setting on. Until it is
+// called, none is.
+func (s *Service) FetchLanguagesWith(fetcher LanguageFetcher) {
+	s.pictures.mu.Lock()
+	defer s.pictures.mu.Unlock()
+	s.pictures.fetcher = fetcher
 }
 
 // ocrMode is the setting, "off" while nothing reads pictures.
@@ -432,6 +489,11 @@ func (s *Service) QueueScanned(videos []stremio.Stream) {
 func (s *Service) enqueue(jobs ...ocrJob) {
 	s.pictures.mu.Lock()
 	defer s.pictures.mu.Unlock()
+	s.queueJobs(jobs)
+}
+
+// queueJobs is enqueue for a caller holding s.pictures.mu.
+func (s *Service) queueJobs(jobs []ocrJob) {
 	for _, job := range jobs {
 		if s.pictures.queued[job.track.key] {
 			continue
@@ -452,29 +514,51 @@ func (s *Service) startReads() {
 		job := s.pictures.queue[0]
 		s.pictures.queue = s.pictures.queue[1:]
 		s.pictures.running++
+		added := s.pictures.languagesAdded
 		go func() {
-			s.runJob(job)
+			missing := s.runJob(job)
 			s.pictures.mu.Lock()
-			defer s.pictures.mu.Unlock()
 			s.pictures.running--
 			delete(s.pictures.queued, job.track.key)
+			// A track left unread for want of its language's data waits
+			// for it in the same step as it stops counting as queued: the
+			// download ending with the data queues the tracks waiting, and
+			// would skip one still counted, leaving it unread. Data that
+			// arrived since its read began came too late to queue it, and
+			// may be its language's: it is queued again instead, as the
+			// next read finds the data there or waits for it.
+			if missing != "" && s.pictures.languagesAdded != added {
+				s.queueJobs([]ocrJob{job})
+				missing = ""
+			}
+			fetch := missing != "" && s.waitForLanguage(missing, job)
 			s.startReads()
+			s.pictures.mu.Unlock()
+			switch {
+			case fetch:
+				s.fetchLanguage(missing)
+			case missing != "":
+				s.logger.Info("A picture subtitle track is not read into text: Tesseract has no data for its language", "language", missing)
+			}
 		}()
 	}
 }
 
-// runJob reads a track, or queues those of a local file a scan found.
-func (s *Service) runJob(job ocrJob) {
+// runJob reads a track, or queues those of a local file a scan found. It
+// returns the language of a track left unread for want of its data, empty
+// for any other.
+func (s *Service) runJob(job ocrJob) string {
 	ctx, cancel := context.WithTimeout(context.Background(), ocrReadTime)
 	defer cancel()
 	if s.ocrMode() == "off" {
-		return
+		return ""
 	}
 	if job.scanned != nil {
 		s.enqueue(s.scannedJobs(ctx, *job.scanned)...)
-		return
+		return ""
 	}
-	if err := s.readPictures(ctx, job); err != nil {
+	missing, err := s.readPictures(ctx, job)
+	if err != nil {
 		// A torrent that did not send in time is read again when the track
 		// is next queued (see passing).
 		if !passing(job.version, err) {
@@ -482,6 +566,7 @@ func (s *Service) runJob(job ocrJob) {
 		}
 		s.logger.Info("A picture subtitle track could not be read into text", "addon", job.version.Addon, "error", err)
 	}
+	return missing
 }
 
 // scannedJobs are the tracks of a local file a scan found, those inside it
@@ -537,14 +622,15 @@ func (s *Service) scannedJobs(ctx context.Context, video stremio.Stream) []ocrJo
 
 // readPictures reads a track into text and keeps it, unless it was read
 // already for its file as it is. A track whose language has no data is
-// not read: the language is told as missing.
-func (s *Service) readPictures(ctx context.Context, job ocrJob) error {
+// not read: it returns that language, which the track then waits for
+// (see waitForLanguage).
+func (s *Service) readPictures(ctx context.Context, job ocrJob) (string, error) {
 	track := job.track
 	var state string
 	err := s.db.QueryRow(ctx, "SELECT file FROM subtitle_ocr WHERE kind = $1 AND name = $2 AND stream = $3",
 		track.key.kind, track.key.name, track.key.stream).Scan(&state)
 	if err == nil && state == track.state {
-		return nil
+		return "", nil
 	}
 	s.pictures.mu.Lock()
 	reader, ffmpeg, dir := s.pictures.reader, s.pictures.ffmpeg, s.pictures.dir
@@ -552,20 +638,15 @@ func (s *Service) readPictures(ctx context.Context, job ocrJob) error {
 	language := ocr.Language(track.language, s.settings().Language)
 	available, err := reader.Languages(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !slices.Contains(available, language) {
-		missing := cmp.Or(language, localization.LanguageCode(track.language))
-		s.pictures.mu.Lock()
-		s.pictures.missing[missing] = true
-		s.pictures.mu.Unlock()
-		s.logger.Info("A picture subtitle track is not read into text: Tesseract has no data for its language", "language", missing)
-		return nil
+		return cmp.Or(language, localization.LanguageCode(track.language)), nil
 	}
 	started := time.Now()
 	cues, pictures, err := s.readPictureTrack(ctx, job, ffmpeg, dir, reader, language)
 	if err != nil {
-		return err
+		return "", err
 	}
 	text := ""
 	if len(cues) > 0 {
@@ -574,7 +655,7 @@ func (s *Service) readPictures(ctx context.Context, job ocrJob) error {
 	if _, err := s.db.Exec(ctx, `INSERT INTO subtitle_ocr (kind, name, stream, file, language, text) VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (kind, name, stream) DO UPDATE SET file = excluded.file, language = excluded.language, text = excluded.text, read_at = now()`,
 		track.key.kind, track.key.name, track.key.stream, track.state, language, text); err != nil {
-		return err
+		return "", err
 	}
 	s.pictures.texts.Delete(track.key)
 	s.pictures.mu.Lock()
@@ -582,7 +663,7 @@ func (s *Service) readPictures(ctx context.Context, job ocrJob) error {
 	s.pictures.mu.Unlock()
 	s.logger.Info("Read a picture subtitle track into text", "addon", job.version.Addon, "language", language, "pictures", pictures,
 		"cues", len(cues), "duration", time.Since(started).Round(time.Millisecond))
-	return nil
+	return "", nil
 }
 
 // readPictureTrack reads a track's pictures into text with the data of
@@ -793,9 +874,94 @@ func (f fileReader) Fetch(_ context.Context, off int64, n int) ([]byte, error) {
 	return data[:read], err
 }
 
+// waitForLanguage remembers a track left unread for want of the data of
+// language, to read it once the data is there, and reports whether that
+// data is to be downloaded now: with the setting on, when it can be, is
+// not being downloaded, and did not fail to within fetchRetry. It then
+// counts as being downloaded. The caller holds s.pictures.mu.
+func (s *Service) waitForLanguage(language string, job ocrJob) bool {
+	s.pictures.missing[language] = true
+	waiting := s.pictures.waiting[language]
+	if len(waiting) < maxWaiting && !slices.ContainsFunc(waiting, func(j ocrJob) bool { return j.track.key == job.track.key }) {
+		s.pictures.waiting[language] = append(waiting, job)
+	}
+	fetcher := s.pictures.fetcher
+	if !s.settings().SubtitleOCRDownload || fetcher == nil || s.pictures.fetching[language] || !fetcher.Downloadable(language) {
+		return false
+	}
+	if failure, failed := s.pictures.fetchFailed[language]; failed && s.pictures.now().Sub(failure.at) < fetchRetry {
+		return false
+	}
+	s.pictures.fetching[language] = true
+	return true
+}
+
+// fetchLanguage downloads the data of a missing language by itself, then
+// reads the tracks waiting for it.
+func (s *Service) fetchLanguage(language string) {
+	s.pictures.mu.Lock()
+	fetcher := s.pictures.fetcher
+	s.pictures.mu.Unlock()
+	s.logger.Info("Downloading Tesseract's data for a language picture subtitles are in", "language", language)
+	ctx, cancel := context.WithTimeout(context.Background(), ocrReadTime)
+	defer cancel()
+	s.languageFetched(language, fetcher.Download(ctx, language), true)
+}
+
+// DownloadLanguage downloads the data of language, a Tesseract code, as
+// Health's Download button asks, then reads the tracks waiting for it.
+func (s *Service) DownloadLanguage(ctx context.Context, language string) error {
+	s.pictures.mu.Lock()
+	fetcher := s.pictures.fetcher
+	s.pictures.mu.Unlock()
+	if fetcher == nil {
+		return ocr.ErrNoDataDir
+	}
+	err := fetcher.Download(ctx, language)
+	s.languageFetched(language, err, false)
+	return err
+}
+
+// languageFetched records how the download of a language's data went,
+// a download by itself when byItself: a failure for a missing language,
+// which Health tells and which holds the next download by itself back for
+// fetchRetry, or the data there, whose waiting tracks are read. A
+// download by itself stops counting as being downloaded in the same
+// step, so that a track needing the language meanwhile waits for it, and
+// starts no second download that its failure would have held back.
+func (s *Service) languageFetched(language string, err error, byItself bool) {
+	if err == nil {
+		s.logger.Info("Downloaded Tesseract's data for a language", "language", language)
+	} else {
+		s.logger.Warn("Tesseract's data for a language could not be downloaded", "language", language, "error", err)
+	}
+	s.pictures.mu.Lock()
+	defer s.pictures.mu.Unlock()
+	if byItself {
+		delete(s.pictures.fetching, language)
+	}
+	if err == nil {
+		s.languageAdded(language)
+	} else if s.pictures.missing[language] {
+		s.pictures.fetchFailed[language] = fetchFailure{s.pictures.now(), err}
+	}
+}
+
+// languageAdded queues the tracks waiting for the data of language, now
+// there, downloaded or added by hand, and counts it among the languages
+// added. The caller holds s.pictures.mu.
+func (s *Service) languageAdded(language string) {
+	s.pictures.languagesAdded++
+	s.queueJobs(s.pictures.waiting[language])
+	delete(s.pictures.waiting, language)
+	delete(s.pictures.missing, language)
+	delete(s.pictures.fetchFailed, language)
+}
+
 // MissingLanguages lists the languages, by Tesseract's codes, of the
 // tracks left unread for want of their data, which Tesseract still lacks.
-func (s *Service) MissingLanguages(ctx context.Context) []string {
+// The tracks of those it no longer lacks, their data added, are read.
+func (s *Service) MissingLanguages(ctx context.Context) []MissingLanguage {
 	s.pictures.mu.Lock()
 	reader := s.pictures.reader
 	missing := make([]string, 0, len(s.pictures.missing))
@@ -810,7 +976,22 @@ func (s *Service) MissingLanguages(ctx context.Context) []string {
 	if err != nil {
 		return nil
 	}
-	missing = slices.DeleteFunc(missing, func(language string) bool { return slices.Contains(available, language) })
 	slices.Sort(missing)
-	return missing
+	var languages []MissingLanguage
+	for _, language := range missing {
+		if slices.Contains(available, language) {
+			s.pictures.mu.Lock()
+			s.languageAdded(language)
+			s.pictures.mu.Unlock()
+			continue
+		}
+		s.pictures.mu.Lock()
+		l := MissingLanguage{Language: language, Downloadable: s.pictures.fetcher != nil && s.pictures.fetcher.Downloadable(language)}
+		if failure, failed := s.pictures.fetchFailed[language]; failed {
+			l.Error = failure.err.Error()
+		}
+		s.pictures.mu.Unlock()
+		languages = append(languages, l)
+	}
+	return languages
 }

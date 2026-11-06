@@ -7,13 +7,15 @@ const settings: typeof en = {
       description:
         'Cada usuário pode conectar as próprias contas Trakt, Simkl, MDBList, PublicMetaDB, AniList e MyAnimeList na página Minha conta, e o Polyfin informa a esses serviços o que ele assiste; o Last.fm e o ListenBrainz recebem as músicas que ele ouve. Trakt, Simkl, AniList, MyAnimeList e Last.fm precisam primeiro de um aplicativo deste servidor, configurado aqui. MDBList, PublicMetaDB e ListenBrainz não precisam de nada.',
       traktSetup:
-        'Crie um aplicativo em trakt.tv, em Settings, Your API Apps, New application. Dê a ele qualquer nome e copie aqui o client ID e o client secret.',
+        'Crie um aplicativo em developer.trakt.tv, em My Apps: vincule sua conta do GitHub, que o Trakt exige de todo desenvolvedor, e depois crie um aplicativo do tipo Development, com qualquer nome e o URI de redirecionamento abaixo. Em Members, adicione o nome de usuário do Trakt de cada usuário que vai se conectar, até 16 (você sempre pode entrar). Depois copie aqui o client ID e, se o Trakt mostrar um, o client secret.',
+      traktOlderApps:
+        'Aplicativos criados antes de outubro de 2026 continuam funcionando com o client secret e o URI de redirecionamento urn:ietf:wg:oauth:2.0:oob; vincule sua conta do GitHub a eles até 1º de janeiro de 2027, ou o Trakt deixará de permitir a entrada dos usuários. Uma conta gratuita do Trakt conecta só um aplicativo da comunidade por vez: quem já conectou outro precisa desconectá-lo no Trakt, em Settings › Connected apps, ou usar o Trakt VIP.',
       redirectUri: 'URI de redirecionamento a informar no aplicativo',
       traktClientId: 'Client ID do Trakt',
       traktClientIdHelp:
-        'Deixe vazio para desativar o Trakt. Os usuários podem se conectar quando o client ID e o client secret estiverem salvos.',
+        'Deixe vazio para desativar o Trakt. Os usuários podem se conectar quando o client ID estiver salvo.',
       traktClientSecret: 'Client secret do Trakt',
-      traktClientSecretHelp: 'Exibido na página do aplicativo em trakt.tv, abaixo do client ID.',
+      traktClientSecretHelp: 'Opcional: só aplicativos criados antes de outubro de 2026 têm um.',
       simklSetup:
         'Crie um aplicativo em simkl.com, em Settings, Developer, Create new app, do tipo “TV, devices & command line” (o AUTH V2 do Simkl; ele não precisa de URI de redirecionamento, e client IDs de aplicativos AUTH V1 mais antigos são recusados). Dê a ele qualquer nome e copie aqui o client ID.',
       simklClientId: 'Client ID do Simkl',
@@ -36,7 +38,7 @@ const settings: typeof en = {
       myAnimeListSetup:
         'Crie um aplicativo em myanimelist.net, em Account Settings, API, Create ID, do tipo “web”. Dê a ele qualquer nome e, como URL de redirecionamento, o endereço abaixo: o MyAnimeList envia o navegador dos usuários de volta para lá depois que eles autorizam o Polyfin. Apenas o navegador deles precisa alcançá-lo. Depois, copie aqui o client ID e o client secret.',
       myAnimeListRedirectHelp:
-        'O endereço público deste servidor em Configurações › Geral, ou então o endereço que você usa agora.',
+        'O endereço público deste servidor em Configurações › Notificações, ou então o endereço que você usa agora.',
       myAnimeListClientId: 'Client ID do MyAnimeList',
       myAnimeListClientIdHelp:
         'Deixe vazio para desativar o MyAnimeList. Os usuários podem se conectar quando o client ID e o client secret estiverem salvos.',
@@ -64,6 +66,9 @@ const settings: typeof en = {
     updateCheck: 'Verificar novas versões',
     updateCheckHelp:
       'Uma vez por dia, e logo após a inicialização, o Polyfin consulta o GitHub sobre sua versão mais recente, enviando apenas a própria versão. Uma versão mais nova aparece no Início e em Sistema › Integridade, e é enviada às notificações de Nova versão. Desativado, o Polyfin nunca contata o GitHub.',
+    includePrereleases: 'Incluir versões prévias',
+    includePrereleasesHelp:
+      'A verificação de novas versões e as atualizações do Polyfin Desktop também consideram versões prévias, como 1.4.0-rc.1: uma mais nova aparece no Início e em Sistema › Integridade, e o Polyfin Desktop oferece instalá-la. Versões prévias servem para experimentar o que vem por aí e podem ter bugs. Desativado, só contam as versões publicadas.',
     restartConfirmed: 'O Polyfin é iniciado de novo quando para',
     restartConfirmedHelp:
       'Ative quando o contêiner do Polyfin tiver uma política de reinício que o inicie de novo, como unless-stopped, always ou on-failure, ou quando o gerenciador de serviços fizer isso. Sem o socket do Docker, que ele nunca recebe, o Polyfin não vê a política de reinício do contêiner: enquanto estiver desativado, Reiniciar no Início avisa que o Polyfin pode não voltar.',
@@ -87,9 +92,9 @@ const settings: typeof en = {
         'Desativado por padrão. Reproduzir um torrent o baixa de outros peers e compartilha o que foi baixado enquanto o limite de upload permitir: você responde pelo que este servidor baixa e compartilha. Os usuários também precisam de Pode reproduzir streams de torrent, na página deles em Usuários. Requer uma rota.',
       route: 'Rota',
       routeHelp:
-        'Todo socket de torrent, para peers, trackers e a DHT, passa apenas por aqui. Quando ela está fora do ar, as versões torrent são ignoradas, inclusive durante uma reprodução, e Sistema › Integridade informa o motivo.',
+        'Todo socket de torrent, para peers, trackers e a DHT, passa apenas por aqui. Quando ela está fora do ar, as versões torrent continuam listadas, mas não iniciam: uma reprodução passa por cima delas, e um torrent já em reprodução continua durante uma queda breve. Sistema › Integridade informa o motivo.',
       routeHelpNoInterface:
-        'Todo socket de torrent, para peers, trackers e a DHT, passa apenas por aqui. Este sistema não vincula sockets a uma interface de rede, o que apenas o Linux faz, como no Polyfin Desktop para Windows e macOS: um proxy SOCKS5 ou um túnel WireGuard leva os torrents. Quando ela está fora do ar, as versões torrent são ignoradas, inclusive durante uma reprodução, e Sistema › Integridade informa o motivo.',
+        'Todo socket de torrent, para peers, trackers e a DHT, passa apenas por aqui. Este sistema não vincula sockets a uma interface de rede, o que apenas o Linux faz, como no Polyfin Desktop para Windows e macOS: um proxy SOCKS5 ou um túnel WireGuard leva os torrents. Quando ela está fora do ar, as versões torrent continuam listadas, mas não iniciam: uma reprodução passa por cima delas, e um torrent já em reprodução continua durante uma queda breve. Sistema › Integridade informa o motivo.',
       routes: {
         interface: 'Interface de rede',
         proxy: 'Proxy SOCKS5',
@@ -254,7 +259,7 @@ const settings: typeof en = {
       `Quando um aplicativo reproduz um título sem escolher uma versão, o Polyfin tenta as versões em ordem até que uma funcione, mas não analisa mais do que esse número. As versões já analisadas também são tentadas, pois não custam nada. Um número maior encontra uma versão que funciona com mais frequência, mas um título que não é reproduzido demora mais para indicar isso. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
     preferDirectPlay: 'Preferir versões que o aplicativo reproduz sem conversão',
     preferDirectPlayHelp:
-      'Quando um aplicativo reproduz um título sem escolher uma versão, o Polyfin escolhe a primeira versão que o aplicativo reproduz como é ou apenas reempacotada, em vez da primeira que simplesmente reproduz. A primeiríssima reprodução de um título pode ser um pouco mais lenta, pois mais versões podem ser analisadas; nada muda depois que elas são conhecidas.',
+      'Quando um aplicativo reproduz um título sem escolher uma versão, o Polyfin escolhe a primeira versão que o aplicativo reproduz como é ou apenas reempacotada, em vez da primeira que simplesmente reproduz. Depois que um aplicativo reproduz algo desde o início do servidor, os menus de versões dele também listam essas versões primeiro, para que a reprodução comece pela versão que o menu mostra. Os usuários com “Reproduzir arquivos locais primeiro” mantêm os arquivos locais primeiro. A primeiríssima reprodução de um título pode ser um pouco mais lenta, pois mais versões podem ser analisadas; nada muda depois que elas são conhecidas.',
     versionsOffered: 'Versões oferecidas',
     versionsOfferedHelp:
       'Todos os lançamentos lista todas as versões dadas pelos addons. 4K, 1080p e 720p oferece três: a melhor de cada qualidade na ordem das versões. Uma qualidade ausente é tirada primeiro da inferior, depois da superior, nunca a mesma versão duas vezes; as qualidades acima do grupo de qualidade do usuário ficam de fora. Em qualquer caso, o nome de uma versão mostra o tamanho após o nome do addon.',
@@ -280,7 +285,7 @@ const settings: typeof en = {
       `O servidor já passa inteiramente pelo WARP (endereço visto: ${ip}): não precisa de proxy, escolha “Pelo servidor” nos addons.`,
     nameHowVersionsPlay: 'Indicar no nome das versões como elas são reproduzidas',
     nameHowVersionsPlayHelp:
-      'Os nomes das versões terminam com a forma como o aplicativo reproduz cada uma: “(reprodução direta)”, “(stream direta)” quando copiada sem conversão, “(convertida: motivo)” com o pedido do aplicativo, HDR, o limite de qualidade, as legendas, o vídeo ou o áudio como motivo, ou “(não reproduzível aqui)”. O Polyfin decide isso pelo perfil de dispositivo que o aplicativo enviou na última reprodução, então os nomes não dizem nada antes da primeira reprodução de um dispositivo nem após uma reinicialização, e nada para uma versão ainda não analisada nem descrita pelo RemuxDB. Os nomes ficam no idioma dos nomes gerados. Nada é lido para isso.',
+      'Os nomes das versões terminam com a forma como o aplicativo reproduz cada uma: “(reprodução direta)”, “(stream direta)” quando copiada sem conversão, “(convertida: motivo)” com o pedido do aplicativo, HDR, o limite de qualidade, as legendas, o vídeo ou o áudio como motivo, ou “(não reproduzível aqui)”. O Polyfin decide isso pelo perfil de dispositivo que o aplicativo enviou na última reprodução ou, antes disso, nas capacidades da sessão dele, então os nomes não dizem nada antes da primeira reprodução de um dispositivo, a menos que as capacidades tenham trazido um perfil, nem após uma reinicialização, e nada para uma versão ainda não analisada nem descrita pelo RemuxDB. Os nomes ficam no idioma dos nomes gerados. Nada é lido para isso.',
     versionOrderGroup: 'Ordem das versões',
     versionOrder: {
       label: 'Ordenar versões por',
@@ -289,6 +294,8 @@ const settings: typeof en = {
       add: 'Adicionar critério',
       remove: (name: string) => `Remover ${name}`,
       criterion: (position: number) => `Critério ${position}`,
+      sourceTiesOnly: (position: number) =>
+        `“Fonte, na ordem abaixo” é o critério ${position}: ele só ordena as versões em que os critérios acima empatam, então as versões de uma pasta no topo da ordem das fontes ainda podem vir depois de outras. Mova-o para o critério 1 para colocar primeiro as versões de uma fonte.`,
       criteria: {
         language: 'Idioma de áudio preferido',
         'resolution-high': 'Resolução, da maior para a menor',
@@ -461,6 +468,9 @@ const settings: typeof en = {
       subtitleOcrTracks: 'Faixas de legendas em imagem lidas ao mesmo tempo',
       subtitleOcrTracksHelp: (r: RangeText) =>
         `Cada faixa é lida por um processo do Tesseract usando um núcleo do processador. De ${r.min} a ${r.max}; ${r.default} por padrão.`,
+      subtitleOcrDownload: 'Baixar automaticamente os dados dos idiomas que faltam',
+      subtitleOcrDownloadHelp:
+        'Na primeira vez que uma faixa está em um idioma sem dados do Tesseract, o Polyfin baixa o arquivo do idioma dos dados oficiais do Tesseract para a pasta indicada por POLYFIN_TESSDATA_DIR, verifica-o e então lê a faixa. Um download que falha é tentado de novo no mínimo uma hora depois, e Sistema › Integridade diz o motivo. Desativado, Integridade oferece um botão Baixar para cada idioma que falta.',
       hardwareAcceleration: 'Placa de vídeo usada para converter',
       hardwareAccelerationHelp:
         'Uma placa de vídeo (GPU) converte vídeo muito mais rápido que o processador. Cada sistema oferece as suas: NVIDIA e VAAPI no Linux, VideoToolbox no macOS, NVIDIA, Intel e AMD no Windows. Sem uma placa que funcione, o processador faz a conversão. Uma alteração é aplicada ao salvar, sem reiniciar.',
@@ -620,7 +630,18 @@ const settings: typeof en = {
       },
       downmixBoost: 'Volume ao mixar para estéreo',
       downmixBoostHelp: (r: RangeText) =>
-        `Mixagens em estéreo costumam soar mais baixas: o volume é multiplicado por este número. De ${r.min} a ${r.max}; ${r.default} (sem alteração) por padrão. O Jellyfin usa 2.`,
+        `Mixagens em estéreo costumam soar mais baixas: o volume é multiplicado por este número, e 1 não muda nada. De ${r.min} a ${r.max}; ${r.default} por padrão, como no Jellyfin. Acima de 1, um limitador evita que as cenas altas distorçam.`,
+      normalizeConvertedAudio: 'Equalizar a intensidade sonora dos vídeos convertidos',
+      normalizeConvertedAudioHelp:
+        'Leva o som dos filmes, episódios e canais que o servidor converte à mesma intensidade sonora, -16 LUFS, para que títulos baixos toquem mais alto e títulos altos mais baixo, com um limitador depois. Enquanto ativado, o volume ao mixar para estéreo não muda mais o nível. A reprodução direta, o som enviado como está e a música nunca mudam. Desativado por padrão.',
+      dynamicRangeCompression: 'Faixa dinâmica do áudio Dolby convertido',
+      dynamicRangeCompressionHelp:
+        'Como as faixas AC-3 e E-AC-3 (Dolby Digital e Dolby Digital Plus) que o servidor converte aplicam a compressão que trazem, que aumenta os trechos baixos e reduz os altos. “Como codificada” é como o FFmpeg e o Jellyfin as decodificam. A reprodução direta e o som enviado como está ficam a cargo do aplicativo.',
+      dynamicRangeCompressions: {
+        encoded: 'Como codificada',
+        none: 'Nenhuma (faixa completa)',
+        night: 'Noite (trechos baixos mais altos)',
+      },
       maxAudioChannels: 'Máximo de canais de áudio',
       maxAudioChannelsHelp:
         'O som convertido mantém no máximo este número de canais, mesmo que o aplicativo aceite mais.',
@@ -681,7 +702,7 @@ const settings: typeof en = {
       'Uma coleção de um complemento sem pôster, e uma lista inteligente exibida como coleção, mostram os pôsteres de seus primeiros títulos com seu nome, desenhados pelo Polyfin depois que seus títulos são lidos. Usuários sob controle parental ou que bloqueiam gêneros não os veem. Quando desativado, elas não mostram imagem. Bibliotecas configuradas com uma imagem gerada a mantêm.',
     tmdbKey: 'Chave da API do TMDB',
     tmdbKeyHelp:
-      'Opcional. Com uma chave da API ou um token de acesso de leitura de uma conta TMDB, o Editar imagens do jellyfin-web também busca no TMDB os pôsteres, imagens de fundo e logos de um título, as imagens de um episódio, os pôsteres de uma temporada e as fotos de uma pessoa, que o Polyfin repassa. As pessoas também são buscadas uma vez no TMDB: as que não têm foto recebem a sua, e suas páginas mostram a biografia, as datas de nascimento e de morte e o local de nascimento. Os arquivos de uma pasta local cuja pesquisa falha em todos os complementos de metadados também são pesquisados no TMDB. Sem chave, o Editar imagens lista apenas as imagens dos complementos e o TMDB nunca é consultado.',
+      'Opcional: o Polyfin não traz nenhuma chave. Uma chave da API ou um token de acesso de leitura de uma conta TMDB traz fotos e biografias das pessoas, elenco e equipe de cada título do TMDB na ordem dos créditos com fotos, páginas de pessoas com cada título das bibliotecas em que aparecem e os títulos pelos quais o TMDB mais as conhece, além das bibliotecas, pôsteres de filmes e séries cujo complemento não fornece nenhum, coleções nos apps do Silo e imagens do TMDB no Editar imagens do jellyfin-web, que o Polyfin repassa. Também pesquisa no TMDB os arquivos de uma pasta local cuja pesquisa falha em todos os complementos de metadados. Sem chave, o TMDB nunca é consultado.',
     waitDigitalRelease: 'Aguardar o lançamento digital',
     waitDigitalReleaseHelp:
       'Um filme dos catálogos dos addons só aparece quando já está disponível em casa: seu primeiro lançamento digital ou físico, segundo o TMDB, ou então 90 dias após a estreia nos cinemas. Até lá, ele fica fora das bibliotecas, das linhas da tela inicial, das buscas, dos títulos semelhantes e das páginas de pessoas, não tem versão e não é reproduzido; as listas inteligentes com uma regra de títulos futuros o mostram, com esse dia. Um filme que o TMDB não conhece, ou lançado há mais de um ano, continua aparecendo. Requer a chave da API do TMDB.',
@@ -767,7 +788,7 @@ const settings: typeof en = {
     serverImports:
       'Usuários podem importar o histórico de reprodução de outro servidor ou aplicativo',
     serverImportsHelp:
-      'Em Minha conta, cada usuário pode importar seus filmes e episódios reproduzidos, pontos de retomada e favoritos de um servidor Jellyfin ou Emby, ou da sua conta Stremio ou Nuvio, entrando lá com as próprias credenciais. Quando desativado, essas seções ficam ocultas. Um administrador ainda pode importar para um usuário, em Usuários.',
+      'Em Minha conta, cada usuário pode importar seus filmes e episódios reproduzidos, pontos de retomada e favoritos de um servidor Jellyfin, Emby ou Plex, ou da sua conta Stremio ou Nuvio, entrando lá com as próprias credenciais, e seus filmes assistidos de uma exportação do Letterboxd. Quando desativado, essas seções ficam ocultas. Um administrador ainda pode importar para um usuário, em Usuários.',
     importEveryMinutes: 'Importar contas conectadas a cada',
     importEveryMinutesHelp:
       'Com que frequência o Polyfin importa novamente as contas do Stremio e do Nuvio às quais os usuários continuam conectados, e os históricos de reprodução que eles importam de serviços de acompanhamento. Uma alteração se aplica imediatamente: cada próxima importação ocorre esse intervalo após a última. Cada importação lê a conta inteira novamente, então um intervalo curto envia mais solicitações a esses serviços e, no caso do Stremio, cujos termos proíbem a extração automatizada, torna essa zona cinzenta mais acentuada. 6 horas por padrão.',
@@ -786,7 +807,7 @@ const settings: typeof en = {
       `Aplicativos Jellyfin sem uso há este número de dias são desconectados e precisam entrar novamente. A verificação ocorre a cada hora. O login nesta página de administração não é afetado. De ${r.min} a ${r.max}.`,
     knownProxies: 'Proxies conhecidos',
     knownProxiesHelp: (r: RangeText) =>
-      `Os proxies reversos na frente do Polyfin, um por linha: um endereço IP, uma rede como 172.18.0.0/16 ou um nome de host como o nome de um contêiner em uma rede Docker (traefik), até ${r.max}. Um nome é resolvido a cada minuto e cada endereço para o qual ele resolve é considerado confiável, então liste apenas nomes que a sua própria rede resolve. Uma solicitação vinda de um deles vem do cliente indicado no cabeçalho X-Forwarded-For ou X-Real-IP: é esse endereço que limita as falhas de login, aparece nos dispositivos e indica a rede local. Cabeçalhos encaminhados de qualquer outro endereço são ignorados. Deixe vazio quando nada estiver na frente do Polyfin.`,
+      `Os proxies reversos na frente do Polyfin, um por linha: um endereço IP, uma rede como 172.18.0.0/16 ou um nome de host como o nome de um contêiner em uma rede Docker (traefik), até ${r.max}. Um nome é resolvido a cada minuto e cada endereço para o qual ele resolve é considerado confiável, então liste apenas nomes que a sua própria rede resolve. Uma solicitação vinda de um deles vem do cliente indicado no cabeçalho X-Forwarded-For ou X-Real-IP: é esse endereço que limita as falhas de login, aparece nos dispositivos e indica a rede local. De qualquer outro endereço, X-Forwarded-For e X-Real-IP são ignorados. Deixe vazio quando nada estiver na frente do Polyfin.`,
     provider: {
       title: 'Provedor de identidade',
       intro:

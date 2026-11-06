@@ -45,6 +45,10 @@ type Remux struct {
 	// converted to; nil copies them.
 	ConvertVideo *VideoConversion
 	ConvertAudio *AudioConversion
+	// Normalize evens converted audio whatever the settings, for a user
+	// who has their sound converted: ConvertAudio was tuned so, and a
+	// source the play switches to converts its own audio so too.
+	Normalize bool
 	// Variant is the quality played of converted video: 0 for
 	// ConvertVideo, else its lower step of that number (see
 	// VideoConversion.Steps), which the master playlist offers when apps
@@ -79,9 +83,12 @@ type Remux struct {
 // cut every few seconds (see hls.NewGridPlan): it plays over HLS only
 // converted, as Jellyfin plays such files, with FFmpeg reading it from
 // before the time asked (see hls.Plan.Searched). So is a version read from
-// its input (see LocalInputs) whose keyframes the disc does not tell. The
-// bytes of its first segment are warmed meanwhile, unless a warm of the
-// version ran lately (see Warm), in the background when ctx is.
+// its input (see LocalInputs) whose keyframes the disc does not tell, and
+// an MPEG-TS file of a local folder or a share whose keyframes could not
+// be read from the whole file, or not yet within scanWait for a play,
+// which those that could are cut on (see scannedKeyframes). The bytes of
+// its first segment are warmed meanwhile, unless a warm of the version ran
+// lately (see Warm), in the background when ctx is.
 func (s *Service) Plan(ctx context.Context, version library.Version) (hls.Plan, error) {
 	plan, err := s.plan(ctx, version)
 	if err == nil && !plan.Grid() {
@@ -135,6 +142,24 @@ func (s *Service) plan(ctx context.Context, version library.Version) (hls.Plan, 
 		}
 		return plan, nil
 	}
+	if s.scansKeyframes(version, analysis) {
+		// A play waits for the read scanWait at most, which goes on in the
+		// background; preparing a play waits for it.
+		reading := ctx
+		if !background(ctx) {
+			var cancel context.CancelFunc
+			reading, cancel = context.WithTimeout(ctx, scanWait)
+			defer cancel()
+		}
+		plan := hls.NewGridPlan(analysis.Duration)
+		times, err := s.scannedKeyframes(reading, version)
+		if err == nil {
+			plan = hls.NewPlan(times, analysis.Duration)
+		} else if ctx.Err() != nil {
+			return hls.Plan{}, err
+		}
+		return plan.Searched(), nil
+	}
 	times, err := s.keyframes(ctx, version, analysis)
 	if errors.Is(err, container.ErrNoIndex) && unindexedFormat(analysis) {
 		return hls.NewGridPlan(analysis.Duration).Searched(), nil
@@ -150,17 +175,28 @@ func transportStream(analysis media.Analysis) bool {
 	return slices.Contains(strings.Split(analysis.Format, ","), "mpegts")
 }
 
-// GridPlanned reports, reading nothing, whether the HLS plan of a version
-// analyzed so is cut on a fixed grid, which needs its video converted (see
-// plan): a file of a container whose index Polyfin does not read (see
-// unindexedFormat), not read from an input, whose keyframes are not
-// known. Version names tell with it how such a version plays.
+// GridPlanned reports, reading nothing of its source, whether the HLS plan
+// of a version analyzed so is cut on a fixed grid, which needs its video
+// converted (see plan): a file of a container whose index Polyfin does not
+// read (see unindexedFormat), not read from an input, whose keyframes are
+// not known, remembered or saved. Version names tell with it how such a
+// version plays: a local MPEG-TS file as converted until its first play
+// over HLS reads its keyframes.
 func (s *Service) GridPlanned(version library.Version, analysis media.Analysis) bool {
 	if s.ReadsInput(version) || !unindexedFormat(analysis) {
 		return false
 	}
-	_, indexed := s.indexes.Get(version.ID)
-	return !indexed
+	if _, indexed := s.indexes.Get(version.ID); indexed {
+		return false
+	}
+	if _, failed := s.unscanned.Get(version.ID); failed || !s.scansKeyframes(version, analysis) {
+		return true
+	}
+	// One query, as finding where a local file is read from.
+	ctx, cancel := context.WithTimeout(context.Background(), storedLookup)
+	defer cancel()
+	_, saved := s.savedKeyframes(ctx, version.ID)
+	return !saved
 }
 
 // searchedFormat reports whether an analysis is of an MPEG-TS file or an
@@ -216,7 +252,7 @@ func (s *Service) keyframes(ctx context.Context, version library.Version, analys
 		defer src.Release()
 		defer src.Urge()()
 	}
-	result, err := s.shared(ctx, "keyframes "+version.ID.String(), func() (any, error) {
+	result, err := s.sharedRead(ctx, "keyframes "+version.ID.String(), version, func() (any, error) {
 		// Shared and kept like an analysis: read to the end, and saved, even
 		// once the request that started it is canceled, within
 		// keyframesTime. Started for a playback, it reads its source as a
@@ -705,8 +741,8 @@ func (s *Service) remuxOpener(remux Remux) hls.Opener {
 		// An MPEG-TS file or an MPEG program stream starts at the time its
 		// first packet tells, such as half a second, or hours into a
 		// broadcast: its timestamps are shifted to start at zero, as a
-		// grid's times do.
-		if plan.Grid() {
+		// grid's times and the keyframes read from the whole file are.
+		if plan.Grid() || unindexedFormat(analysis) {
 			r.InputOptions = []string{"-start_at_zero"}
 		}
 		if stream, ok := streamOf(analysis, remux.Audio); ok && stream.Codec == "aac" && transportStream(analysis) {
@@ -745,7 +781,7 @@ func (remux Remux) convert(r *hls.Remux, video media.Stream, t Tuning) {
 		r.Encode = remux.encoding(c, video, t)
 	}
 	if c := remux.ConvertAudio; c != nil && r.Audio >= 0 {
-		r.AudioCodec, r.AudioChannels, r.AudioBitrate, r.AudioFilter = c.Codec, c.Channels, c.Bitrate, c.Filter
+		r.AudioCodec, r.AudioChannels, r.AudioBitrate, r.AudioFilter, r.AudioDecoder = c.Codec, c.Channels, c.Bitrate, c.Filter, c.Decoder
 	}
 	if r.Encode != nil || r.AudioCodec != "" {
 		r.Threads = t.Threads

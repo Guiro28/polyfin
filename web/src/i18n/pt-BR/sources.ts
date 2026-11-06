@@ -472,6 +472,12 @@ const sources: typeof en = {
       disc_title: 'Outro filme do disco: vincule-o ao seu título',
       disc_episode: 'Um título do disco de uma série: informe o episódio',
       lone_extra: 'Um extra sem o seu título ao lado: vincule-o para torná-lo um título',
+      no_season:
+        'O nome indica um número de episódio, mas nenhuma temporada: coloque-o na pasta da temporada, como Season 02, ou renomeie-o com a temporada, como S02E05',
+      air_date:
+        'O nome indica uma data de exibição, que o Polyfin não lê: renomeie-o com a temporada e o número do catálogo, como S02E05',
+      no_episode_number:
+        'O nome não indica nenhum número de episódio: renomeie-o com a temporada e o número do catálogo, como S02E05',
       not_found: 'Os complementos de metadados não conhecem nenhum título com este nome',
       no_search: 'Nenhum complemento do servidor descreve e pesquisa títulos deste tipo',
       ambiguous: 'Vários títulos têm este nome: adicione o ano a ele, ou vincule-o',
@@ -497,6 +503,12 @@ const sources: typeof en = {
         : `Nenhum complemento consegue pesquisar os títulos de ${figure} arquivos`,
     noSearchHelp:
       'A associação precisa de um complemento do servidor, em Conteúdo › Fontes, que descreva esses títulos e tenha um catálogo de pesquisa. Os complementos próprios dos usuários, em Minhas fontes, não contam. Depois de adicionar um, rastreie a pasta.',
+    absoluteTitle: (count: number, figure: string) =>
+      count === 1
+        ? '1 arquivo está associado pelo número absoluto'
+        : `${figure} arquivos estão associados pelo número absoluto`,
+    absoluteHelp:
+      'Com nomes como “Show - 41”, são versões do 41º episódio que o addon de metadados da série lista, sem os especiais, na temporada e no número desse episódio.',
     searchFailedTitle: (count: number, figure: string) =>
       count === 1
         ? 'Não foi possível pesquisar o título de 1 arquivo'
@@ -548,7 +560,63 @@ const sources: typeof en = {
     unlistedTitle: (count: number, figure: string) =>
       count === 1 ? '1 episódio está só nos arquivos' : `${figure} episódios estão só nos arquivos`,
     unlistedHelp:
-      'O addon de metadados que descreve as séries deles não os lista, como quando numera de outra forma as temporadas ou os especiais. Eles aparecem mesmo assim, com o nome do arquivo, e são reproduzidos.',
+      'O addon de metadados que descreve as séries deles não os lista, como quando numera de outra forma as temporadas ou os especiais. Eles aparecem mesmo assim, com o nome do arquivo, e são reproduzidos. As séries e os números deles estão em Episódios só nos arquivos.',
+    unlistedListTitle: 'Episódios só nos arquivos',
+    unlistedListHelp:
+      'Um arquivo só vira uma versão de um episódio do catálogo quando a temporada e o número do episódio dele são os do catálogo. Estes arquivos são numerados de outra forma, então cada um é um episódio à parte, ao lado dos do catálogo. Renomeie-os com os números do catálogo e depois escaneie. Ou escolha como os arquivos da série são numerados: eles passam a ser versões dos episódios do catálogo sem renomear.',
+    unlistedSeason: (season: number) => (season === 0 ? 'Especiais' : `Temporada ${season}`),
+    unlistedFiles: (episodes: string) => `Nos arquivos: ${episodes}`,
+    unlistedCatalog: (episodes: string) => `No catálogo: ${episodes}`,
+    unlistedCatalogNoSeason: (season: number, range: string) =>
+      `O catálogo não tem ${season === 0 ? 'especiais' : `temporada ${season}`}: ${range}`,
+    unlistedCatalogRange: (first: string, last: string) => `ele lista de ${first} a ${last}`,
+    unlistedCatalogEmpty: 'ele não lista nenhum episódio',
+    unlistedNotDescribed: 'Os números do catálogo aparecem assim que um app abrir a série de novo',
+    numberingTitle: 'Numeração dos arquivos das séries',
+    numberingHelp:
+      'Um arquivo é uma versão do episódio do catálogo com a mesma temporada e o mesmo número. Se os arquivos de uma série forem numerados de outra forma, escolha como: o Polyfin os associa aos episódios do catálogo sem renomeá-los, e as marcas de assistido, os pontos de retomada e os favoritos os acompanham. Um arquivo que a numeração não consegue posicionar continua sendo um episódio à parte, com o motivo.',
+    numberingLabel: (name: string) => `Como os arquivos de ${name} são numerados`,
+    numberings: {
+      catalog: 'Como o catálogo',
+      per_season: 'Por temporada',
+      continuing: 'Em sequência desde a temporada 1',
+      absolute: 'Absoluta',
+      order: 'Uma ordem de episódios',
+    },
+    numberingHints: {
+      catalog: 'S02E05 é o S02E05 do catálogo.',
+      per_season:
+        'Cada temporada começa em 1: S02E01 é o primeiro episódio que o catálogo lista na temporada 2.',
+      continuing:
+        'Os números seguem de uma temporada para outra: depois de 12 episódios na temporada 1, S02E13 é o S02E01 do catálogo.',
+      absolute:
+        'Cada número é o lugar do episódio entre todos os da série, sem os especiais: E41 é o 41º.',
+      order: 'Os arquivos seguem um dos grupos de episódios do TMDB da série, como a ordem do DVD.',
+    },
+    numberingGroupLabel: (name: string) => `A ordem de episódios que os arquivos de ${name} seguem`,
+    numberingGroupPlaceholder: 'Escolher uma ordem de episódios',
+    numberingLookup: {
+      no_key:
+        'Adicione primeiro uma chave do TMDB em Configurações › Conteúdo: as ordens de episódios vêm do TMDB.',
+      unknown:
+        'O TMDB não conhece esta série, ou nenhum addon de metadados do servidor a descreve.',
+      failed:
+        'Não foi possível acessar o TMDB para listar as ordens de episódios da série. Tente de novo em instantes.',
+      none: 'O TMDB não dá nenhuma ordem de episódios para esta série.',
+    },
+    numberingSaved: (name: string) => `Os arquivos de ${name} foram renumerados`,
+    numberingFileCount: (files: number) => (files === 1 ? '1 arquivo' : `${files} arquivos`),
+    numberingMapped: (mapped: number, files: number) =>
+      `${mapped} de ${files} arquivos associados aos episódios do catálogo`,
+    unmappedReasons: {
+      no_catalog: 'Nenhum addon de metadados do servidor descreve a série',
+      outside_season: 'A temporada do catálogo não tem episódio nesse lugar',
+      beyond_catalog: 'O catálogo lista menos episódios que esse número',
+      not_in_order: 'A ordem de episódios não tem episódio nesse lugar',
+      not_listed: 'O catálogo não lista o episódio da ordem nesse lugar',
+      no_order: 'O TMDB não consegue informar a ordem de episódios agora',
+    } as Record<string, string>,
+    unmappedListed: (listed: string) => `Aparece como um episódio à parte, ${listed}`,
     linkNotDescribedShow:
       'Nenhum addon de metadados do servidor descreve este identificador como uma série. Verifique se é o da série, não o de um episódio.',
     linkNotDescribedMovie:

@@ -9,6 +9,7 @@ const account: typeof en = {
       statistics: 'Statistiche',
       tracking: 'Monitoraggio',
       resume: 'Continua a guardare',
+      nextUp: 'Prossimo',
       hidden: 'Titoli nascosti',
       homeRows: 'Righe della Home',
       trackChoices: 'Scelta delle tracce',
@@ -16,6 +17,7 @@ const account: typeof en = {
       metadataLanguage: 'Lingua dei metadati',
       webTheme: 'Tema del lettore web',
       audioRegion: 'Regione audio',
+      sound: 'Audio',
       sharedLinks: 'Link condivisi',
       reminders: 'Promemoria',
       import: 'Importa da un altro server',
@@ -58,6 +60,17 @@ const account: typeof en = {
         'pt-BR': 'Portoghese (Brasile)',
         'pt-PT': 'Portoghese (Portogallo)',
       },
+    },
+    sound: {
+      help: 'Due modi per rendere i tuoi video più forti e più uniformi di come li riproducono le tue app, ciascuno con il suo costo. Valgono dalla tua prossima riproduzione.',
+      boostVolume: 'Aumenta il volume nel lettore web',
+      boostVolumeHelp:
+        'Rende i video più forti nel lettore web, in un browser e nelle app Jellyfin per Android e iOS: circa 8 dB nei passaggi tranquilli e 5 dB in quelli forti, con un compressore che contiene i picchi, e il volume del lettore continua a funzionare. Il lavoro lo fa il tuo browser, ma perché raggiunga gli stream degli add-on, il server invia esso stesso quegli stream al tuo lettore web invece di mandarlo alla loro sorgente, il che usa la banda del server. Non raggiunge i lettori propri delle app, né gli stream che un iPhone o un iPad riproduce come HLS. Anche il menu delle impostazioni del lettore lo attiva e lo disattiva.',
+      convertSound: 'Converti l’audio per uniformarlo',
+      convertSoundHelp:
+        'Il server converte l’audio dei tuoi video e canali e lo uniforma a -16 LUFS, con l’immagine copiata, così ogni app lo riproduce più forte e in modo uniforme. Il costo: nulla viene riprodotto direttamente, ogni riproduzione usa un po’ del processore del server, e l’audio surround arriva a un amplificatore convertito invece che come traccia originale.',
+      saved: 'Audio salvato.',
+      group: 'Li imposta il tuo gruppo: un amministratore li cambia nella sua pagina.',
     },
     taste: {
       help: 'Ciò che Polyfin ha imparato dei tuoi gusti dai film e dalle serie che hai finito, rivisto, interrotto presto, apprezzato, non apprezzato, messo tra i preferiti e nascosto, i più recenti contano di più. Quando ti conosce abbastanza, ordina Scelti per te, i titoli simili e i suggerimenti. Resta sul server: lo vedi solo tu.',
@@ -124,6 +137,21 @@ const account: typeof en = {
       hiddenEmpty: 'Nessun titolo nascosto',
       hiddenEmptyHelp: 'Nascondi un titolo dal suo menu ⋮ nel player web.',
       hiddenOn: 'Nascosto',
+      nextUpHelp:
+        'Il prossimo episodio di ogni serie che stai guardando, come le tue applicazioni mostrano «Prossimo». Rimuovi toglie una serie da «Prossimo» senza cambiare ciò che hai guardato, finché non ne riproduci un episodio o ne esce uno nuovo; la sua pagina si apre comunque sul prossimo episodio. Nel player web, il menu ⋮ di una scheda di «Prossimo» fa lo stesso.',
+      nextUpRemoveLabel: (name: string) => `Rimuovi ${name} da «Prossimo»`,
+      nextUpRemoved: (name: string) => `${name} è stato rimosso da «Prossimo».`,
+      nextUpEmpty: 'Niente in «Prossimo»',
+      nextUpEmptyHelp: 'Le serie che stai guardando compaiono qui con il loro prossimo episodio.',
+      nextUpRemovedList: 'Serie rimosse da «Prossimo»',
+      nextUpRemovedOn: 'Rimossa',
+      nextUpShowLabel: (name: string) => `Mostra di nuovo ${name} in «Prossimo»`,
+      nextUpShown: (name: string) => `${name} è di nuovo in «Prossimo».`,
+      withResume: 'Rimuovere da «Continua a guardare» toglie anche la serie da «Prossimo»',
+      withResumeHelp:
+        'Rimuovere un episodio da «Continua a guardare» toglie allora anche la sua serie da «Prossimo», allo stesso modo, finché non ne riproduci un episodio o ne esce uno nuovo.',
+      withResumeOn: 'Rimuovere da «Continua a guardare» ora toglie anche la serie da «Prossimo».',
+      withResumeOff: 'Rimuovere da «Continua a guardare» non toglie più la serie da «Prossimo».',
       kinds: {
         movie: 'Film',
         series: 'Serie TV',
@@ -605,6 +633,10 @@ const account: typeof en = {
         `${name} non è configurato su questo server: un amministratore deve prima aggiungere l’applicazione ${name}.`,
       appRefused: (name: string) =>
         `${name} ha rifiutato l’applicazione di questo server. Un amministratore deve verificarne le credenziali in Impostazioni › Monitoraggio.`,
+      traktCodeEnded:
+        'Il codice è scaduto, oppure Trakt l’ha rifiutato. Se Trakt ha rifiutato il tuo accesso, verifica due cose: che un amministratore abbia aggiunto il tuo nome utente Trakt all’applicazione Trakt di questo server, nei suoi Members; e, con un account Trakt gratuito, che non sia collegata un’altra app, perché Trakt ne consente una sola (scollegala su Trakt, in Settings › Connected apps, oppure usa Trakt VIP). Poi ottieni un nuovo codice.',
+      traktAppRefused:
+        'Trakt ha rifiutato questo accesso. Verifica che un amministratore abbia aggiunto il tuo nome utente Trakt all’applicazione Trakt di questo server, nei suoi Members, e che al tuo account Trakt gratuito non sia collegata un’altra app, perché Trakt ne consente una sola. Altrimenti, un amministratore deve verificare le credenziali dell’applicazione in Impostazioni › Monitoraggio.',
       history: {
         toggle: (name: string) => `Importa la mia cronologia di ${name}`,
         toggleHelp: (name: string, every: string) =>
@@ -715,6 +747,7 @@ const account: typeof en = {
       'Tema del lettore web: Quello del server, se il tuo amministratore non ha scelto il tuo',
     audioRegion: 'Regione audio: Nessuna',
     homeRows: 'Righe della Home: tutte le righe tornano visibili',
+    nextUpWithResume: 'Rimuovi da «Continua a guardare»: lascia «Prossimo» com’è',
     trackChoices: 'Scelta delle tracce: dimenticata per ogni serie e film',
     appPreferences:
       'Le preferenze che le app Jellyfin hanno salvato nel tuo account: lingue e modalità di audio e sottotitoli, preferenze della schermata Home e di visualizzazione',

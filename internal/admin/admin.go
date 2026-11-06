@@ -133,6 +133,11 @@ type Options struct {
 	// LibraryRefreshes reads the descriptions of the server's libraries
 	// again; nil offers it for none.
 	LibraryRefreshes LibraryRefreshes
+	// ShownTitles gives users' data to the items the titles of libraries
+	// become as they switch between home videos and movies and shows, and
+	// decides how libraries of other videos show their titles while none
+	// chose; nil does neither.
+	ShownTitles ShownTitles
 	// Health are what the health page reads.
 	Health HealthSources
 	// Variables are the POLYFIN_ environment variables in effect,
@@ -331,12 +336,18 @@ func New(options Options) http.Handler {
 	mux.Handle("GET /admin/api/web-themes", h.signedIn(h.webThemes))
 	mux.Handle("GET /admin/api/account/audio-region", h.signedIn(h.ownAudioRegion))
 	mux.Handle("PUT /admin/api/account/audio-region", h.signedIn(h.setOwnAudioRegion))
+	mux.Handle("GET /admin/api/account/sound", h.signedIn(h.ownSound))
+	mux.Handle("PUT /admin/api/account/sound", h.signedIn(h.setOwnSound))
 	ownPlays := statisticsRoutes{h: h, scope: ownPlaybacks}
 	mux.Handle("GET /admin/api/account/statistics", h.signedIn(ownPlays.statistics))
 	mux.Handle("GET /admin/api/account/history", h.signedIn(ownPlays.history))
 	mux.Handle("GET /admin/api/account/history/export", h.signedIn(ownPlays.export))
 	mux.Handle("GET /admin/api/account/resume", h.signedIn(h.ownResume))
 	mux.Handle("DELETE /admin/api/account/resume/{id}", h.signedIn(h.removeOwnResume))
+	mux.Handle("GET /admin/api/account/next-up", h.signedIn(h.ownNextUp))
+	mux.Handle("DELETE /admin/api/account/next-up/{id}", h.signedIn(h.removeOwnNextUp))
+	mux.Handle("DELETE /admin/api/account/next-up/removed/{id}", h.signedIn(h.putBackOwnNextUp))
+	mux.Handle("PUT /admin/api/account/next-up/settings", h.signedIn(h.setOwnNextUpWithResume))
 	mux.Handle("GET /admin/api/account/hidden", h.signedIn(h.ownHidden))
 	mux.Handle("GET /admin/api/account/home-rows", h.signedIn(h.ownHomeRows))
 	mux.Handle("PUT /admin/api/account/home-rows/{id}", h.signedIn(h.setOwnHomeRow))
@@ -461,6 +472,7 @@ func New(options Options) http.Handler {
 	mux.Handle("POST /admin/api/health/addons/{id}/check", h.administrator(h.checkAddon))
 	mux.Handle("GET /admin/api/health/goroutines", h.administrator(h.downloadGoroutines))
 	mux.Handle("POST /admin/api/health/images/clear", h.administrator(h.clearImageCache))
+	mux.Handle("POST /admin/api/health/languages/{language}/download", h.administrator(h.downloadLanguage))
 	mux.Handle("GET /admin/api/sources", h.administrator(h.sources))
 	mux.Handle("GET /admin/api/logs", h.administrator(h.logLines))
 	mux.Handle("GET /admin/api/logs/download", h.administrator(h.downloadLog))
@@ -543,6 +555,10 @@ func New(options Options) http.Handler {
 	mux.Handle("POST /admin/api/scopes/{scope}/folders/{id}/scan", h.signedIn(h.startFolderScan))
 	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/unmatched", h.signedIn(h.folderUnmatched))
 	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/looser", h.signedIn(h.folderLooser))
+	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/unlisted", h.signedIn(h.folderUnlisted))
+	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/shows", h.signedIn(h.folderShows))
+	mux.Handle("PUT /admin/api/scopes/{scope}/folders/{id}/shows/{show}/numbering", h.signedIn(h.setShowNumbering))
+	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/shows/{show}/groups", h.signedIn(h.showNumberingGroups))
 	mux.Handle("GET /admin/api/scopes/{scope}/folders/{id}/titles", h.signedIn(h.searchFolderTitles))
 	mux.Handle("PUT /admin/api/scopes/{scope}/folders/{id}/links", h.signedIn(h.linkFolderFile))
 	mux.Handle("DELETE /admin/api/scopes/{scope}/folders/{id}/links", h.signedIn(h.unlinkFolderFile))
@@ -751,6 +767,7 @@ func accountError(w http.ResponseWriter, err error) bool {
 		{accounts.ErrInvalidDeinterlaceMethod, http.StatusBadRequest, "invalid_deinterlace_method"},
 		{accounts.ErrInvalidDownmixAlgorithm, http.StatusBadRequest, "invalid_downmix_algorithm"},
 		{accounts.ErrInvalidDownmixBoost, http.StatusBadRequest, "invalid_downmix_boost"},
+		{accounts.ErrInvalidDynamicRange, http.StatusBadRequest, "invalid_dynamic_range_compression"},
 		{accounts.ErrInvalidMaxAudioChannels, http.StatusBadRequest, "invalid_max_audio_channels"},
 		{accounts.ErrInvalidAudioBitrate, http.StatusBadRequest, "invalid_audio_bitrate_per_channel"},
 		{accounts.ErrInvalidEncodingThreads, http.StatusBadRequest, "invalid_encoding_threads"},

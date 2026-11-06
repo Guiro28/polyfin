@@ -53,8 +53,8 @@ type liveTimes struct {
 	// stall ends a feed that received nothing for that long: its readers
 	// see the stream end, and FFmpeg reads it again.
 	stall time.Duration
-	// A source must answer within answer, and send its first sniffSize
-	// bytes within body.
+	// A source must answer, and send its first sniffSize bytes, within
+	// answer of the request; its bytes have body at least once it answered.
 	answer, body time.Duration
 	// slotWait is how long an open refused right after Polyfin closed
 	// another stream of the same source is tried again: providers count a
@@ -64,8 +64,14 @@ type liveTimes struct {
 
 // defaultLiveTimes are the times of live streams; tests shorten them.
 // Providers that redirect to the stream take a few seconds to answer, more
-// when busy.
-var defaultLiveTimes = liveTimes{grace: 20 * time.Second, stall: 10 * time.Second, answer: 10 * time.Second, body: 3 * time.Second,
+// when busy; proxies that share a provider's stream between apps answer
+// once they hold a buffer of it, which a low bitrate channel fills in ten
+// seconds or more, or once they gave up a silent stream for the next one.
+// answer is as long as apps wait for PlaybackInfo, which waits for the
+// first bytes then analyzes them (liveProbeCap at most): the Android apps'
+// client gives a request 30 seconds in all, and Swiftfin gives up after 20
+// seconds without a byte, which PlaybackInfo's spaces keep from happening.
+var defaultLiveTimes = liveTimes{grace: 20 * time.Second, stall: 10 * time.Second, answer: 20 * time.Second, body: 3 * time.Second,
 	slotWait: 5 * time.Second}
 
 // timingLocked returns the times of the service's live streams. The
@@ -129,6 +135,17 @@ func (tunersInUse) Is(target error) bool { return target == ErrSlotsInUse }
 
 func (tunersInUse) Unwrap() error { return ErrLiveRefused }
 
+// errUnavailable is an ErrLiveRefused answered by a plain 503, without
+// HDHomeRun's error 805.
+var errUnavailable error = unavailable{}
+
+// unavailable is errUnavailable.
+type unavailable struct{}
+
+func (unavailable) Error() string { return ErrLiveRefused.Error() }
+
+func (unavailable) Unwrap() error { return ErrLiveRefused }
+
 // LiveFailure classifies an error of a live stream: LiveDead, LiveRefused,
 // LiveTimeout, LiveDRM, LiveKeys, or "" for none of these.
 func LiveFailure(err error) string {
@@ -180,18 +197,25 @@ func (s *Service) LiveSources(connections func(ctx context.Context, source accou
 	s.feeds.connections, s.feeds.health = connections, health
 }
 
-// report tells LiveSources' health how a stream answered.
+// report tells LiveSources' health how a stream answered. A tuner's plain
+// 503 is busy, as its error 805 is: proxies acting as a tuner answer so
+// once their connections are all in use. A start stopped or replaced as it
+// opened (context.Canceled) tells nothing of the stream, and is not told.
 func (s *Service) report(ctx context.Context, version library.Version, err error) {
 	s.feeds.mu.Lock()
-	health := s.feeds.health
+	health, connections := s.feeds.health, s.feeds.connections
 	s.feeds.mu.Unlock()
-	if health == nil {
+	if health == nil || errors.Is(err, context.Canceled) {
 		return
 	}
 	failure := LiveFailure(err)
 	switch {
 	case errors.Is(err, ErrSlotsInUse), errors.Is(err, ErrTunersBusy):
 		failure = iptv.TunerFailureBusy
+	case errors.Is(err, errUnavailable) && connections != nil:
+		if limit, err := connections(ctx, version.Origin.Addon); err == nil && limit.Tuners {
+			failure = iptv.TunerFailureBusy
+		}
 	case err != nil && failure == "":
 		failure = LiveDead
 	}
@@ -575,6 +599,14 @@ func (f *feed) open(user accounts.ID, recording bool) {
 			time.Sleep(time.Second)
 		}
 	}
+	if err != nil && ctx.Err() != nil {
+		// The feed was closed as it opened: its readers left, or another
+		// stream took its connection. That tells nothing of the stream.
+		err = fmt.Errorf("the stream was closed as it opened: %w", context.Canceled)
+		if evicted := f.evictedBy(); evicted != nil {
+			err = fmt.Errorf("%w: %w", evicted, err)
+		}
+	}
 	if errors.Is(err, errManifest) {
 		f.s.feeds.mu.Lock()
 		f.s.feeds.manifests[f.version.ID] = true
@@ -590,6 +622,11 @@ func (f *feed) open(user accounts.ID, recording bool) {
 	}
 	f.write(head)
 	close(f.ready)
+	if _, known := f.s.analyses.Get(f.version.ID); known {
+		// A stream analyzed before is not analyzed again, which would tell
+		// how it answered: it played once it answered with a live stream.
+		f.s.report(ctx, f.version, nil)
+	}
 	defer body.Close()
 	stall := time.AfterFunc(f.times.stall, cancel)
 	defer stall.Stop()
@@ -621,6 +658,15 @@ func (f *feed) evictedBy() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.evicted
+}
+
+// evictedBy is why the reader's feed was evicted, nil if it was not or
+// there is no reader.
+func (r *feedReader) evictedBy() error {
+	if r == nil {
+		return nil
+	}
+	return r.f.evictedBy()
 }
 
 // write adds bytes to the ring, indexes them, and wakes the readers.
@@ -792,16 +838,17 @@ func (s *Service) makeRoom(ctx context.Context, source accounts.ID, self occupan
 }
 
 // sniff opens a live stream and checks it is one before anything reads
-// it: the source must answer within times.answer with a success, and its
-// first sniffSize bytes (times.body to come) must start an HLS playlist
-// (errManifest, the connection closed), a DASH manifest (errDASH, the
-// same), MPEG-TS packets or an MP4 box. It returns the body and the bytes
-// already read of it.
+// it: the source must answer, and send its first sniffSize bytes, within
+// times.answer (its bytes have times.body at least once it answered), and
+// they must start an HLS playlist (errManifest, the connection closed), a
+// DASH manifest (errDASH, the same), MPEG-TS packets or an MP4 box. It
+// returns the body and the bytes already read of it.
 func (s *Service) sniff(ctx context.Context, version library.Version, times liveTimes) (io.ReadCloser, []byte, error) {
 	header := http.Header{}
 	for name, value := range version.RequestHeaders() {
 		header.Set(name, value)
 	}
+	asked := time.Now()
 	answerCtx, cancelAnswer := context.WithCancel(ctx)
 	answered := time.AfterFunc(times.answer, cancelAnswer)
 	response, err := s.openerFor(version).Open(answerCtx, http.MethodGet, version.URL, header, version.Confined)
@@ -826,7 +873,7 @@ func (s *Service) sniff(ctx context.Context, version library.Version, times live
 		body.Close()
 		return nil, nil, err
 	}
-	head, rest, err := readHead(body, times.body)
+	head, rest, err := readHead(body, max(times.body, times.answer-time.Since(asked)))
 	if err != nil {
 		body.Close()
 		return nil, nil, err
@@ -882,8 +929,9 @@ func statusFailure(response *http.Response) error {
 		return nil
 	case status == http.StatusServiceUnavailable && strings.HasPrefix(strings.TrimSpace(response.Header.Get("X-HDHomeRun-Error")), "805"):
 		return fmt.Errorf("%w: HTTP %d", ErrTunersBusy, status)
-	case status == http.StatusUnauthorized, status == http.StatusForbidden, status == http.StatusTooManyRequests,
-		status == 458, status == http.StatusServiceUnavailable:
+	case status == http.StatusServiceUnavailable:
+		return fmt.Errorf("%w: HTTP %d", errUnavailable, status)
+	case status == http.StatusUnauthorized, status == http.StatusForbidden, status == http.StatusTooManyRequests, status == 458:
 		return fmt.Errorf("%w: HTTP %d", ErrLiveRefused, status)
 	case status >= 500:
 		return fmt.Errorf("%w: HTTP %d", ErrLiveTimeout, status)

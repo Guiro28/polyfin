@@ -150,6 +150,8 @@ const system: typeof en = {
           `Polyfin non riesce a mettersi in ascolto sulla porta UDP ${port}, quindi le applicazioni Jellyfin sulla rete locale non lo trovano da sole. Probabilmente la usa un altro programma, ad esempio un server Jellyfin sullo stesso host. Salvando le impostazioni si riprova.`,
         torrentRoute: (why: string) =>
           `Gli stream torrent non vengono riprodotti: ${why}. Nulla viene inviato per altra via; verifica il percorso in Impostazioni › Torrent.`,
+        torrentRouteRiding: (why: string, seconds: number) =>
+          `${why}. I torrent in riproduzione continuano fino a ${seconds} s; quelli nuovi non possono partire. Nulla viene inviato per altra via; verifica il percorso in Impostazioni › Torrent.`,
         torrentWhy: {
           interface_missing: (name: string) => `l’interfaccia di rete ${name} non esiste`,
           interface_down: (name: string) => `l’interfaccia di rete ${name} è disattivata`,
@@ -179,6 +181,23 @@ const system: typeof en = {
           no_trackers:
             'l’add-on non ha indicato nessun tracker, e la DHT non ha trovato nessun peer',
           silent: 'sono stati trovati dei peer, ma nessuno l’ha inviato',
+        },
+        torrentStopped: (at: string, why: string) =>
+          `Un torrent si è fermato durante la riproduzione alle ${at}: ${why}. Nulla è stato inviato per altra via. Verifica che il percorso resti raggiungibile; la prossima riproduzione riavvia il torrent.`,
+        torrentStoppedWhy: {
+          interface_missing: (name: string) => `l’interfaccia di rete ${name} è scomparsa`,
+          interface_down: (name: string) => `l’interfaccia di rete ${name} è stata disattivata`,
+          interface_no_address: (name: string) =>
+            `l’interfaccia di rete ${name} ha perso il suo indirizzo`,
+          proxy_unreachable: (name: string) => `il proxy SOCKS5 ${name} non ha risposto`,
+          proxy_refused: (name: string) =>
+            `il proxy SOCKS5 ${name} ha rifiutato l’utente e la password`,
+          wireguard_endpoint: (name: string) =>
+            `non è stato possibile risolvere il server WireGuard ${name}`,
+          wireguard_down: (name: string) => `il tunnel WireGuard verso ${name} si è fermato`,
+          wireguard_handshake: (name: string) =>
+            `il server WireGuard ${name} non ha risposto all’handshake`,
+          route: () => 'il suo percorso non ha risposto',
         },
         torrentStartPeers: (found: number, why: string) =>
           `${found} ${found === 1 ? 'peer trovato' : 'peer trovati'}: ${why}`,
@@ -216,8 +235,12 @@ const system: typeof en = {
         httpsExpired: (date: string) => `Il certificato HTTPS è scaduto il ${date}.`,
         subtitleOcrLanguage: (name: string, file: string) =>
           `I sottotitoli grafici in ${name} non vengono convertiti in testo: Tesseract non ha dati per questa lingua. Aggiungi il file ${file} alla cartella indicata da POLYFIN_TESSDATA_DIR.`,
+        subtitleOcrDownloadFailed: (error: string) =>
+          `L’ultimo download dei suoi dati non è riuscito: ${error}`,
         metadataLanguages: (name: string) =>
           `${name}: ogni add-on di metadati del server ha una lingua, quindi descrivono i titoli nella propria lingua per tutti gli utenti, qualunque sia la loro lingua dei metadati. Lascia Lingua delle descrizioni su Nessuna in questo add-on, o in un altro add-on di metadati.`,
+        desktopRolledBack: (version: string, previous: string, error: string) =>
+          `Polyfin Desktop è tornato alla versione ${previous}, perché la versione ${version} non si è avviata: ${error}. Quella versione non viene più proposta; la prossima sì.`,
         themeCopyMissing: (missing: number, files: number) =>
           `Alla copia del tema del lettore web mancano ${missing} dei suoi ${files} file nella cartella dei dati di Polyfin, come dopo il ripristino di un backup su un altro sistema: nel frattempo i browser li caricano dai loro indirizzi originali, il che richiede internet. Aggiorna la copia in Impostazioni › Lettore web, oppure scegli un altro tema.`,
         folderUnwritable: (name: string, path: string) =>
@@ -272,6 +295,9 @@ const system: typeof en = {
       check: 'Verifica',
       checkLabel: (name: string) => `Verifica ${name} ora`,
       checking: 'Verifica in corso…',
+      downloadLanguage: 'Scarica',
+      downloadLanguageLabel: (name: string) => `Scarica i dati di Tesseract per ${name}`,
+      downloadingLanguage: 'Download in corso…',
       iptvTitle: 'Origini IPTV',
       guidesTitle: 'Guide dei programmi',
       sharesTitle: 'Condivisioni di rete',
@@ -376,6 +402,17 @@ const system: typeof en = {
       torrentPeers: 'Peer',
       torrentUTPPeers: 'Peer tramite uTP',
       torrentsShared: 'Condiviso dall’avvio',
+      torrentOutageAt: (at: string) => `Interruzione alle ${at}`,
+      torrentOutage: {
+        interface: (span: string) =>
+          `l’interfaccia di rete non ha risposto per ${span}; la riproduzione è continuata`,
+        proxy: (span: string) =>
+          `il proxy non ha risposto per ${span}; la riproduzione è continuata`,
+        wireguard: (span: string) =>
+          `il server WireGuard non ha risposto per ${span}; la riproduzione è continuata`,
+        '': (span: string) =>
+          `il percorso non ha risposto per ${span}; la riproduzione è continuata`,
+      },
       disksTitle: 'Spazio su disco',
       folders: {
         cache: 'cache',
@@ -418,6 +455,48 @@ const system: typeof en = {
       notHeld: 'Ora',
       titlesWaiting: 'Titoli in attesa',
       titlesKept: 'Titoli con voti conservati',
+      artworkTitle: 'Artwork',
+      artworkHelp:
+        'I download di artwork dai server di immagini degli add-on falliti nell’ultima ora. Un’immagine fallita viene richiesta di nuovo più tardi, sempre più tardi se continua a fallire; a un server che chiede di attendere non viene chiesto nulla fino ad allora.',
+      artworkFailed: 'Falliti nell’ultima ora',
+      artworkKinds: {
+        not_found: 'Non trovate',
+        rate_limited: 'Richiesto di rallentare',
+        timeout: 'Tempo scaduto',
+        server_error: 'Errori del server',
+        other: 'Altri errori',
+      } as Record<string, string>,
+      artworkHosts: 'Server con errori',
+      artworkNoFailures: 'Nessun download di artwork è fallito nell’ultima ora.',
+      artworkWaiting: 'Server in attesa',
+      artworkNoWaiting: 'Nessun server è in attesa.',
+      artworkWaitingUntil: (time: string) => `nessuna richiesta fino alle ${time}`,
+      artworkSparedUntil: (time: string) => `meno richieste insieme fino alle ${time}`,
+      peopleTitle: 'Persone',
+      peopleHelp:
+        'Foto e biografie delle persone da TMDB. Una persona viene cercata quando il cast di un titolo la mostra senza foto, o quando si apre la sua pagina.',
+      peopleNoKey:
+        'Nessuna chiave API TMDB è salvata in Impostazioni › Contenuti: le persone e i cast mostrano solo ciò che danno gli add-on. Una chiave di un account TMDB gratuito porta:',
+      peopleNoKeyBrings: [
+        'Foto e biografie delle persone',
+        'Cast e troupe di ogni titolo da TMDB, nell’ordine dei titoli di coda, con foto',
+        'Pagine delle persone con ogni titolo delle librerie in cui compaiono',
+        'I titoli per cui TMDB conosce meglio ogni persona, nella sua pagina, oltre le librerie',
+        'Locandine di film e serie il cui add-on non ne fornisce',
+        'Cofanetti nelle app di Silo',
+        'Immagini di TMDB in «Modifica immagini»',
+      ],
+      peopleNoKeyLink: 'Aggiungi la chiave in Impostazioni › Contenuti',
+      tmdbKey: 'Chiave API TMDB',
+      tmdbKeySaved: 'Salvata',
+      peopleFound: 'Trovate su TMDB',
+      peopleNotFound: 'Non trovate',
+      peopleFailing: 'Ricerche fallite',
+      peopleWaiting: 'Ricerche in attesa',
+      tmdbLimited: 'Ultimo limite di TMDB',
+      tmdbNeverLimited: 'Nessuno dall’avvio del server',
+      tmdbLimitedAt: (time: string, wait: string) =>
+        wait ? `${time}, attesa richiesta di ${wait}` : time,
       backupTitle: 'Backup',
       backupOff: 'I backup sono disattivati. Attivali in Impostazioni › Backup.',
       backup: {

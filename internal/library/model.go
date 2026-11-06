@@ -31,7 +31,8 @@ const (
 	KindSeries     Kind = "series"
 	KindSeason     Kind = "season"
 	KindEpisode    Kind = "episode"
-	// KindPerson is someone credited for titles, known by name.
+	// KindPerson is someone credited for titles, known by their TMDB
+	// identifier, else by name (see PersonID).
 	KindPerson Kind = "person"
 	// KindChannel is a live TV channel, listed by a tv catalog; KindProgram
 	// a programme of its guide.
@@ -134,6 +135,11 @@ type Item struct {
 	// poster, stremio.ShapeLandscape or stremio.ShapeSquare, empty for the
 	// usual 2:3. An image in place of the addon's poster has none.
 	PosterShape string
+	// TMDBPoster stands for the poster TMDB may give a movie or series
+	// whose addon gives none, or a dead one, before TMDB was asked (see
+	// tmdbartwork.go): its tag (see ImageTag) is the Primary image's
+	// while Images.Primary is empty, the image looked up when asked for.
+	TMDBPoster string
 	// FolderID is the folder a video of a title's description belongs to
 	// (see othervideos.go), zero for other items.
 	FolderID accounts.ID
@@ -310,6 +316,9 @@ func seasonKey(seriesID string, season int) string {
 func episodeKey(videoID string) string { return "episode|" + videoID }
 
 func personKey(name string) string { return "person|" + strings.ToLower(name) }
+
+// personTMDBKey is the key of the person TMDB identifies as id.
+func personTMDBKey(id string) string { return "persontmdb|" + id }
 
 func channelKey(stremioID string) string { return "channel|" + stremioID }
 
@@ -505,10 +514,12 @@ func fromMeta(item *Item, meta stremio.Meta) {
 	item.StremioType, item.StremioID = meta.Type, meta.ID
 }
 
+// people are the people a description credits, by name, with the TMDB
+// identifier the addon gives (see creditedAs).
 func people(meta stremio.Meta) []Person {
 	var result []Person
 	add := func(name, role, kind, image, tmdb string) {
-		result = append(result, Person{ID: itemID(personKey(name)), Name: name, Role: role, Type: kind, Image: image, TMDB: tmdb})
+		result = append(result, Person{ID: PersonID(name), Name: name, Role: role, Type: kind, Image: image, TMDB: tmdb})
 	}
 	if meta.Extras != nil && len(meta.Extras.Cast) > 0 {
 		for _, member := range meta.Extras.Cast {

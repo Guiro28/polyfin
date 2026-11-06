@@ -476,6 +476,12 @@ const sources: typeof en = {
       disc_title: 'Un autre film du disque : associez-le à son titre',
       disc_episode: 'Un titre du disque d’une série : indiquez son épisode',
       lone_extra: 'Un bonus sans son titre à côté : associez-le pour en faire un titre',
+      no_season:
+        'Son nom donne un numéro d’épisode mais aucune saison : placez-le dans le dossier de sa saison, comme Season 02, ou nommez-le avec sa saison, comme S02E05',
+      air_date:
+        'Son nom donne une date de diffusion, que Polyfin ne lit pas : nommez-le avec la saison et le numéro du catalogue, comme S02E05',
+      no_episode_number:
+        'Son nom ne donne aucun numéro d’épisode : nommez-le avec la saison et le numéro du catalogue, comme S02E05',
       not_found: 'Les addons de métadonnées ne connaissent aucun titre de ce nom',
       no_search: 'Aucun addon du serveur ne décrit ni ne recherche les titres de ce genre',
       ambiguous: 'Plusieurs titres portent ce nom : ajoutez-y l’année, ou associez-le',
@@ -503,6 +509,12 @@ const sources: typeof en = {
         : `Aucun addon ne peut rechercher les titres de ${figure} fichiers`,
     noSearchHelp:
       'L’association demande un addon du serveur, dans Contenu › Sources, qui décrit ces titres et a un catalogue de recherche. Les addons propres aux utilisateurs, dans Mes sources, ne comptent pas. Une fois l’addon ajouté, analysez le dossier.',
+    absoluteTitle: (count: number, figure: string) =>
+      count === 1
+        ? '1 fichier est associé par son numéro absolu'
+        : `${figure} fichiers sont associés par leur numéro absolu`,
+    absoluteHelp:
+      'Nommés comme « Show - 41 », ce sont des versions du 41e épisode que liste l’addon de métadonnées de leur série, hors épisodes spéciaux, à la saison et au numéro de cet épisode.',
     searchFailedTitle: (count: number, figure: string) =>
       count === 1
         ? 'Le titre d’un fichier n’a pas pu être recherché'
@@ -556,7 +568,65 @@ const sources: typeof en = {
         ? '1 épisode n’est que dans les fichiers'
         : `${figure} épisodes ne sont que dans les fichiers`,
     unlistedHelp:
-      'L’addon de métadonnées qui décrit leurs séries ne les liste pas, comme lorsqu’il numérote autrement les saisons ou les épisodes spéciaux. Ils sont listés quand même, sous le nom de leur fichier, et se lisent.',
+      'L’addon de métadonnées qui décrit leurs séries ne les liste pas, comme lorsqu’il numérote autrement les saisons ou les épisodes spéciaux. Ils sont listés quand même, sous le nom de leur fichier, et se lisent. Leurs séries et leurs numéros sont sous Épisodes seulement dans les fichiers.',
+    unlistedListTitle: 'Épisodes seulement dans les fichiers',
+    unlistedListHelp:
+      'Un fichier ne devient une version d’un épisode du catalogue que si sa saison et son numéro d’épisode sont ceux du catalogue. Ces fichiers sont numérotés autrement : chacun est donc un épisode à part, à côté de ceux du catalogue. Renommez-les avec les numéros du catalogue, puis analysez le dossier. Ou choisissez comment les fichiers de la série sont numérotés : ils deviennent alors des versions des épisodes du catalogue sans être renommés.',
+    unlistedSeason: (season: number) => (season === 0 ? 'Épisodes spéciaux' : `Saison ${season}`),
+    unlistedFiles: (episodes: string) => `Dans les fichiers : ${episodes}`,
+    unlistedCatalog: (episodes: string) => `Dans le catalogue : ${episodes}`,
+    unlistedCatalogNoSeason: (season: number, range: string) =>
+      `Le catalogue n’a ${season === 0 ? 'aucun épisode spécial' : `pas de saison ${season}`} : ${range}`,
+    unlistedCatalogRange: (first: string, last: string) => `il liste de ${first} à ${last}`,
+    unlistedCatalogEmpty: 'il ne liste aucun épisode',
+    unlistedNotDescribed:
+      'Les numéros du catalogue s’affichent dès qu’une application ouvre à nouveau la série',
+    numberingTitle: 'Numérotation des fichiers des séries',
+    numberingHelp:
+      'Un fichier est une version de l’épisode du catalogue de même saison et de même numéro. Si les fichiers d’une série sont numérotés autrement, choisissez comment : Polyfin les fait correspondre aux épisodes du catalogue sans les renommer, et les marques de lecture, les points de reprise et les favoris les suivent. Un fichier que la numérotation ne place pas reste un épisode à part, avec la raison.',
+    numberingLabel: (name: string) => `Numérotation des fichiers de ${name}`,
+    numberings: {
+      catalog: 'Comme le catalogue',
+      per_season: 'Par saison',
+      continuing: 'À la suite depuis la saison 1',
+      absolute: 'Absolue',
+      order: 'Un ordre d’épisodes',
+    },
+    numberingHints: {
+      catalog: 'S02E05 est le S02E05 du catalogue.',
+      per_season:
+        'Chaque saison commence à 1 : S02E01 est le premier épisode que le catalogue liste en saison 2.',
+      continuing:
+        'Les numéros se suivent d’une saison à l’autre : après 12 épisodes en saison 1, S02E13 est le S02E01 du catalogue.',
+      absolute:
+        'Chaque numéro est la place de l’épisode parmi tous ceux de la série, hors épisodes spéciaux : E41 est le 41e.',
+      order:
+        'Les fichiers suivent un des groupes d’épisodes TMDB de la série, comme son ordre DVD.',
+    },
+    numberingGroupLabel: (name: string) => `Ordre d’épisodes que suivent les fichiers de ${name}`,
+    numberingGroupPlaceholder: 'Choisir un ordre d’épisodes',
+    numberingLookup: {
+      no_key:
+        'Ajoutez d’abord une clé TMDB dans Paramètres › Contenu : les ordres d’épisodes viennent de TMDB.',
+      unknown:
+        'TMDB ne connaît pas cette série, ou aucun addon de métadonnées du serveur ne la décrit.',
+      failed:
+        'TMDB n’a pas pu être joint pour lister les ordres d’épisodes de la série. Réessayez dans un instant.',
+      none: 'TMDB ne donne aucun ordre d’épisodes pour cette série.',
+    },
+    numberingSaved: (name: string) => `Les fichiers de ${name} sont renumérotés`,
+    numberingFileCount: (files: number) => (files === 1 ? '1 fichier' : `${files} fichiers`),
+    numberingMapped: (mapped: number, files: number) =>
+      `${mapped} fichiers sur ${files} associés aux épisodes du catalogue`,
+    unmappedReasons: {
+      no_catalog: 'Aucun addon de métadonnées du serveur ne décrit la série',
+      outside_season: 'La saison du catalogue n’a pas d’épisode à cette place',
+      beyond_catalog: 'Le catalogue liste moins d’épisodes que ce numéro',
+      not_in_order: 'L’ordre d’épisodes n’a pas d’épisode à cette place',
+      not_listed: 'Le catalogue ne liste pas l’épisode de l’ordre à cette place',
+      no_order: 'TMDB ne peut pas donner l’ordre d’épisodes pour l’instant',
+    } as Record<string, string>,
+    unmappedListed: (listed: string) => `Listé comme un épisode à part, ${listed}`,
     linkNotDescribedShow:
       'Aucun addon de métadonnées du serveur ne décrit cet identifiant comme une série. Vérifiez que c’est celui de la série, pas d’un épisode.',
     linkNotDescribedMovie:

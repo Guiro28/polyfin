@@ -83,6 +83,13 @@ export const settingEntries: readonly SettingEntry[] = [
   },
   {
     section: 'general',
+    anchor: 'include-prereleases',
+    label: (t) => s(t).includePrereleases,
+    help: (t) => s(t).includePrereleasesHelp,
+    keywords: ['pre-release', 'prerelease', 'beta', 'rc', 'préversion', 'Polyfin Desktop'],
+  },
+  {
+    section: 'general',
     anchor: 'local-discovery',
     label: (t) => s(t).localDiscovery,
     help: (t) => s(t).localDiscoveryHelp,
@@ -462,6 +469,13 @@ export const settingEntries: readonly SettingEntry[] = [
   },
   {
     section: 'conversion',
+    anchor: 'subtitle-ocr-download',
+    label: (t) => c(t).subtitleOcrDownload,
+    help: (t) => c(t).subtitleOcrDownloadHelp,
+    keywords: ['OCR', 'Tesseract', 'traineddata', 'tessdata', 'download', 'télécharger'],
+  },
+  {
+    section: 'conversion',
     anchor: 'hardware-acceleration',
     label: (t) => c(t).hardwareAcceleration,
     help: (t) => c(t).hardwareAccelerationHelp,
@@ -595,6 +609,21 @@ export const settingEntries: readonly SettingEntry[] = [
     label: (t) => c(t).downmixBoost,
     help: (t, r) => c(t).downmixBoostHelp(r('downmixBoost')),
     codes: ['invalid_downmix_boost'],
+  },
+  {
+    section: 'conversion',
+    anchor: 'normalize-converted-audio',
+    label: (t) => c(t).normalizeConvertedAudio,
+    help: (t) => c(t).normalizeConvertedAudioHelp,
+    keywords: ['loudness', 'loudnorm', 'volume', 'quiet'],
+  },
+  {
+    section: 'conversion',
+    anchor: 'dynamic-range-compression',
+    label: (t) => c(t).dynamicRangeCompression,
+    help: (t) => c(t).dynamicRangeCompressionHelp,
+    keywords: ['drc', 'dolby', 'night', 'dynamic range'],
+    codes: ['invalid_dynamic_range_compression'],
   },
   {
     section: 'conversion',
@@ -1123,7 +1152,8 @@ export const settingEntries: readonly SettingEntry[] = [
     section: 'tracking',
     anchor: 'trakt-client-id',
     label: (t) => tr(t).traktClientId,
-    help: (t) => `${tr(t).traktClientIdHelp} ${tr(t).traktSetup} ${tr(t).redirectUri}`,
+    help: (t) =>
+      `${tr(t).traktClientIdHelp} ${tr(t).traktSetup} ${tr(t).redirectUri} ${tr(t).traktOlderApps}`,
     keywords: ['Trakt'],
     codes: ['invalid_trakt_app'],
   },

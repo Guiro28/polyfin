@@ -23,6 +23,7 @@ import (
 	"github.com/moodiness/polyfin/internal/addons"
 	"github.com/moodiness/polyfin/internal/homerows"
 	"github.com/moodiness/polyfin/internal/media"
+	"github.com/moodiness/polyfin/internal/mediasegments"
 	"github.com/moodiness/polyfin/internal/silo"
 	"github.com/moodiness/polyfin/internal/silo/silotest"
 	"github.com/moodiness/polyfin/internal/stremio"
@@ -41,7 +42,7 @@ type siloApps struct {
 func servingSilo(t *testing.T, s testServer) siloApps {
 	t.Helper()
 	api := silo.New(silo.Options{ServerID: testServerID, Version: "test", Accounts: s.store, Jellyfin: s.handler, DB: s.pool,
-		QuickConnect: s.handler.QuickConnect, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		QuickConnect: s.handler.QuickConnect, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), ContainerTracks: s.handler.ContainerTracks})
 	site := httptest.NewServer(api)
 	t.Cleanup(site.Close)
 	return siloApps{testServer: s, site: site.URL}
@@ -103,15 +104,25 @@ func (a siloApps) get(t *testing.T, path, token, profile string, into any) {
 func appsAccept(path string, data []byte) error {
 	target, _ := url.Parse(path)
 	segments := strings.Split(strings.TrimPrefix(target.Path, "/api/v2/"), "/")
+	// The cards a section read asks at most, 0 for none.
+	limit, _ := strconv.Atoi(target.Query().Get("item_limit"))
 	switch {
 	case target.Path == "/api/v2/user/libraries":
 		return silotest.CheckLibraries(data)
 	case target.Path == "/api/v2/home/sections", len(segments) == 3 && segments[0] == "library" && segments[2] == "sections":
-		return silotest.CheckSections(data)
+		return silotest.CheckSections(data, limit)
 	case len(segments) == 4 && segments[0] == "home" && segments[3] == "items":
-		return silotest.CheckSection(data, segments[2])
+		return silotest.CheckSection(data, segments[2], limit)
 	case len(segments) == 5 && segments[0] == "library" && segments[2] == "sections" && segments[4] == "items":
-		return silotest.CheckSection(data, segments[3])
+		return silotest.CheckSection(data, segments[3], limit)
+	case target.Path == "/api/v2/home/capabilities":
+		return silotest.CheckHomeCapabilities(data)
+	case target.Path == "/api/v2/home/layout":
+		include, _ := strconv.Atoi(target.Query().Get("include_items"))
+		_, err := silotest.CheckHomeLayout(data, include, limit)
+		return err
+	case len(segments) == 2 && segments[0] == "watch":
+		return silotest.CheckWatchMarkers(data)
 	case target.Path == "/api/v2/catalog":
 		return silotest.CheckCatalogPage(data)
 	case target.Path == "/api/v2/catalog/filters":
@@ -429,8 +440,41 @@ func TestSiloAppsBrowseUnderTheUsersLimits(t *testing.T) {
 	if !slices.Equal(cardTitles(alone.Items), cardTitles(landing.Sections[0].Items)) {
 		t.Errorf("the latest alone: %v", cardTitles(alone.Items))
 	}
+	var cut struct {
+		Items   []siloCard `json:"items"`
+		HasMore bool       `json:"has_more"`
+	}
+	a.get(t, "/api/v2/home/sections/"+latest+"/items?item_limit=1", token, profile, &cut)
+	if len(cut.Items) != 1 || !cut.HasMore || cut.Items[0].ContentID != landing.Sections[0].Items[0].ContentID {
+		t.Errorf("the latest cut to one: %+v", cut)
+	}
 	if status, _ := a.do(t, http.MethodGet, "/api/v2/library/"+libraries[0].ID+"/sections/latest-999/items", token, profile, nil); status != http.StatusNotFound {
 		t.Errorf("another library's section: %d", status)
+	}
+	// Home's layout names Home's rows, under the limits Home is read with.
+	layoutIDs := func() []string {
+		t.Helper()
+		var home, layout struct {
+			Sections []struct {
+				ID string `json:"id"`
+			} `json:"sections"`
+		}
+		a.get(t, "/api/v2/home/sections", token, profile, &home)
+		a.get(t, "/api/v2/home/layout?include_items=1&item_limit=1", token, profile, &layout)
+		var ids, want []string
+		for _, sec := range layout.Sections {
+			ids = append(ids, sec.ID)
+		}
+		for _, sec := range home.Sections {
+			want = append(want, sec.ID)
+		}
+		if !slices.Equal(ids, want) {
+			t.Errorf("layout %v, Home %v", ids, want)
+		}
+		return ids
+	}
+	if ids := layoutIDs(); !slices.Contains(ids, latest) {
+		t.Errorf("layout without the latest titles: %v", ids)
 	}
 	var detail struct {
 		siloCard
@@ -485,6 +529,9 @@ func TestSiloAppsBrowseUnderTheUsersLimits(t *testing.T) {
 	a.get(t, library, token, profile, &page)
 	if len(page.Items) != 0 {
 		t.Errorf("under parental control: %v", cardTitles(page.Items))
+	}
+	if ids := layoutIDs(); len(ids) != 0 {
+		t.Errorf("layout under parental control: %v", ids)
 	}
 	var views QueryResult
 	p.get(t, "/UserViews", p.token, &views)
@@ -551,6 +598,76 @@ func TestSiloAppsBrowseSeries(t *testing.T) {
 	a.get(t, "/api/v2/catalog/series/"+series+"/seasons/2/episodes", token, profile, &none)
 	if len(none.Items) != 0 {
 		t.Errorf("episodes of a season the series lacks: %+v", none.Items)
+	}
+}
+
+// Silo's apps get the skip markers Jellyfin apps get for each version,
+// with where each comes from: TheIntroDB's intro, SkipDB's recap with
+// SkipDB's confidence, and the credits of a version's chapters in place of
+// the database's. With the skip buttons off, they get none.
+func TestSiloAppsGetSkipMarkers(t *testing.T) {
+	t.Parallel()
+	p := skipping(t, mediasegments.TheIntroDB, mediasegments.SkipDB)
+	versions := p.versions(t, p.third)
+	if len(versions) != 4 {
+		t.Fatalf("versions %+v", versions)
+	}
+	p.storeAnalysis(t, versions[2], lasting(3_150_000,
+		chapter("Chapter 1", 0, 3_080_000), chapter("Credits", 3_080_000, 3_148_500), chapter("Chapter 3", 3_148_500, 3_150_000)))
+	allowSilo(t, p.testServer)
+	a := servingSilo(t, p.testServer)
+	token, profile := a.signIn(t, "member")
+	type marker struct {
+		Start      float64  `json:"start_seconds"`
+		End        float64  `json:"end_seconds"`
+		Source     string   `json:"source"`
+		Provider   string   `json:"provider"`
+		Algorithm  string   `json:"algorithm"`
+		Confidence *float64 `json:"confidence"`
+	}
+	type markers struct {
+		Intro    *marker           `json:"intro"`
+		Credits  *marker           `json:"credits"`
+		Recap    *marker           `json:"recap"`
+		Segments []json.RawMessage `json:"marker_segments"`
+	}
+	var detail struct {
+		markers
+		Versions []markers `json:"versions"`
+	}
+	a.get(t, "/api/v2/watch/"+p.third, token, profile, &detail)
+	if len(detail.Versions) != 4 {
+		t.Fatalf("versions: %+v", detail.Versions)
+	}
+	database := marker{321.4, 400.4, "online", mediasegments.TheIntroDB, "polyfin.database:v1", nil}
+	same := func(got *marker, want marker) bool {
+		return got != nil && (got.Confidence == nil) == (want.Confidence == nil) &&
+			(got.Confidence == nil || *got.Confidence == *want.Confidence) &&
+			marker{got.Start, got.End, got.Source, got.Provider, got.Algorithm, nil} ==
+				marker{want.Start, want.End, want.Source, want.Provider, want.Algorithm, nil}
+	}
+	recap := marker{0, 20, "online", mediasegments.SkipDB, "polyfin.database:v1", new(0.85)}
+	for n, version := range detail.Versions {
+		credits := marker{3072, 3304, "online", mediasegments.TheIntroDB, "polyfin.database:v1", nil}
+		if n == 2 {
+			credits = marker{3080, 3149, "scanner", "", "polyfin.chapters:v1", nil}
+		}
+		if !same(version.Intro, database) || !same(version.Credits, credits) || !same(version.Recap, recap) || len(version.Segments) != 3 {
+			t.Errorf("version %d: intro %+v, credits %+v, recap %+v, %d segments", n, version.Intro, version.Credits, version.Recap,
+				len(version.Segments))
+		}
+	}
+	if !same(detail.Intro, database) || !same(detail.Recap, recap) {
+		t.Errorf("detail's intro %+v, recap %+v", detail.Intro, detail.Recap)
+	}
+
+	p.setting(t, func(settings *accounts.Settings) { settings.SkipButtons = false })
+	detail.Versions = nil
+	detail.markers = markers{}
+	a.get(t, "/api/v2/watch/"+p.third, token, profile, &detail)
+	if detail.Intro != nil || len(detail.Versions) != 4 || detail.Versions[0].Intro != nil || detail.Versions[0].Segments == nil ||
+		len(detail.Versions[0].Segments) != 0 {
+		t.Errorf("with the skip buttons off: %+v", detail)
 	}
 }
 
@@ -807,19 +924,11 @@ func TestSiloAppsPlayRepackagedOrConverted(t *testing.T) {
 		d.Plan.Stream.URL != "/api/v2/playback/transcode/"+d.SessionID+"/master.m3u8" {
 		t.Fatalf("repackaged: %+v %+v", d, d.Plan)
 	}
+	// Without subtitle renditions, the master playlist is the video
+	// playlist, whose segments the Apple app fetches with its token.
 	status, master := a.fetch(t, d.Plan.Stream.URL, token)
-	if status != http.StatusOK || !strings.HasPrefix(master, "#EXTM3U") {
-		t.Fatalf("master playlist: %d %s", status, master)
-	}
-	variant := ""
-	for line := range strings.SplitSeq(master, "\n") {
-		if line != "" && !strings.HasPrefix(line, "#") {
-			variant = line
-		}
-	}
-	if status, media := a.fetch(t, "/api/v2/playback/transcode/"+d.SessionID+"/"+variant, token); status != http.StatusOK ||
-		!strings.Contains(media, "#EXT-X-ENDLIST") {
-		t.Errorf("media playlist %s: %d %s", variant, status, media)
+	if err := silotest.CheckMediaPlaylist([]byte(master), d.Plan.Stream.URL); status != http.StatusOK || err != nil {
+		t.Fatalf("master playlist: %d %v %s", status, err, master)
 	}
 
 	converted := a.start(t, token, profile, siloStart(file, profile, installation, []string{"mp4"}, []string{"hevc"}, []string{"aac"},
@@ -832,6 +941,108 @@ func TestSiloAppsPlayRepackagedOrConverted(t *testing.T) {
 		map[string]any{"playback_attempt_id": "attempt-3"}))
 	if refused.Outcome != "adaptation_unavailable" || refused.Plan != nil || refused.SessionID != "" || refused.Terminal == nil {
 		t.Errorf("without conversions allowed: %+v", refused)
+	}
+}
+
+// A client that takes text subtitles as renditions of the HLS stream gets
+// the text tracks inside a converted file that it would get as WebVTT
+// files so, named by their Matroska track numbers; the player loads the
+// master playlist, the video playlist and the track's, and its segments
+// are WebVTT cut like the video, which FFmpeg extracts. Turning subtitles
+// off keeps the stream.
+func TestSiloAppsPlayTextTracksAsRenditions(t *testing.T) {
+	t.Parallel()
+	s, _, _, movie := playingFile(t, subtitledFile)
+	allowSilo(t, s)
+	a := servingSilo(t, s)
+	token, profile := a.signIn(t, "member")
+	installation := a.installation(t, token, profile)
+	file := a.fileOf(t, movie.String(), token, profile, 0)
+	start := siloStart(file, profile, installation, []string{"mp4"}, []string{"h264"}, []string{"aac"}, map[string]any{
+		"client_features": []string{"playback_plan_v3", "hls_subtitle_renditions_v1", "hls_remux_subtitle_renditions_v1",
+			"hls_subtitle_renditions_all_v1"}, "subtitle_track_index": 0})
+	status, data := a.do(t, http.MethodPost, "/api/v2/playback/start", token, profile, start)
+	if status != http.StatusCreated {
+		t.Fatalf("start: %d %s", status, data)
+	}
+	if err := silotest.CheckDecision(data, []string{file}); err != nil {
+		t.Errorf("decision: %v: %s", err, data)
+	}
+	type rendition struct {
+		GroupID string `json:"group_id"`
+		Name    string `json:"name"`
+		Index   int    `json:"index"`
+	}
+	type decision struct {
+		SessionID string `json:"session_id"`
+		Plan      struct {
+			ExpiresAt string `json:"expires_at"`
+			Stream    struct {
+				URL string `json:"url"`
+			} `json:"stream"`
+			Subtitle struct {
+				HLSRendition *rendition `json:"hls_rendition"`
+				Inventory    []struct {
+					ContainerTrackID string     `json:"container_track_id"`
+					HLSRendition     *rendition `json:"hls_rendition"`
+				} `json:"inventory"`
+			} `json:"subtitle"`
+		} `json:"playback_plan"`
+	}
+	var d decision
+	_ = json.Unmarshal(data, &d)
+	rows := d.Plan.Subtitle.Inventory
+	if len(rows) != 2 || rows[0].ContainerTrackID != "2" || rows[1].ContainerTrackID != "3" || rows[0].HLSRendition == nil ||
+		*rows[0].HLSRendition != (rendition{"subs", "Français", 1}) || rows[1].HLSRendition != nil ||
+		d.Plan.Subtitle.HLSRendition == nil || *d.Plan.Subtitle.HLSRendition != *rows[0].HLSRendition {
+		t.Fatalf("subtitles: %s", data)
+	}
+	status, master := a.fetch(t, d.Plan.Stream.URL, token)
+	if err := silotest.CheckMultivariant([]byte(master), data); status != http.StatusOK || err != nil ||
+		!strings.Contains(master, `URI="master.m3u8?silo_rendition=subtitles&silo_track=2"`) {
+		t.Fatalf("master playlist: %d %v\n%s", status, err, master)
+	}
+	base := d.Plan.Stream.URL[:strings.LastIndex(d.Plan.Stream.URL, "/")+1]
+	status, video := a.fetch(t, base+"master.m3u8?silo_rendition=video", token)
+	if err := silotest.CheckMediaPlaylist([]byte(video), d.Plan.Stream.URL); status != http.StatusOK || err != nil {
+		t.Errorf("video playlist: %d %v\n%s", status, err, video)
+	}
+	status, french := a.fetch(t, base+"master.m3u8?silo_rendition=subtitles&silo_track=2", token)
+	if err := silotest.CheckMediaPlaylist([]byte(french), d.Plan.Stream.URL); status != http.StatusOK || err != nil ||
+		!strings.Contains(french, "\nsegment/sub_2_0.vtt\n") {
+		t.Errorf("subtitle playlist: %d %v\n%s", status, err, french)
+	}
+	if os.Getenv("POLYFIN_TEST_FFMPEG") != "" {
+		var cues strings.Builder
+		for line := range strings.SplitSeq(french, "\n") {
+			if !strings.HasPrefix(line, "segment/") {
+				continue
+			}
+			status, segment := a.fetch(t, base+line, token)
+			if err := silotest.CheckSubtitleSegment([]byte(segment)); status != http.StatusOK || err != nil {
+				t.Fatalf("%s: %d %v\n%s", line, status, err, segment)
+			}
+			cues.WriteString(segment)
+		}
+		srt, _ := os.ReadFile(filepath.Join("..", "container", "testdata", "subtitles.srt"))
+		first := strings.TrimSpace(strings.Split(string(srt), "\n")[2])
+		if !strings.Contains(cues.String(), first) {
+			t.Errorf("the French track's segments lack %q:\n%s", first, cues.String())
+		}
+	}
+
+	off := map[string]any{"installation_id": installation, "playback_attempt_id": "attempt-1", "replan_request_id": "replan-1",
+		"operation": "track_change", "quality_preference": "auto", "position_seconds": 5, "selected_tracks": map[string]any{},
+		"client_capabilities": start["client_capabilities"], "client_playback_context": start["client_playback_context"]}
+	status, data = a.do(t, http.MethodPost, "/api/v2/playback/"+d.SessionID+"/replan", token, profile, off)
+	if err := silotest.CheckDecision(data, []string{file}); status != http.StatusOK || err != nil {
+		t.Fatalf("replan: %d %v %s", status, err, data)
+	}
+	var after decision
+	_ = json.Unmarshal(data, &after)
+	if after.Plan.Stream.URL != d.Plan.Stream.URL || after.Plan.ExpiresAt != d.Plan.ExpiresAt || after.Plan.Subtitle.HLSRendition != nil ||
+		len(after.Plan.Subtitle.Inventory) != 2 || after.Plan.Subtitle.Inventory[0].HLSRendition == nil {
+		t.Errorf("subtitles off: %s", data)
 	}
 }
 

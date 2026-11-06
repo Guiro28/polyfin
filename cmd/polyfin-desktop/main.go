@@ -1,7 +1,7 @@
 // Command polyfin-desktop is Polyfin Desktop: Polyfin without Docker, on
 // Windows, macOS and Linux. An icon in the tray, or the menu bar on macOS,
 // starts the database and the server in the background, shows whether
-// they run, opens the admin app, the web client and the log folder, and
+// they run, opens the admin app, the web player and the log folder, and
 // quits, stopping them. See docs/desktop.md.
 //
 // With -headless it runs without the icon, the browser and the login
@@ -262,6 +262,10 @@ func runHeadless(options app.Options, logger *slog.Logger, asked requests) *exec
 			quit(a)
 			logger.Info("Polyfin Desktop quit to start the new version")
 			return relaunch
+		case previous := <-a.RolledBack():
+			quit(a)
+			logger.Info("Polyfin Desktop quit to start the previous version")
+			return previous
 		}
 		quit(a)
 		logger.Info("Polyfin Desktop quit")

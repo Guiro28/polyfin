@@ -9,6 +9,7 @@ const account: typeof en = {
       statistics: 'Statistiques',
       tracking: 'Suivi',
       resume: 'Continuer de regarder',
+      nextUp: 'À suivre',
       hidden: 'Titres masqués',
       homeRows: 'Rangées d’accueil',
       trackChoices: 'Choix des pistes',
@@ -16,6 +17,7 @@ const account: typeof en = {
       metadataLanguage: 'Langue des métadonnées',
       webTheme: 'Thème du lecteur web',
       audioRegion: 'Région audio',
+      sound: 'Son',
       sharedLinks: 'Liens partagés',
       reminders: 'Rappels',
       import: 'Importer depuis un autre serveur',
@@ -58,6 +60,17 @@ const account: typeof en = {
         'pt-BR': 'Portugais (Brésil)',
         'pt-PT': 'Portugais (Portugal)',
       },
+    },
+    sound: {
+      help: 'Deux façons de rendre vos vidéos plus fortes et plus égales que vos applications ne les lisent, chacune avec son prix. Elles s’appliquent à votre prochaine lecture.',
+      boostVolume: 'Augmenter le volume dans le lecteur web',
+      boostVolumeHelp:
+        'Rend les vidéos plus fortes dans le lecteur web, dans un navigateur et dans les applications Jellyfin pour Android et iOS : environ 8 dB sur les passages calmes et 5 dB sur les passages forts, un compresseur tenant les crêtes, et le volume du lecteur fonctionne toujours. Votre navigateur fait le travail, mais pour qu’il atteigne les flux des addons, le serveur envoie lui-même ces flux à votre lecteur web au lieu de l’envoyer à leur source, ce qui prend de la bande passante au serveur. Les lecteurs propres aux applications ne sont pas concernés, ni les flux qu’un iPhone ou un iPad lit en HLS. Le menu des paramètres du lecteur l’active et le désactive aussi.',
+      convertSound: 'Convertir le son pour l’égaliser',
+      convertSoundHelp:
+        'Le serveur convertit le son de vos vidéos et de vos chaînes et l’égalise à -16 LUFS, l’image copiée, pour que chaque application le lise plus fort et de façon égale. Le prix : rien n’est lu directement, chaque lecture prend un peu du processeur du serveur, et le son multicanal arrive à un ampli converti plutôt que dans sa piste d’origine.',
+      saved: 'Son enregistré.',
+      group: 'Votre groupe les définit : un administrateur les change sur la page du groupe.',
     },
     taste: {
       help: 'Ce que Polyfin a appris de vos goûts à partir des films et des séries que vous avez terminés, revus, arrêtés tôt, aimés, pas aimés, mis en favoris et masqués, les plus récents comptant le plus. Une fois qu’il vous connaît assez, il classe Sélection pour vous et ordonne les titres similaires et les suggestions. Il reste sur le serveur : vous seul le voyez.',
@@ -126,6 +139,23 @@ const account: typeof en = {
       hiddenEmpty: 'Aucun titre masqué',
       hiddenEmptyHelp: 'Masquez un titre depuis son menu ⋮ dans le lecteur web.',
       hiddenOn: 'Masqué',
+      nextUpHelp:
+        'Le prochain épisode de chaque série que vous regardez, comme vos applis listent « À suivre ». Retirer enlève une série de « À suivre » sans changer ce que vous avez vu, jusqu’à ce que vous en lisiez un épisode ou qu’un nouvel épisode sorte ; sa page s’ouvre toujours sur son prochain épisode. Dans le lecteur web, le menu ⋮ d’une carte « À suivre » fait de même.',
+      nextUpRemoveLabel: (name: string) => `Retirer ${name} de « À suivre »`,
+      nextUpRemoved: (name: string) => `${name} est retiré de « À suivre ».`,
+      nextUpEmpty: 'Rien à suivre',
+      nextUpEmptyHelp: 'Les séries que vous regardez s’affichent ici avec leur prochain épisode.',
+      nextUpRemovedList: 'Séries retirées de « À suivre »',
+      nextUpRemovedOn: 'Retirée',
+      nextUpShowLabel: (name: string) => `Afficher de nouveau ${name} dans « À suivre »`,
+      nextUpShown: (name: string) => `${name} est de retour dans « À suivre ».`,
+      withResume: 'Retirer de « Continuer de regarder » retire aussi la série de « À suivre »',
+      withResumeHelp:
+        'Retirer un épisode de « Continuer de regarder » retire alors aussi sa série de « À suivre », de la même façon, jusqu’à ce que vous en lisiez un épisode ou qu’un nouvel épisode sorte.',
+      withResumeOn:
+        'Retirer de « Continuer de regarder » retire désormais aussi la série de « À suivre ».',
+      withResumeOff:
+        'Retirer de « Continuer de regarder » ne retire plus la série de « À suivre ».',
       kinds: {
         movie: 'Film',
         series: 'Série',
@@ -608,6 +638,10 @@ const account: typeof en = {
         `${name} n’est pas configuré sur ce serveur : un administrateur doit d’abord ajouter l’application ${name}.`,
       appRefused: (name: string) =>
         `${name} a refusé l’application de ce serveur. Un administrateur doit vérifier ses identifiants dans Paramètres › Suivi.`,
+      traktCodeEnded:
+        'Le code a expiré, ou Trakt l’a refusé. Si Trakt a refusé votre connexion, vérifiez deux points : un administrateur a ajouté votre nom d’utilisateur Trakt à l’application Trakt de ce serveur, dans ses Members ; et, avec un compte Trakt gratuit, aucune autre application n’est connectée, car Trakt n’en permet qu’une (déconnectez-la sur Trakt dans Settings › Connected apps, ou passez à Trakt VIP). Obtenez ensuite un nouveau code.',
+      traktAppRefused:
+        'Trakt a refusé cette connexion. Vérifiez qu’un administrateur a ajouté votre nom d’utilisateur Trakt à l’application Trakt de ce serveur, dans ses Members, et qu’aucune autre application n’est connectée à votre compte Trakt gratuit, car Trakt n’en permet qu’une. Sinon, un administrateur doit vérifier les identifiants de l’application dans Paramètres › Suivi.',
       history: {
         toggle: (name: string) => `Importer mon historique ${name}`,
         toggleHelp: (name: string, every: string) =>
@@ -718,6 +752,7 @@ const account: typeof en = {
       'Thème du lecteur web : Celui du serveur, sauf si votre administrateur a choisi le vôtre',
     audioRegion: 'Région audio : Aucune',
     homeRows: 'Rangées d’accueil : toutes les rangées s’affichent de nouveau',
+    nextUpWithResume: 'Retirer de « Continuer de regarder » : laisse « À suivre » tel quel',
     trackChoices: 'Choix des pistes : oubliés pour chaque série et chaque film',
     appPreferences:
       'Les préférences que les applications Jellyfin ont enregistrées dans votre compte : langues et mode de l’audio et des sous-titres, préférences de l’écran d’accueil et d’affichage',

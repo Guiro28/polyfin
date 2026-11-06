@@ -17,6 +17,7 @@ import (
 	"github.com/moodiness/polyfin/internal/localfiles"
 	"github.com/moodiness/polyfin/internal/serverfile"
 	"github.com/moodiness/polyfin/internal/stremio"
+	"github.com/moodiness/polyfin/internal/tmdb"
 )
 
 type addonJSON struct {
@@ -325,6 +326,13 @@ type libraryJSON struct {
 	// catalog takes it.
 	SkipLocal bool `json:"skipLocal"`
 	Skippable bool `json:"skippable"`
+	// ShowAs is how an enabled library shows its catalog's titles, one of
+	// ShowAsChoices (see addons.Library.ShowAs), null while none is chosen:
+	// a catalog of other videos then shows as home videos until Polyfin
+	// decides from its first page, the others as listed. ShowAsChoices is
+	// empty for a catalog that takes none.
+	ShowAs        *string  `json:"showAs"`
+	ShowAsChoices []string `json:"showAsChoices"`
 	// ItemID is the library's item in Jellyfin apps, null for a catalog
 	// that is not an enabled library. Image is how it finds the image apps
 	// show on its tile: "none", "automatic", "generated", or "custom" when
@@ -522,6 +530,13 @@ func (h *handler) writeLibraries(w http.ResponseWriter, r *http.Request, scope a
 		if l.Genre != "" {
 			entry.Genre = new(l.Genre)
 		}
+		if l.ShowAs != "" {
+			entry.ShowAs = new(l.ShowAs)
+		}
+		entry.ShowAsChoices = l.ShowAsChoices
+		if entry.ShowAsChoices == nil {
+			entry.ShowAsChoices = []string{}
+		}
 		if l.MaxItems > 0 {
 			entry.MaxItems = new(l.MaxItems)
 		}
@@ -638,6 +653,10 @@ func addonError(w http.ResponseWriter, err error) bool {
 		{localfiles.ErrInvalidIMDb, http.StatusBadRequest, "invalid_imdb_id"},
 		{localfiles.ErrInvalidEpisode, http.StatusBadRequest, "invalid_episode"},
 		{localfiles.ErrSearchFailed, http.StatusBadGateway, "title_search_failed"},
+		{localfiles.ErrInvalidNumbering, http.StatusBadRequest, "invalid_numbering"},
+		{localfiles.ErrNoGroups, http.StatusBadGateway, "episode_groups_unreachable"},
+		{library.ErrUnknownGroup, http.StatusBadRequest, "unknown_episode_group"},
+		{tmdb.ErrNoKey, http.StatusConflict, "no_tmdb_key"},
 		{iptv.ErrInvalidList, http.StatusUnprocessableEntity, "invalid_channel_list"},
 		{iptv.ErrTooLarge, http.StatusUnprocessableEntity, "channel_list_too_large"},
 		{iptv.ErrLoginRefused, http.StatusUnprocessableEntity, "iptv_login_refused"},
@@ -969,6 +988,9 @@ func (h *handler) saveLibraries(w http.ResponseWriter, r *http.Request) {
 			MaxItems    *float64 `json:"maxItems"`
 			HideInMenus bool     `json:"hideInMenus"`
 			SkipLocal   bool     `json:"skipLocal"`
+			// ShowAs is one of the catalog's showAsChoices, null to keep
+			// the one the library has, which may not be chosen yet.
+			ShowAs *string `json:"showAs"`
 		} `json:"libraries"`
 	}
 	if !decode(w, r, &body) {
@@ -983,6 +1005,9 @@ func (h *handler) saveLibraries(w http.ResponseWriter, r *http.Request) {
 		}
 		choice := addons.LibraryChoice{AddonID: id, CatalogType: library.CatalogType, CatalogID: library.CatalogID,
 			Name: library.Name, Genre: library.Genre, HideInMenus: library.HideInMenus, SkipLocal: library.SkipLocal}
+		if library.ShowAs != nil {
+			choice.ShowAs = *library.ShowAs
+		}
 		if max := library.MaxItems; max != nil {
 			if *max != math.Trunc(*max) || *max < 1 || *max > addons.MaxLibraryItems {
 				writeError(w, http.StatusBadRequest, "invalid_library_max_items")
@@ -992,6 +1017,13 @@ func (h *handler) saveLibraries(w http.ResponseWriter, r *http.Request) {
 		}
 		choices = append(choices, choice)
 	}
+	// The libraries that switch between home videos and movies and shows
+	// give their users' data to the items their titles become.
+	before, err := h.Addons.Libraries(r.Context(), scope)
+	if err != nil {
+		h.internalError(w, r, err)
+		return
+	}
 	libraries, err := h.Addons.SetLibraries(r.Context(), scope, choices)
 	if addonError(w, err) {
 		return
@@ -999,6 +1031,20 @@ func (h *handler) saveLibraries(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.internalError(w, r, err)
 		return
+	}
+	if h.ShownTitles != nil {
+		if err := h.ShownTitles.FollowTitles(r.Context(), before, libraries); err != nil {
+			h.Logger.Error("Users' data could not follow the titles of libraries shown otherwise", "error", err)
+		}
+		// A library of other videos made now is shown as its first page
+		// tells, unless one chose how.
+		if err := h.ShownTitles.DecideShowAs(r.Context(), scope); err != nil {
+			h.Logger.Error("How libraries show their titles could not be decided", "error", err)
+		}
+		if libraries, err = h.Addons.Libraries(r.Context(), scope); err != nil {
+			h.internalError(w, r, err)
+			return
+		}
 	}
 	h.writeLibraries(w, r, scope, libraries)
 }

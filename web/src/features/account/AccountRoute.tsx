@@ -8,12 +8,14 @@ import {
   DevicesIcon,
   EyeSlashIcon,
   ListChecksIcon,
+  ListPlusIcon,
   PaletteIcon,
   PasswordIcon,
   RowsIcon,
   ShareNetworkIcon,
   ShieldCheckIcon,
   SpeakerHighIcon,
+  SpeakerSimpleHighIcon,
   SparkleIcon,
   TranslateIcon,
 } from '@phosphor-icons/react'
@@ -52,9 +54,10 @@ import { ReminderList, ReminderSettingsForm } from './Reminders'
 import { OwnMetadataLanguage } from './MetadataLanguage'
 import { OwnWebTheme } from './WebTheme'
 import { OwnAudioRegion } from './AudioRegion'
+import { OwnSoundOptions } from './Sound'
 import ResetPreferences from './ResetPreferences'
 import TasteProfile from './TasteProfile'
-import { HiddenList, HomeRowList, ResumeList } from './WatchingLists'
+import { HiddenList, HomeRowList, NextUpList, ResumeList } from './WatchingLists'
 import OwnTrackChoices from './TrackChoices'
 import TwoStep from './TwoStep'
 
@@ -62,6 +65,7 @@ const sectionIds = [
   'statistics',
   'tracking',
   'resume',
+  'next-up',
   'hidden',
   'home-rows',
   'taste',
@@ -69,6 +73,7 @@ const sectionIds = [
   'metadata-language',
   'web-theme',
   'audio-region',
+  'sound',
   'shared-links',
   'reminders',
   'import',
@@ -175,6 +180,12 @@ export default function AccountRoute() {
               icon: ClockCounterClockwiseIcon,
               to: '#resume',
             },
+            {
+              id: 'next-up',
+              label: text.sections.nextUp,
+              icon: ListPlusIcon,
+              to: '#next-up',
+            },
             { id: 'hidden', label: text.sections.hidden, icon: EyeSlashIcon, to: '#hidden' },
             {
               id: 'home-rows',
@@ -211,6 +222,12 @@ export default function AccountRoute() {
               label: text.sections.audioRegion,
               icon: SpeakerHighIcon,
               to: '#audio-region',
+            },
+            {
+              id: 'sound',
+              label: text.sections.sound,
+              icon: SpeakerSimpleHighIcon,
+              to: '#sound',
             },
             ...(sharing
               ? [
@@ -281,6 +298,9 @@ export default function AccountRoute() {
       <AccountSection id="resume" title={text.sections.resume} help={text.watching.resumeHelp}>
         <ResumeList />
       </AccountSection>
+      <AccountSection id="next-up" title={text.sections.nextUp} help={text.watching.nextUpHelp}>
+        <NextUpList />
+      </AccountSection>
       <AccountSection id="hidden" title={text.sections.hidden} help={text.watching.hiddenHelp}>
         <HiddenList />
       </AccountSection>
@@ -313,6 +333,9 @@ export default function AccountRoute() {
         help={text.audioRegion.help}
       >
         <OwnAudioRegion />
+      </AccountSection>
+      <AccountSection id="sound" title={text.sections.sound} help={text.sound.help}>
+        <OwnSoundOptions />
       </AccountSection>
       {sharing && (
         <AccountSection

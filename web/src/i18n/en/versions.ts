@@ -64,6 +64,7 @@ const versions = {
       failed: 'Failed lately',
       hidden: 'Hidden by a rule',
       group: 'Above the quality group',
+      quality: 'Left out by the 3 qualities',
     },
     stepHelp: {
       nothing: 'A web page, another site’s video or a notice: nothing Polyfin plays.',
@@ -73,6 +74,7 @@ const versions = {
       mirror:
         'The same file from another addon, kept as a hidden mirror: a play goes on from it when the version’s source fails.',
       group: 'The user’s quality group leaves out the taller versions while one fits.',
+      quality: 'Versions offered keeps only the best version of each quality: 4K, 1080p and 720p.',
     },
     rules: {
       elsewhere: (marker: string) => `Names another title (${marker})`,
@@ -85,8 +87,8 @@ const versions = {
       none: 'Hidden by a rule changed since',
     },
     unstarted: 'Did not start lately: plays that pick no version pass it over',
-    labelsAsRead: 'Labels',
-    facts: 'What the rules know',
+    labelsAsRead: 'Labels:',
+    facts: 'What the rules know:',
     analyzed: 'Analyzed',
     multi: 'MULTI',
     tiers: { disc: 'Disc copy', bluray: 'Blu-ray', web: 'Web', dvd: 'DVD', tv: 'TV' },

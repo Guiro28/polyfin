@@ -50,12 +50,19 @@ type record struct {
 	// Person is the name and photo of a person.
 	Person *Person `json:"person,omitempty"`
 	// TMDBID is a person's TMDB identifier as an addon gave it, and TMDB
-	// what TMDB told of them (see persondetails.go).
-	TMDBID string         `json:"tmdbId,omitempty"`
-	TMDB   *personDetails `json:"tmdb,omitempty"`
+	// what TMDB told of them (see persondetails.go). DeadPhotos are the
+	// photos of theirs found dead, by address, each with when (see
+	// PhotoFailed).
+	TMDBID     string               `json:"tmdbId,omitempty"`
+	TMDB       *personDetails       `json:"tmdb,omitempty"`
+	DeadPhotos map[string]time.Time `json:"deadPhotos,omitempty"`
 	// Credits maps the titles a person is credited in, by item identifier,
-	// to their credits there ("Actor", "Director", "Writer").
+	// to their credits there ("Actor", "Director", "Writer", "Producer").
 	Credits map[string][]string `json:"credits,omitempty"`
+	// SameAs is the identifier of the record a person kept by name
+	// became, once they were known by their TMDB identifier (see
+	// people.go and sameAs): the name's record then only points to it.
+	SameAs string `json:"sameAs,omitempty"`
 	// Confined is true when the addon may only reach public addresses, which
 	// also applies to its artwork.
 	Confined bool `json:"confined,omitempty"`
@@ -246,7 +253,13 @@ func (s *Service) loadAll(ctx context.Context, ids []accounts.ID) ([]record, err
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := s.db.Query(ctx, "SELECT id, key, data FROM items WHERE id = ANY($1::uuid[])", ids)
+	return s.loadWhere(ctx, "id = ANY($1::uuid[])", ids)
+}
+
+// loadWhere returns the records of the items condition, on the items
+// table, selects with args, in no particular order.
+func (s *Service) loadWhere(ctx context.Context, condition string, args ...any) ([]record, error) {
+	rows, err := s.db.Query(ctx, "SELECT id, key, data FROM items WHERE "+condition, args...)
 	if err != nil {
 		return nil, err
 	}

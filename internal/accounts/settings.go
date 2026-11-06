@@ -555,6 +555,7 @@ var (
 	ErrInvalidDeinterlaceMethod      = errors.New("invalid deinterlace method")
 	ErrInvalidDownmixAlgorithm       = errors.New("invalid downmix algorithm")
 	ErrInvalidDownmixBoost           = errors.New("invalid downmix boost")
+	ErrInvalidDynamicRange           = errors.New("invalid dynamic range compression")
 	ErrInvalidMaxAudioChannels       = errors.New("invalid maximum of audio channels")
 	ErrInvalidAudioBitrate           = errors.New("invalid audio bitrate")
 	ErrInvalidEncodingThreads        = errors.New("invalid encoding threads")
@@ -585,6 +586,9 @@ var (
 	// DownmixAlgorithms are the values of Settings.DownmixAlgorithm: None
 	// leaves FFmpeg's own downmix.
 	DownmixAlgorithms = []string{"None", "Dave750", "NightmodeDialogue", "Rfc7845", "Ac4"}
+	// DynamicRangeCompressions are the values of
+	// Settings.DynamicRangeCompression.
+	DynamicRangeCompressions = []string{"encoded", "none", "night"}
 	// AudioChannelLimits are the values of Settings.MaxAudioChannels: 0
 	// leaves the app's limit alone.
 	AudioChannelLimits = []int{0, 1, 2, 6}
@@ -624,9 +628,10 @@ const (
 
 // The bounds and defaults of the numbers tuning conversions. The defaults
 // are what Polyfin did before they were settings: 0 quality aims for the
-// bitrate alone, 0 peak keeps the video's, a boost of 1 changes nothing,
-// 0 audio bitrate keeps Polyfin's per channel count, and 0 threads lets
-// FFmpeg choose.
+// bitrate alone, 0 peak keeps the video's, 0 audio bitrate keeps
+// Polyfin's per channel count, and 0 threads lets FFmpeg choose; but the
+// boost of a stereo mix, Jellyfin's 2 (EncodingOptions.cs), where 1 would
+// change nothing.
 const (
 	MinVideoQuality           = 1
 	MaxVideoQuality           = 51
@@ -635,7 +640,7 @@ const (
 	MaxToneMappingDesat       = 10
 	MinDownmixBoost           = 0.5
 	MaxDownmixBoost           = 3
-	DefaultDownmixBoost       = 1
+	DefaultDownmixBoost       = 2
 	MinAudioBitratePerChannel = 32
 	MaxAudioBitratePerChannel = 320
 	MaxEncodingThreads        = 64
@@ -1467,6 +1472,9 @@ type Settings struct {
 	// UpdateCheck asks GitHub once a day for Polyfin's latest release, to
 	// tell administrators about a new version (see package updates).
 	UpdateCheck bool
+	// IncludePrereleases has that check, and Polyfin Desktop's updates,
+	// consider pre-releases too.
+	IncludePrereleases bool
 	// RestartConfirmed tells that an administrator confirmed that Polyfin
 	// is started again when it exits, by its container's restart policy
 	// or its service manager: Restart in the admin app then asks no more
@@ -1729,8 +1737,11 @@ type Settings struct {
 	ConvertedDownloads bool
 	// SubtitleOCR reads picture subtitles into text with Tesseract, one of
 	// SubtitleOCRModes; SubtitleOCRTracks bounds the tracks read at once.
-	SubtitleOCR       string
-	SubtitleOCRTracks int
+	// SubtitleOCRDownload downloads the data of a language Tesseract lacks
+	// the first time a track needs it.
+	SubtitleOCR         string
+	SubtitleOCRTracks   int
+	SubtitleOCRDownload bool
 	// DefaultAudioLanguage and DefaultSubtitleLanguage are the audio and
 	// subtitle languages of the users who chose none, ISO 639-2/B codes
 	// as their own preferences take them, empty for none (see
@@ -1790,6 +1801,14 @@ type Settings struct {
 	DownmixBoost           float64
 	MaxAudioChannels       int
 	AudioBitratePerChannel int
+	// NormalizeConvertedAudio evens the loudness of the audio of the
+	// videos the server converts at -16 LUFS; direct play, copied audio,
+	// music and audiobooks keep theirs.
+	NormalizeConvertedAudio bool
+	// DynamicRangeCompression is how converted AC-3 and E-AC-3 apply the
+	// dynamic range compression their tracks carry: encoded as the track
+	// says, none, or night, which lifts quiet passages twice as much.
+	DynamicRangeCompression string
 	// EncodingThreads is how many threads FFmpeg converts with, 0 letting
 	// it choose.
 	EncodingThreads int
@@ -1884,10 +1903,15 @@ type Settings struct {
 	// administrator registered with Trakt, and SimklClientID the one
 	// registered with Simkl, through which users connect their accounts
 	// to have what they watch sent there. Empty by default, which offers
-	// neither service.
+	// neither service. Trakt apps created since October 2026 have no
+	// secret: TraktClientSecret then stays empty.
 	TraktClientID     string
 	TraktClientSecret string
 	SimklClientID     string
+	// traktSecretUnreadable: a Trakt client secret is stored, but the key
+	// cannot open it. It reads as empty, yet the app has one: Trakt is not
+	// offered until the key or the secret is corrected.
+	traktSecretUnreadable bool
 	// LastFMAPIKey and LastFMSecret are the API key and shared secret of
 	// the API account an administrator created on Last.fm, through which
 	// users connect their Last.fm accounts to have the songs they play
@@ -2269,10 +2293,11 @@ func (s Settings) SMTPAvailable() bool {
 	return s.SMTPHost != "" && s.SMTPFrom != ""
 }
 
-// TraktAvailable reports whether users can connect Trakt: its app's ID and
-// secret are saved.
+// TraktAvailable reports whether users can connect Trakt: its app's ID is
+// saved, and its secret, which Trakt's newer apps lack, is readable when
+// one is stored.
 func (s Settings) TraktAvailable() bool {
-	return s.TraktClientID != "" && s.TraktClientSecret != ""
+	return s.TraktClientID != "" && !s.traktSecretUnreadable
 }
 
 // SimklAvailable reports whether users can connect Simkl: its app's ID is
@@ -2329,6 +2354,7 @@ func validWebText(text string, max int) bool {
 // Settings.fields.
 const settingsColumns = "server_name, quick_connect_enabled, legacy_authorization, language, prepare_ahead, transcoding, catalog_limit, channel_limit, " +
 	"update_check, local_discovery, local_address, " +
+	"include_prereleases, " +
 	"dlna, dlna_name, dlna_new_devices_user, dlna_mark_played, " +
 	"skip_buttons, publicmetadb_key, theintrodb_key, segment_order, segment_sources_off, audio_intros, similar_titles, generate_images, lyrics, even_volume, measure_loudness, played_percent, resume_percent, version_list_minutes, catalog_refresh_minutes, " +
 	"mdblist_ratings_key, critic_rating_shows, tmdb_key, " +
@@ -2339,12 +2365,13 @@ const settingsColumns = "server_name, quick_connect_enabled, legacy_authorizatio
 	"analysis_timeout, version_attempts, prefer_direct_play, " +
 	"version_order, version_codec_order, version_source_order, hide_versions_larger_gb, hidden_version_codecs, hidden_version_words, name_how_versions_play, versions_offered, stream_proxy, " +
 	"hidden_releases, version_edition_order, version_mb_per_minute, version_label_rules, " +
-	"sync_addon_subtitles, max_conversions, max_conversion_height, converted_downloads, subtitle_ocr, subtitle_ocr_tracks, " +
+	"sync_addon_subtitles, max_conversions, max_conversion_height, converted_downloads, subtitle_ocr, subtitle_ocr_tracks, subtitle_ocr_download, " +
 	"default_audio_language, default_subtitle_language, " +
 	"encoder_preset, h264_quality, hevc_quality, allow_hevc_encoding, hardware_acceleration, hardware_decoding_codecs, " +
 	"adaptive_quality, " +
 	"tone_mapping, tone_mapping_algorithm, tone_mapping_peak, tone_mapping_desat, gpu_tone_mapping, processor_tone_mapping_height, deinterlace_method, deinterlace_double_rate, " +
 	"downmix_algorithm, downmix_boost, max_audio_channels, audio_bitrate_per_channel, encoding_threads, ahead_seconds, keep_converted_video, fast_start, " +
+	"normalize_converted_audio, dynamic_range_compression, " +
 	"trickplay, trickplay_interval, trickplay_width, chapter_images, thumbnail_storage_gb, " +
 	"recording_pre_padding, recording_post_padding, recording_retention_days, " +
 	"recording_commercials, " +
@@ -2383,6 +2410,7 @@ func (settings *Settings) fields() []any {
 	return []any{&settings.ServerName, &settings.QuickConnectEnabled, &settings.LegacyAuthorization, &settings.Language,
 		&settings.PrepareAhead, &settings.Transcoding, &settings.CatalogLimit, &settings.ChannelLimit,
 		&settings.UpdateCheck, &settings.LocalDiscovery, &settings.LocalAddress,
+		&settings.IncludePrereleases,
 		&settings.DLNA, &settings.DLNAName, &settings.DLNANewDevicesUser, &settings.DLNAMarkPlayed,
 		&settings.SkipButtons, &settings.PublicMetaDBKey, &settings.TheIntroDBKey, &settings.SegmentOrder, &settings.SegmentSourcesOff, &settings.AudioIntros,
 		&settings.SimilarTitles, &settings.GenerateImages, &settings.Lyrics, &settings.EvenVolume, &settings.MeasureLoudness, &settings.PlayedPercent, &settings.ResumePercent,
@@ -2400,6 +2428,7 @@ func (settings *Settings) fields() []any {
 		&settings.NameHowVersionsPlay, &settings.VersionsOffered, &settings.StreamProxy,
 		&settings.HiddenReleases, &settings.VersionEditionOrder, &settings.VersionMBPerMinute, &settings.VersionLabelRules,
 		&settings.SyncAddonSubtitles, &settings.MaxConversions, &settings.MaxConversionHeight, &settings.ConvertedDownloads, &settings.SubtitleOCR, &settings.SubtitleOCRTracks,
+		&settings.SubtitleOCRDownload,
 		&settings.DefaultAudioLanguage, &settings.DefaultSubtitleLanguage,
 		&settings.EncoderPreset, &settings.H264Quality, &settings.HevcQuality, &settings.AllowHevcEncoding, &settings.HardwareAcceleration, &settings.HardwareDecodingCodecs,
 		&settings.AdaptiveQuality,
@@ -2407,6 +2436,7 @@ func (settings *Settings) fields() []any {
 		&settings.DeinterlaceMethod, &settings.DeinterlaceDoubleRate,
 		&settings.DownmixAlgorithm, &settings.DownmixBoost, &settings.MaxAudioChannels, &settings.AudioBitratePerChannel, &settings.EncodingThreads, &settings.AheadSeconds,
 		&settings.KeepConvertedVideo, &settings.FastStart,
+		&settings.NormalizeConvertedAudio, &settings.DynamicRangeCompression,
 		&settings.Trickplay, &settings.TrickplayInterval, &settings.TrickplayWidth, &settings.ChapterImages, &settings.ThumbnailStorageGB,
 		&settings.RecordingPrePadding, &settings.RecordingPostPadding, &settings.RecordingRetentionDays,
 		&settings.RecordingCommercials,
@@ -2495,6 +2525,7 @@ func (s *Store) openSecrets(settings *Settings) {
 		}
 		*secret.value = value
 	}
+	_, settings.traktSecretUnreadable = s.unreadable["traktClientSecret"]
 }
 
 // SecretUnreadable reports whether the secret of the settings named name,
@@ -3046,6 +3077,7 @@ func (s *Store) UpdateSettings(ctx context.Context, settings Settings) (Settings
 			delete(s.unreadable, secret.name)
 		}
 	}
+	_, settings.traktSecretUnreadable = s.unreadable["traktClientSecret"]
 	s.storeSettings(&settings)
 	return settings, nil
 }
@@ -3099,6 +3131,8 @@ func validConversion(settings Settings) ([]string, error) {
 		return nil, ErrInvalidDownmixAlgorithm
 	case !(settings.DownmixBoost >= MinDownmixBoost && settings.DownmixBoost <= MaxDownmixBoost):
 		return nil, ErrInvalidDownmixBoost
+	case !slices.Contains(DynamicRangeCompressions, settings.DynamicRangeCompression):
+		return nil, ErrInvalidDynamicRange
 	case !slices.Contains(AudioChannelLimits, settings.MaxAudioChannels):
 		return nil, ErrInvalidMaxAudioChannels
 	case settings.AudioBitratePerChannel != 0 &&

@@ -30,6 +30,9 @@ const (
 	StepHidden = "hidden"
 	// StepGroup: the user's quality group leaves the version out.
 	StepGroup = "group"
+	// StepQuality is a version left out as another is the best of its
+	// quality (see byQuality).
+	StepQuality = "quality"
 )
 
 // VersionsExplanation explains a title's versions for a user.
@@ -136,7 +139,7 @@ func (h *Handler) ExplainVersions(ctx context.Context, user accounts.User, id ac
 	rules := h.rulesFor(ctx, user)
 	explanation := VersionsExplanation{Pending: listed.Pending, Criteria: slices.Clone(rules.order), Group: user.QualityGroup,
 		Blocks: h.Library.VersionBlocks(ctx, id), Decisions: h.PlayDecisions(id)}
-	offered := h.offered(ctx, user, slices.Clone(versions))
+	offered := h.offered(ctx, user, library.Item{ID: id}, slices.Clone(versions))
 	place := make(map[accounts.ID]int, len(offered))
 	for i, version := range offered {
 		place[version.ID] = i + 1
@@ -161,7 +164,7 @@ func (h *Handler) ExplainVersions(ctx context.Context, user accounts.User, id ac
 	for _, version := range versions {
 		facts[version.ID] = h.versionFacts(ctx, version)
 	}
-	if h.reordered(user) || slices.ContainsFunc(kept, elsewhere) {
+	if h.reordered(ctx, user) || slices.ContainsFunc(kept, elsewhere) {
 		if rules.hides() || slices.ContainsFunc(kept, elsewhere) {
 			hidden := map[accounts.ID]fate{}
 			for _, version := range kept {
@@ -226,6 +229,9 @@ func (h *Handler) ExplainVersions(ctx context.Context, user accounts.User, id ac
 			// The rules changed since they were read: it is hidden all
 			// the same.
 			f = fate{step: StepHidden}
+			if rules.qualities {
+				f = fate{step: StepQuality}
+			}
 		}
 		explained.Step, explained.Rule, explained.Detail = f.step, f.rule, f.detail
 		return explained

@@ -29,6 +29,7 @@ import (
 	"github.com/moodiness/polyfin/internal/audiosegments"
 	"github.com/moodiness/polyfin/internal/backup"
 	"github.com/moodiness/polyfin/internal/bandwidth"
+	"github.com/moodiness/polyfin/internal/boxset"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/commercials"
 	"github.com/moodiness/polyfin/internal/config"
@@ -377,6 +378,16 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	// while the settings hold the server's TMDB key.
 	imageSearch := tmdb.New(tmdb.API, tmdb.Images, version, store.Settings)
 	lib.UseTMDB(imageSearch)
+	// Silo's apps show the TMDB collections of movies as box sets, learnt
+	// in the background while the settings hold the server's TMDB key.
+	// What Polyfin learns from TMDB in the background waits its turn in one
+	// queue, at TMDB's pace: box sets, and titles' credits, which make
+	// their people.
+	tmdbLookups := tmdb.NewQueue(imageSearch, tmdb.QueueOptions{Logger: logger})
+	defer tmdbLookups.Close()
+	movieCollections := boxset.New(pool, imageSearch, boxset.Options{Catalog: lib, Queue: tmdbLookups, Logger: logger})
+	defer movieCollections.Close()
+	lib.UseTitleCredits(tmdbLookups)
 	// Local folders match their files through the library's searches of
 	// the metadata addons, and TMDB's when every addon's search fails.
 	folders := localfiles.New(pool, addonStore, lib, logger, store.Settings, box)
@@ -460,6 +471,9 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		return fmt.Errorf("prepare the OCR directory: %w", err)
 	}
 	player.UseTesseract(cfg.FFmpeg, ocrDir, &ocr.Tesseract{Path: cfg.Tesseract, DataDir: cfg.TessdataDir, TempDir: ocrDir})
+	// The data of the languages Tesseract lacks is downloaded into
+	// POLYFIN_TESSDATA_DIR from Health, or by itself as the settings ask.
+	player.FetchLanguagesWith(&ocr.Downloader{Dir: cfg.TessdataDir, URL: cfg.TessdataURL})
 	folders.UseScanned(player.QueueScanned)
 	if _, err := exec.LookPath(cfg.Tesseract); err != nil && store.Settings().SubtitleOCR != "off" {
 		logger.Warn("Tesseract was not found: picture subtitles are not read into text", "tesseract", cfg.Tesseract)
@@ -614,8 +628,9 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 	// The daily check for a new version tells administrators through the
 	// notifications, made below.
 	updateCheck := updates.New(updates.Options{DB: pool, Version: version, Logger: logger,
-		Enabled: func() bool { return store.Settings().UpdateCheck },
-		Notify:  func(release updates.Release) { notifier.NewVersion(release.Version, release.URL) }})
+		Enabled:     func() bool { return store.Settings().UpdateCheck },
+		Prereleases: func() bool { return store.Settings().IncludePrereleases },
+		Notify:      func(release updates.Release) { notifier.NewVersion(release.Version, release.URL) }})
 	// The songs of music addons are measured after their first play, read
 	// as playback reads them; their measures end before playback closes.
 	songLoudness := loudness.New(pool, meter, logger, store.Settings)
@@ -646,6 +661,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		RemuxDB:        remuxdb.New(serverID, version, logger, store.Settings),
 		Lyrics:         lyrics.New(pool, lyrics.LRCLIB, version, logger, store.Settings),
 		TMDB:           imageSearch,
+		BoxSets:        movieCollections,
 		Loudness:       songLoudness,
 		Playlists:      playlists.New(pool),
 		Collections:    collections.New(pool),
@@ -727,6 +743,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		LibraryImages: lib,
 		// Refreshing a library's descriptions, paced.
 		LibraryRefreshes: lib,
+		ShownTitles:      lib,
 		SmartLists:       smartlists.New(pool),
 		SmartPreviews:    lib,
 		// The channels Polyfin airs, built from what the Jellyfin API lists.
@@ -778,8 +795,11 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 			DLNA:             sharing.Status,
 			HTTPS:            secure.Status,
 			MissingLanguages: player.MissingLanguages,
+			DownloadLanguage: player.DownloadLanguage,
 			Torrents:         torrents,
 			Images:           jellyfinAPI,
+			Artwork:          jellyfinAPI.ArtworkStatus,
+			People:           lib.PeopleStatus,
 
 			// The FFmpeg for NVIDIA drivers older than 610 (#542).
 			OlderDriverFFmpeg: segments.OlderDriverFFmpeg,
@@ -824,6 +844,9 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 		Reaches: func(user accounts.ID) bool { return notifier.Receives(user, notifications.ProgrammeReminder) },
 		Ready:   notifier.Loaded(), Logger: logger})
 	jellyfinAPI.Reminders = programmeReminders
+	// Refresh metadata forgets the failed downloads of the artwork the
+	// image relay remembers.
+	lib.UseArtworkFailures(jellyfinAPI)
 	adminOptions.Reminders = programmeReminders
 	registerWatchlistTask(registry, store, watchlist.New(pool), jellyfinAPI, notifier, logger)
 	// Playbacks under way when Polyfin stops are kept in the history, as
@@ -860,7 +883,7 @@ func serve(ctx context.Context, restore *pendingRestore) error {
 			// Silo's apps, while the settings allow them, through the
 			// Jellyfin API's answers.
 			Silo: silo.New(silo.Options{ServerID: serverID, Version: version, Accounts: store, Jellyfin: jellyfinAPI,
-				DB: pool, QuickConnect: quickConnect, Logger: logger}),
+				DB: pool, QuickConnect: quickConnect, BoxSets: movieCollections, Logger: logger, ContainerTracks: jellyfinAPI.ContainerTracks}),
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),

@@ -17,14 +17,18 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   addLocalFolder,
   fetchAddons,
+  fetchFolderShows,
   fetchLooserMatches,
   fetchRcloneRemotes,
+  fetchShowNumberingGroups,
   fetchStatus,
+  fetchUnlistedEpisodes,
   fetchUnmatchedFiles,
   linkLocalFile,
   queryClient,
   queryKeys,
   setLocalEpisodes,
+  setShowNumbering,
   unlinkLocalFile,
   updateLocalFolder,
   type Addon,
@@ -35,6 +39,10 @@ import {
   type LocalFolder,
   type MatchMethod,
   type ServerSystem,
+  type EpisodeRanges,
+  type FolderShow,
+  type ShowNumbering,
+  type UnlistedShow,
   type UnmatchedFile,
 } from '@/api'
 import { dateTime, errorMessage, formatBytes } from '@/format'
@@ -54,6 +62,7 @@ import {
   PanelSection,
   SecretField,
   Segmented,
+  Select,
   Skeleton,
   SuggestInput,
   Switch,
@@ -981,6 +990,18 @@ export function LocalFolderFigures({ folder }: { folder: LocalFolder }) {
           {text.unlistedHelp}
         </Notice>
       )}
+      {folder.absoluteEpisodes > 0 && (
+        <Notice className="mt-5">
+          <strong className="font-medium">
+            {text.absoluteTitle(
+              folder.absoluteEpisodes,
+              folder.absoluteEpisodes.toLocaleString(language),
+            )}
+            .
+          </strong>{' '}
+          {text.absoluteHelp}
+        </Notice>
+      )}
     </PanelSection>
   )
 }
@@ -1074,6 +1095,12 @@ export function UnmatchedFiles({ addon, folder }: { addon: Addon; folder: LocalF
           </>
         )}
       </PanelSection>
+      {folder.kind === 'shows' && folder.unlistedEpisodes > 0 && (
+        <UnlistedEpisodes addon={addon} folder={folder} />
+      )}
+      {folder.kind === 'shows' && folder.matched > 0 && (
+        <ShowNumberings addon={addon} folder={folder} />
+      )}
       <LooserMatches addon={addon} folder={folder} />
       {(folder.links.length > 0 || folder.episodes.length > 0) && (
         <PanelSection title={text.linksTitle}>
@@ -1126,6 +1153,291 @@ export function UnmatchedFiles({ addon, folder }: { addon: Addon; folder: LocalF
         </PanelSection>
       )}
     </>
+  )
+}
+
+/** Episodes as ranges of numbers, such as `E4-E5, E7`. */
+function episodeRanges(ranges: EpisodeRanges): string {
+  return ranges
+    .map(([first, last]) => (first === last ? `E${first}` : `E${first}-E${last}`))
+    .join(', ')
+}
+
+/** An episode's season and number, such as `S02E05`. */
+function episodeCode({ season, episode }: { season: number; episode: number }): string {
+  return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+}
+
+/**
+ * The shows of a folder whose files hold episodes their metadata addon does not list, each season
+ * with the files' numbers next to the addon's, so that the files can be renamed to the addon's.
+ */
+function UnlistedEpisodes({ addon, folder }: { addon: Addon; folder: LocalFolder }) {
+  const { t } = useI18n()
+  const text = t.localFolders
+  const unlisted = useQuery({
+    // The count keys the list, as the figures key the unmatched files.
+    queryKey: [...queryKeys.unlisted(addon.id), folder.unlistedEpisodes, folder.scanning],
+    queryFn: ({ signal }) => fetchUnlistedEpisodes(addon.id, signal),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === addon.id ? previous : undefined,
+  })
+
+  return (
+    <PanelSection title={text.unlistedListTitle} description={text.unlistedListHelp}>
+      {unlisted.isPending ? (
+        <Skeleton className="h-24 rounded-panel" />
+      ) : unlisted.isError ? (
+        <InlineError onRetry={() => void unlisted.refetch()} retrying={unlisted.isRefetching}>
+          {errorMessage(t, unlisted.error)}
+        </InlineError>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line">
+          {unlisted.data.shows.map((show) => (
+            <UnlistedShowRow key={show.imdbId} addon={addon} show={show} folder={folder} />
+          ))}
+        </ul>
+      )}
+    </PanelSection>
+  )
+}
+
+/** A show whose files hold episodes its metadata addon does not list, season by season. */
+function UnlistedShowRow({
+  addon,
+  show,
+  folder,
+}: {
+  addon: Addon
+  show: UnlistedShow
+  folder: LocalFolder
+}) {
+  const { t } = useI18n()
+  const text = t.localFolders
+  const range =
+    show.catalogFirst !== null && show.catalogLast !== null
+      ? text.unlistedCatalogRange(episodeCode(show.catalogFirst), episodeCode(show.catalogLast))
+      : text.unlistedCatalogEmpty
+  return (
+    <li className="py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-control text-ink">
+            {show.name} <Badge tone="accent">{show.imdbId}</Badge>
+          </p>
+          <p className="mt-0.5 font-mono text-small break-all text-ink-3">
+            {unitName(show.unit, folder, text.discTitle)}
+          </p>
+        </div>
+        <NumberingChoice addon={addon} show={show} />
+      </div>
+      <dl className="mt-2 grid grid-cols-[9rem_minmax(0,1fr)_minmax(0,1.5fr)] gap-x-6 gap-y-1 text-small">
+        {show.seasons.map((season) => (
+          <Fragment key={season.season}>
+            <dt className="text-ink-2">{text.unlistedSeason(season.season)}</dt>
+            <dd className="text-warn">{text.unlistedFiles(episodeRanges(season.files))}</dd>
+            <dd className="text-ink-3">
+              {!show.described
+                ? text.unlistedNotDescribed
+                : season.catalog.length > 0
+                  ? text.unlistedCatalog(episodeRanges(season.catalog))
+                  : text.unlistedCatalogNoSeason(season.season, range)}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+    </li>
+  )
+}
+
+/**
+ * The shows of a shows folder, each with how its files are numbered, how many of them that maps to
+ * the catalog's episodes, and the files it cannot place, with why.
+ */
+function ShowNumberings({ addon, folder }: { addon: Addon; folder: LocalFolder }) {
+  const { t } = useI18n()
+  const text = t.localFolders
+  const shows = useQuery({
+    // The counts key the list, as the figures key the unmatched files.
+    queryKey: [
+      ...queryKeys.folderShows(addon.id),
+      folder.matched,
+      folder.unmappedEpisodes,
+      folder.scanning,
+    ],
+    queryFn: ({ signal }) => fetchFolderShows(addon.id, signal),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === addon.id ? previous : undefined,
+  })
+
+  return (
+    <PanelSection title={text.numberingTitle} description={text.numberingHelp}>
+      {shows.isPending ? (
+        <Skeleton className="h-24 rounded-panel" />
+      ) : shows.isError ? (
+        <InlineError onRetry={() => void shows.refetch()} retrying={shows.isRefetching}>
+          {errorMessage(t, shows.error)}
+        </InlineError>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line">
+          {shows.data.shows.map((show) => (
+            <ShowNumberingRow key={show.imdbId} addon={addon} show={show} folder={folder} />
+          ))}
+        </ul>
+      )}
+    </PanelSection>
+  )
+}
+
+/** A show of a shows folder: how its files are numbered, and those its numbering cannot place. */
+function ShowNumberingRow({
+  addon,
+  show,
+  folder,
+}: {
+  addon: Addon
+  show: FolderShow
+  folder: LocalFolder
+}) {
+  const { t } = useI18n()
+  const text = t.localFolders
+  return (
+    <li className="py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-control text-ink">
+            {show.name} <Badge tone="accent">{show.imdbId}</Badge>
+          </p>
+          <p className="mt-0.5 font-mono text-small break-all text-ink-3">
+            {unitName(show.unit, folder, text.discTitle)}
+          </p>
+          <p className="mt-0.5 text-small text-ink-3">
+            {show.numbering === 'catalog'
+              ? text.numberingFileCount(show.files)
+              : text.numberingMapped(show.mapped, show.files)}
+          </p>
+        </div>
+        <NumberingChoice addon={addon} show={show} />
+      </div>
+      {show.unmapped.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 text-small">
+          {show.unmapped.map((file) => (
+            <li key={file.path}>
+              <span className="font-mono break-all text-ink-2">{file.path}</span>
+              <span className="block text-warn">
+                {text.unmappedReasons[file.reason] ?? file.reason}
+                {' · '}
+                {text.unmappedListed(episodeCode(file.listed))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+/**
+ * How a show's files are numbered, changed at once: an episode order applies once one of the
+ * show's TMDB episode groups is chosen.
+ */
+function NumberingChoice({
+  addon,
+  show,
+}: {
+  addon: Addon
+  show: { imdbId: string; name: string; numbering: ShowNumbering; group: string }
+}) {
+  const { t } = useI18n()
+  const text = t.localFolders
+  const orders = t.episodeOrders
+  const toast = useToast()
+  const [pending, setPending] = useState<ShowNumbering | null>(null)
+  const chosen = pending ?? show.numbering
+  const groups = useQuery({
+    queryKey: queryKeys.numberingGroups(addon.id, show.imdbId),
+    queryFn: ({ signal }) => fetchShowNumberingGroups(addon.id, show.imdbId, signal),
+    enabled: chosen === 'order',
+  })
+  const save = useMutation({
+    mutationFn: (choice: { numbering: ShowNumbering; group: string }) =>
+      setShowNumbering(addon.id, show.imdbId, choice.numbering, choice.group),
+    onSuccess: (updated) => {
+      replaceCachedAddon('shared', updated)
+      setPending(null)
+      toast(text.numberingSaved(show.name))
+    },
+    onSettled: () => {
+      invalidateScope('shared')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.folderShows(addon.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.unlisted(addon.id) })
+    },
+  })
+  const numberings: ShowNumbering[] = ['catalog', 'per_season', 'continuing', 'absolute', 'order']
+
+  function choose(value: ShowNumbering) {
+    save.reset()
+    if (value === 'order') {
+      setPending(value === show.numbering ? null : value)
+      return
+    }
+    setPending(value === show.numbering ? null : value)
+    if (value !== show.numbering) save.mutate({ numbering: value, group: '' })
+  }
+
+  let order = null
+  if (chosen === 'order') {
+    if (groups.isPending) order = <Skeleton className="h-9 w-[260px] rounded-control" />
+    else if (groups.isError)
+      order = (
+        <InlineError onRetry={() => void groups.refetch()} retrying={groups.isRefetching}>
+          {errorMessage(t, groups.error)}
+        </InlineError>
+      )
+    else if (groups.data.lookup !== '' || groups.data.groups.length === 0)
+      order = (
+        <Notice tone="warn">
+          {text.numberingLookup[groups.data.lookup === '' ? 'none' : groups.data.lookup]}
+        </Notice>
+      )
+    else
+      order = (
+        <Field label={text.numberingGroupLabel(show.name)} hideLabel>
+          <Select
+            value={show.numbering === 'order' ? show.group : ''}
+            onValue={(group) => {
+              save.reset()
+              if (group !== '') save.mutate({ numbering: 'order', group })
+            }}
+            options={[
+              { value: '', label: text.numberingGroupPlaceholder },
+              ...groups.data.groups.map((g) => ({
+                value: g.id,
+                label: `${Object.hasOwn(orders.types, g.type) ? orders.types[g.type] : g.type} · ${g.name} · ${orders.counts(g.seasons, g.episodes)}`,
+              })),
+            ]}
+            disabled={save.isPending}
+            className="w-[260px]"
+          />
+        </Field>
+      )
+  }
+
+  return (
+    <div className="flex w-[260px] max-w-full flex-col gap-2">
+      <Field label={text.numberingLabel(show.name)} hideLabel>
+        <Select
+          value={chosen}
+          onValue={choose}
+          options={numberings.map((value) => ({ value, label: text.numberings[value] }))}
+          disabled={save.isPending}
+          className="w-[260px]"
+        />
+      </Field>
+      {order}
+      <p className="text-small text-ink-3">{text.numberingHints[chosen]}</p>
+      {save.isError && <FieldError>{errorMessage(t, save.error)}</FieldError>}
+    </div>
   )
 }
 

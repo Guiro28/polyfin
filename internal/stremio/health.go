@@ -107,7 +107,8 @@ func resourceOf(manifestURL, target string) string {
 	if target == manifestURL {
 		return "manifest"
 	}
-	rest, ok := strings.CutPrefix(target, BaseURL(manifestURL)+"/")
+	base, _ := SplitManifestURL(manifestURL)
+	rest, ok := strings.CutPrefix(target, base+"/")
 	resource, _, _ := strings.Cut(rest, "/")
 	switch {
 	case !ok:
@@ -198,7 +199,7 @@ func failureOf(ctx context.Context, err error) string {
 // could not be read, too large or not of the expected form,
 // FailureInvalidResponse. It is empty for an error that is no addon's.
 func FailureOf(err error) string {
-	if _, waits := RetryAfter(err); waits || errors.Is(err, ErrAskedToWait) {
+	if _, waits := RetryAfter(err); waits || errors.Is(err, ErrAskedToWait) || errors.Is(err, ErrRateLimited) {
 		return FailureRateLimited
 	}
 	if status := StatusOf(err); status != 0 {

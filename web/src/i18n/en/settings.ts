@@ -8,13 +8,15 @@ const settings = {
       description:
         'Each user can connect their own Trakt, Simkl, MDBList, PublicMetaDB, AniList and MyAnimeList accounts on their My account page, and Polyfin tells those services what they watch; Last.fm and ListenBrainz hear of the songs they play. Trakt, Simkl, AniList, MyAnimeList and Last.fm first need an app of this server’s, set up here. MDBList, PublicMetaDB and ListenBrainz need nothing.',
       traktSetup:
-        'Create an app on trakt.tv, in Settings, Your API Apps, New application. Give it any name, then copy its client ID and client secret here.',
+        'Create an app on developer.trakt.tv, under My Apps: link your GitHub account, which Trakt asks of every developer, then create a Development app with any name and the redirect URI below. Under its Members, add the Trakt username of each user who will connect, up to 16 (you can always sign in yourself). Then copy its client ID here, and its client secret if Trakt shows one.',
+      traktOlderApps:
+        'Apps created before October 2026 keep working with their client secret and their redirect URI, urn:ietf:wg:oauth:2.0:oob; link your GitHub account to them by January 1, 2027, or Trakt stops letting users in. A free Trakt account connects one community app at a time: a user who already connected another one disconnects it on Trakt, under Settings › Connected apps, or uses Trakt VIP.',
       redirectUri: 'Redirect URI to enter in the app',
       traktClientId: 'Trakt client ID',
       traktClientIdHelp:
-        'Leave empty to turn Trakt off. Users can connect once both the client ID and the client secret are saved.',
+        'Leave empty to turn Trakt off. Users can connect once the client ID is saved.',
       traktClientSecret: 'Trakt client secret',
-      traktClientSecretHelp: 'Shown on the app’s page on trakt.tv, under the client ID.',
+      traktClientSecretHelp: 'Optional: only apps made before October 2026 have one.',
       simklSetup:
         'Create an app on simkl.com, in Settings, Developer, Create new app, of the type “TV, devices & command line” (Simkl’s AUTH V2; it needs no redirect URI, and client IDs of older AUTH V1 apps are refused). Give it any name, then copy its client ID here.',
       simklClientId: 'Simkl client ID',
@@ -36,7 +38,7 @@ const settings = {
       myAnimeListSetup:
         'Create an app on myanimelist.net, in Account Settings, API, Create ID, of the type “web”. Give it any name, and as its redirect URL the address below: MyAnimeList sends users’ browsers back there once they allow Polyfin. Only their browsers need to reach it. Then copy its client ID and client secret here.',
       myAnimeListRedirectHelp:
-        'This server’s public address under Settings › General, else the address you use now.',
+        'This server’s public address under Settings › Notifications, else the address you use now.',
       myAnimeListClientId: 'MyAnimeList client ID',
       myAnimeListClientIdHelp:
         'Leave empty to turn MyAnimeList off. Users can connect once both the client ID and the client secret are saved.',
@@ -63,6 +65,9 @@ const settings = {
     updateCheck: 'Check for new versions',
     updateCheckHelp:
       'Once a day, and shortly after startup, Polyfin asks GitHub for its latest release, sending only its version. A newer one shows on Home and under System › Health, and is sent to the New version notifications. Off, Polyfin never contacts GitHub.',
+    includePrereleases: 'Include pre-releases',
+    includePrereleasesHelp:
+      'The check for new versions, and Polyfin Desktop’s updates, consider pre-releases too, such as 1.4.0-rc.1: a newer one shows on Home and under System › Health, and Polyfin Desktop offers to install it. Pre-releases are for trying what comes next, and may have bugs. Off, only releases count.',
     restartConfirmed: 'Polyfin is started again when it stops',
     restartConfirmedHelp:
       'Turn on once Polyfin’s container has a restart policy that starts it again, such as unless-stopped, always or on-failure, or once its service manager does. Polyfin cannot see its container’s restart policy without the Docker socket, which it is never given: while this is off, Restart on Home warns that Polyfin may not come back.',
@@ -86,9 +91,9 @@ const settings = {
         'Off by default. Playing a torrent downloads it from other peers, and shares what was downloaded while the upload limit allows: you answer for what this server downloads and shares. Users also need Can play torrent streams, on their page under Users. Needs a route.',
       route: 'Route',
       routeHelp:
-        'Every torrent socket, for peers, trackers and the DHT, goes this way alone. When it is down, torrent versions are skipped, also during a playback, and System › Health says why.',
+        'Every torrent socket, for peers, trackers and the DHT, goes this way alone. When it is down, torrent versions stay listed but do not start: a play passes over them, and a torrent already playing goes on through a short outage. System › Health says why.',
       routeHelpNoInterface:
-        'Every torrent socket, for peers, trackers and the DHT, goes this way alone. This system binds no socket to a network interface, which only Linux does, as on Polyfin Desktop for Windows and macOS: a SOCKS5 proxy or a WireGuard tunnel carries the torrents. When it is down, torrent versions are skipped, also during a playback, and System › Health says why.',
+        'Every torrent socket, for peers, trackers and the DHT, goes this way alone. This system binds no socket to a network interface, which only Linux does, as on Polyfin Desktop for Windows and macOS: a SOCKS5 proxy or a WireGuard tunnel carries the torrents. When it is down, torrent versions stay listed but do not start: a play passes over them, and a torrent already playing goes on through a short outage. System › Health says why.',
       routes: {
         interface: 'Network interface',
         proxy: 'SOCKS5 proxy',
@@ -252,7 +257,7 @@ const settings = {
       `When an app plays a title without choosing a version, Polyfin tries the versions in order until one works, but analyzes no more than this many. Versions already analyzed are tried too, as they cost nothing. A higher number finds a working version more often, but a title that does not play takes longer to say so. From ${r.min} to ${r.max}; ${r.default} by default.`,
     preferDirectPlay: 'Prefer versions the app plays without conversion',
     preferDirectPlayHelp:
-      'When an app plays a title without choosing a version, Polyfin picks the first version the app plays as it is or simply repackaged, rather than the first that plays at all. The very first play of a title can be a little slower, as more versions may be analyzed; nothing changes once they are known.',
+      'When an app plays a title without choosing a version, Polyfin picks the first version the app plays as it is or simply repackaged, rather than the first that plays at all. Once an app has played since the server started, its version menus also list those versions first, so that Play starts the version the menu shows. Users given “Play local files first” keep their local files first. The very first play of a title can be a little slower, as more versions may be analyzed; nothing changes once they are known.',
     versionsOffered: 'Versions offered',
     versionsOfferedHelp:
       'Every release lists all the versions the addons give. 4K, 1080p and 720p offers three: the best of each quality in the version order. A missing quality is taken from the next lower one first, then the next higher, never the same version twice; the qualities above a user’s quality group are left out. Whatever the choice, a version’s name gives its size after its addon’s name.',
@@ -279,7 +284,7 @@ const settings = {
       `The server already goes entirely through WARP (address seen: ${ip}): no proxy is needed, choose “Through the server” on the addons.`,
     nameHowVersionsPlay: 'Say in version names how they play',
     nameHowVersionsPlayHelp:
-      'Version names end with how the app plays each: “(direct play)”, “(direct stream)” when copied without conversion, “(converted: reason)” with the app’s request, HDR, the quality limit, subtitles, video or audio as the reason, or “(cannot play here)”. Polyfin decides it for the device profile the app sent at its last playback, so names say nothing before a device’s first play or after a restart, and nothing for a version not analyzed or described by RemuxDB yet. Names are in the language of generated names. Nothing is read for them.',
+      'Version names end with how the app plays each: “(direct play)”, “(direct stream)” when copied without conversion, “(converted: reason)” with the app’s request, HDR, the quality limit, subtitles, video or audio as the reason, or “(cannot play here)”. Polyfin decides it for the device profile the app sent at its last playback, or before that in its session’s capabilities, so names say nothing before a device’s first play, unless its capabilities carried a profile, or after a restart, and nothing for a version not analyzed or described by RemuxDB yet. Names are in the language of generated names. Nothing is read for them.',
     versionOrderGroup: 'Version order',
     versionOrder: {
       label: 'Order versions by',
@@ -288,6 +293,8 @@ const settings = {
       add: 'Add a criterion',
       remove: (name: string) => `Remove ${name}`,
       criterion: (position: number) => `Criterion ${position}`,
+      sourceTiesOnly: (position: number) =>
+        `“Source, in the order below” is Criterion ${position}: it only orders the versions the criteria above it tie on, so the versions of a folder at the top of Order of sources can still come after others. Move it up to Criterion 1 to put a source’s versions first.`,
       criteria: {
         language: 'Preferred audio language',
         'resolution-high': 'Resolution, highest first',
@@ -459,6 +466,9 @@ const settings = {
       subtitleOcrTracks: 'Picture subtitle tracks read at once',
       subtitleOcrTracksHelp: (r: RangeText) =>
         `Each track is read by one Tesseract process using one processor core. From ${r.min} to ${r.max}; ${r.default} by default.`,
+      subtitleOcrDownload: 'Download the data of missing languages automatically',
+      subtitleOcrDownloadHelp:
+        'The first time a track is in a language Tesseract has no data for, Polyfin downloads the language’s file from Tesseract’s official data into the folder POLYFIN_TESSDATA_DIR names, checks it, then reads the track. A download that fails is tried again an hour later at the soonest, and System › Health tells why. Off, Health offers a Download button for each missing language.',
       hardwareAcceleration: 'Graphics card used to convert',
       hardwareAccelerationHelp:
         'A graphics card (GPU) converts video much faster than the processor. Each system offers its own: NVIDIA and VAAPI on Linux, VideoToolbox on macOS, NVIDIA, Intel and AMD on Windows. Without a card that works, the processor converts. A change applies once saved, without a restart.',
@@ -618,7 +628,18 @@ const settings = {
       },
       downmixBoost: 'Volume when mixing to stereo',
       downmixBoostHelp: (r: RangeText) =>
-        `Stereo mixes often sound quieter: the volume is multiplied by this number. From ${r.min} to ${r.max}; ${r.default} (no change) by default. Jellyfin uses 2.`,
+        `Stereo mixes often sound quieter: the volume is multiplied by this number, and 1 changes nothing. From ${r.min} to ${r.max}; ${r.default} by default, as in Jellyfin. Above 1, a limiter keeps loud scenes from distorting.`,
+      normalizeConvertedAudio: 'Even the loudness of converted videos',
+      normalizeConvertedAudioHelp:
+        'Brings the sound of the movies, episodes and channels the server converts to the same loudness, -16 LUFS, so that quiet titles play louder and loud ones quieter, with a limiter after it. While on, the volume when mixing to stereo no longer changes the level. Direct play, sound sent as it is, and music never change. Off by default.',
+      dynamicRangeCompression: 'Dynamic range of converted Dolby audio',
+      dynamicRangeCompressionHelp:
+        'How the AC-3 and E-AC-3 (Dolby Digital and Dolby Digital Plus) tracks the server converts apply the compression stored in them, which lifts quiet passages and lowers loud ones. As encoded is how FFmpeg and Jellyfin decode them. Direct play and sound sent as it is are left to the app.',
+      dynamicRangeCompressions: {
+        encoded: 'As encoded',
+        none: 'None (full range)',
+        night: 'Night (quiet passages louder)',
+      },
       maxAudioChannels: 'Most audio channels',
       maxAudioChannelsHelp:
         'Converted sound keeps at most this many channels, even if the app takes more.',
@@ -679,7 +700,7 @@ const settings = {
       'An addon’s collection without a poster, and a smart list shown as a collection, show the posters of their first titles with their name, drawn by Polyfin once their titles have been read. Users under parental control or blocking genres do not see them. When off, they show no image. Libraries set to a generated image keep it.',
     tmdbKey: 'TMDB API key',
     tmdbKeyHelp:
-      'Optional. With an API key or a read access token from a TMDB account, jellyfin-web’s Edit images also searches TMDB for a title’s posters, backdrops and logos, an episode’s stills, a season’s posters and a person’s photos, which Polyfin relays. People are also looked up on TMDB once: those without a photo get theirs, and their pages show their biography, birth and death dates and birthplace. A local folder’s files whose search every metadata addon fails are searched on TMDB too. Without a key, Edit images lists the addons’ images only and TMDB is never asked.',
+      'Optional: Polyfin bundles no key. An API key or a read access token from a TMDB account brings people’s photos and biographies, each title’s cast and crew from TMDB in billing order with photos, person pages listing every library title they are credited in and the titles TMDB knows them best for, beyond the libraries, posters for movies and series whose addon gives none, box sets in Silo’s apps, and TMDB images in jellyfin-web’s Edit images, which Polyfin relays. It also matches a local folder’s files whose search every metadata addon fails. Without a key, TMDB is never asked.',
     waitDigitalRelease: 'Wait for the digital release',
     waitDigitalReleaseHelp:
       'A movie of the addons’ catalogs shows once it is out at home: its first digital or physical release, as TMDB tells, else 90 days after it came out in cinemas. Until then it is left out of libraries, home rows, searches, similar titles and person pages, has no version and does not play; smart lists with a rule of upcoming titles list it, with that day. A movie TMDB does not know, and one out for over a year, stays listed. Needs the TMDB API key.',
@@ -760,7 +781,7 @@ const settings = {
       'Lets users add Stremio addons of their own, besides the server’s. When off, their addons are kept but not used, and their Jellyfin apps show the server’s addons only.',
     serverImports: 'Users may import their watch history from another server or app',
     serverImportsHelp:
-      'Under My account, each user can import their played movies and episodes, resume points and favorites from a Jellyfin or Emby server, or from their Stremio or Nuvio account, signing in there as themselves. When off, those sections are hidden. An administrator can still import for a user, under Users.',
+      'Under My account, each user can import their played movies and episodes, resume points and favorites from a Jellyfin, Emby or Plex server, or from their Stremio or Nuvio account, signing in there as themselves, and their watched movies from a Letterboxd export. When off, those sections are hidden. An administrator can still import for a user, under Users.',
     importEveryMinutes: 'Import connected accounts every',
     importEveryMinutesHelp:
       'How often Polyfin imports again the Stremio and Nuvio accounts users stay connected to, and the watch histories they import from tracking services. A change applies at once: each next import comes this long after the last one. Each import reads the whole account again, so a short interval sends more requests to those services, and, for Stremio, whose terms forbid automated extraction, makes that grey area more pronounced. 6 hours by default.',
@@ -779,7 +800,7 @@ const settings = {
       `Jellyfin apps not used for this many days are signed out and must sign in again. This is checked every hour. Signing in to this admin page is not affected. From ${r.min} to ${r.max}.`,
     knownProxies: 'Known proxies',
     knownProxiesHelp: (r: RangeText) =>
-      `The reverse proxies in front of Polyfin, one a line: an IP address, a network such as 172.18.0.0/16, or a host name such as a container’s name on a Docker network (traefik), up to ${r.max}. A name is looked up every minute and each address it resolves to is trusted, so list only names your own network resolves. A request from one of them comes from the client its X-Forwarded-For or X-Real-IP header names: that address limits failed sign-ins, shows on devices and tells the local network. Forwarded headers from any other address are ignored. Leave it empty when nothing stands in front of Polyfin.`,
+      `The reverse proxies in front of Polyfin, one a line: an IP address, a network such as 172.18.0.0/16, or a host name such as a container’s name on a Docker network (traefik), up to ${r.max}. A name is looked up every minute and each address it resolves to is trusted, so list only names your own network resolves. A request from one of them comes from the client its X-Forwarded-For or X-Real-IP header names: that address limits failed sign-ins, shows on devices and tells the local network. From any other address, X-Forwarded-For and X-Real-IP are ignored. Leave it empty when nothing stands in front of Polyfin.`,
     /** Settings › Security › Identity provider: signing in through an OpenID Connect provider. */
     provider: {
       title: 'Identity provider',

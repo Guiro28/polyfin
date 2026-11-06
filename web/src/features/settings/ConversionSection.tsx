@@ -3,6 +3,7 @@ import type {
   AdaptiveQuality,
   DeinterlaceMethod,
   DownmixAlgorithm,
+  DynamicRangeCompression,
   EncoderPreset,
   HardwareAcceleration,
   HardwareDecodingCodec,
@@ -152,6 +153,14 @@ export default function ConversionSection({
             )}
           />
         </FieldRow>
+        <SwitchRow
+          anchor="subtitle-ocr-download"
+          label={c.subtitleOcrDownload}
+          help={c.subtitleOcrDownloadHelp}
+          checked={form.subtitleOcrDownload}
+          disabled={form.subtitleOcr === 'off'}
+          onChange={(subtitleOcrDownload) => update({ subtitleOcrDownload })}
+        />
       </SettingsGroup>
 
       <SettingsGroup title={c.groups.gpu}>
@@ -535,6 +544,29 @@ export default function ConversionSection({
             {...number('downmix-boost', form.downmixBoost, (value) =>
               update({ downmixBoost: value }),
             )}
+          />
+        </FieldRow>
+        <SwitchRow
+          anchor="normalize-converted-audio"
+          label={c.normalizeConvertedAudio}
+          help={c.normalizeConvertedAudioHelp}
+          checked={form.normalizeConvertedAudio}
+          onChange={(normalizeConvertedAudio) => update({ normalizeConvertedAudio })}
+        />
+        <FieldRow
+          anchor="dynamic-range-compression"
+          label={c.dynamicRangeCompression}
+          help={c.dynamicRangeCompressionHelp}
+          error={error('dynamic-range-compression')}
+        >
+          <Select
+            value={form.dynamicRangeCompression}
+            options={choices<DynamicRangeCompression>('dynamicRangeCompression').map((choice) => ({
+              value: choice,
+              label: c.dynamicRangeCompressions[choice],
+            }))}
+            onValue={(dynamicRangeCompression) => update({ dynamicRangeCompression })}
+            className="max-w-xs"
           />
         </FieldRow>
         <FieldRow

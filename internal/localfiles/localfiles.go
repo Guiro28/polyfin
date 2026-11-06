@@ -92,6 +92,10 @@ type Titles interface {
 	RemoteSearch(ctx context.Context, kind library.Kind, name string, limit int) ([]library.RemoteResult, error)
 	TitleMeta(ctx context.Context, metaType, id string) (stremio.Meta, bool)
 	RemoteSearches(ctx context.Context, kind library.Kind) (bool, error)
+	// EpisodeGroupsOf lists a series' TMDB episode groups, and FileOrder
+	// maps one's episodes to the catalog's (see numbering.go).
+	EpisodeGroupsOf(ctx context.Context, meta stremio.Meta) ([]tmdb.GroupSummary, error)
+	FileOrder(ctx context.Context, meta stremio.Meta, group string) (map[[2]int]library.OrderPlace, error)
 }
 
 // Service stores the local folders, scans them and answers for them as
@@ -119,14 +123,15 @@ type Service struct {
 	// retry is told of a folder whose address, credentials or host key
 	// changed (see UseRetry), nil until set.
 	retry func(folder accounts.ID)
-	// unlisted keeps, by series, the episodes last recorded as not listed
-	// by its description (see NoteUnlisted), so that describing it again
-	// writes nothing unless they changed; unlistedMu guards it. frames
+	// unlisted keeps, by series, a hash of the episodes last recorded as
+	// not listed by its description and of those it lists (see
+	// NoteUnlisted), so that describing it again writes nothing unless
+	// they changed; unlistedMu guards it. frames
 	// bounds the episodes' frames made at once, and failedFrames keeps the
 	// files whose frame could not be made, which framesMu guards (see
 	// episodeFrame).
 	unlistedMu   sync.Mutex
-	unlisted     map[string]string
+	unlisted     map[string]uint64
 	frames       chan struct{}
 	framesMu     sync.Mutex
 	failedFrames map[accounts.ID]failedFrame
@@ -205,7 +210,7 @@ func New(db *pgxpool.Pool, store *addons.Store, titles Titles, logger *slog.Logg
 	return &Service{db: db, addons: store, titles: titles, logger: logger, settings: settings, box: box, now: time.Now,
 		ffprobe: "ffprobe", ffmpeg: "ffmpeg", workers: matchWorkers, ctx: ctx, cancel: cancel, running: map[accounts.ID]scanning{},
 		scanned: map[accounts.ID]bool{}, prints: map[accounts.ID]map[string]uint64{}, kept: map[accounts.ID]int{},
-		shares: map[accounts.ID]*pooledRemote{}, measuring: map[accounts.ID]bool{}, unlisted: map[string]string{},
+		shares: map[accounts.ID]*pooledRemote{}, measuring: map[accounts.ID]bool{}, unlisted: map[string]uint64{},
 		frames: make(chan struct{}, episodeFrames), failedFrames: map[accounts.ID]failedFrame{}}
 }
 
@@ -430,8 +435,14 @@ type Folder struct {
 	// Unlisted counts the episodes its files hold that their series'
 	// metadata addon does not list, as the series were last described:
 	// they are listed all the same, named after their files (see
-	// NoteUnlisted).
+	// NoteUnlisted), and Unlisted lists them by show and season.
 	Unlisted int
+	// Absolute counts its files named by an absolute number that are the
+	// catalog's episodes of their places (see absolute.go).
+	Absolute int
+	// Unmapped counts its shows' files their numbering could not place,
+	// each an episode of its own (see numbering.go), which Shows lists.
+	Unmapped int
 }
 
 // Matches counts a folder's matched files by how they were matched: by an
@@ -824,6 +835,14 @@ func (s *Service) Folder(ctx context.Context, id accounts.ID) (Folder, error) {
 		return Folder{}, err
 	}
 	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM local_files WHERE addon_id = $1 AND reason = $2", id, reasonNoSearch).Scan(&f.NoSearch); err != nil {
+		return Folder{}, err
+	}
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM local_files WHERE addon_id = $1 AND stremio_id IS NOT NULL AND numbering = $2", id,
+		numberingAbsolute).Scan(&f.Absolute); err != nil {
+		return Folder{}, err
+	}
+	if err := s.db.QueryRow(ctx, "SELECT count(*) FROM local_files WHERE addon_id = $1 AND stremio_id IS NOT NULL AND numbering = $2", id,
+		numberingUnmapped).Scan(&f.Unmapped); err != nil {
 		return Folder{}, err
 	}
 	// The addon that failed the most searches tells why.

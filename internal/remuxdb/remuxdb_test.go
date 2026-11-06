@@ -1,6 +1,7 @@
 package remuxdb
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"maps"
@@ -47,6 +48,9 @@ const movieAnswer = `[
    "sources": [{"kind": "nzb", "filename": "The.Movie.1080p.HLG.mp4", "indexer": "indexer", "indexer_guid": "1e8b"}],
    "tracks": [
      {"kind": "video", "idx": 0, "codec": "h264", "width": 1920, "height": 800, "color_transfer": "arib_std_b67",
+      "is_default": true, "is_forced": false, "is_hearing_impaired": false, "is_external": false,
+      "is_anamorphic": false, "hdr10_plus_present": false},
+     {"kind": "audio", "idx": 1, "codec": "aac", "language": "eng", "channels": 2, "sample_rate": 48000,
       "is_default": true, "is_forced": false, "is_hearing_impaired": false, "is_external": false,
       "is_anamorphic": false, "hdr10_plus_present": false}
    ]}
@@ -232,7 +236,7 @@ func TestDescriptionsReadAsTheFilesAnalyses(t *testing.T) {
 	}
 
 	analysis, ok = s.Described(hlg)
-	if streams := playback.MediaStreams(analysis, nil, "en"); !ok || len(streams) != 1 || streams[0].VideoRangeType != "HLG" {
+	if streams := playback.MediaStreams(analysis, nil, "en"); !ok || len(streams) != 2 || streams[0].VideoRangeType != "HLG" {
 		t.Errorf("HLG file: %v %+v", ok, streams)
 	}
 }
@@ -345,5 +349,69 @@ func TestDescribeKeepsAnAnswerThatCameLate(t *testing.T) {
 	}
 	if db.requests() != 1 {
 		t.Errorf("asked %v", db.counts())
+	}
+}
+
+// A file RemuxDB lists with video and no audio leaves its version
+// undescribed, as if RemuxDB had not found it; a file with audio, or with
+// audio alone, is described.
+func TestAFileListedWithoutAudioDescribesNothing(t *testing.T) {
+	t.Parallel()
+	listed := func(name, tracks string) file {
+		return file{Container: "matroska,webm", Duration: 8100, Size: 3_000_000_000, Sources: []source{{Filename: name}},
+			Tracks: json.RawMessage(tracks)}
+	}
+	files := []file{
+		listed("Movie.Silent.mkv", `[{"kind":"video","idx":0,"codec":"h264"},{"kind":"subtitle","idx":1,"codec":"subrip"}]`),
+		listed("Movie.Sound.mkv", `[{"kind":"video","idx":0,"codec":"h264"},{"kind":"audio","idx":1,"codec":"ac3"}]`),
+		listed("Movie.Radio.mka", `[{"kind":"audio","idx":0,"codec":"flac"}]`),
+	}
+	for name, want := range map[string]bool{"Movie.Silent.mkv": false, "Movie.Sound.mkv": true, "Movie.Radio.mka": true} {
+		if got := describe(files, version(1, "tt0133093", name, 3_000_000_000)).Found; got != want {
+			t.Errorf("%s described: %v", name, got)
+		}
+	}
+}
+
+// The versions an answer describes are told once Describe stopped waiting
+// for it, those RemuxDB knows only: item details listed them without
+// tracks. An answer Describe waited for is not told, its versions already
+// listed with their tracks.
+func TestALateAnswerIsTold(t *testing.T) {
+	db := newRemuxDB(t)
+	s := service(db, &accounts.Settings{})
+	var told [][]library.Version
+	s.OnDescribed(func(versions []library.Version) { told = append(told, versions) })
+	known := version(1, "tt0133093", "The.Movie.2160p.mkv", 10_000_000_000)
+	unknown := version(2, "tt0133093", "Another.Movie.mkv", 1_000)
+	// Within the wait: the hook runs before Describe hears the answer.
+	s.wait = time.Minute
+	s.Describe(t.Context(), []library.Version{known})
+	if told != nil {
+		t.Fatalf("an answer in time told %+v", told)
+	}
+
+	other := version(3, "tt0903747:1:2", "Show.S01E02.mkv", 1_000)
+	hold := make(chan struct{})
+	db.set(0, hold)
+	s.descriptions.Delete(known.ID)
+	s.wait = 20 * time.Millisecond
+	s.Describe(t.Context(), []library.Version{known, unknown, other})
+	s.mu.Lock()
+	asking := []*lookup{s.asking["tt0133093"], s.asking["tt0903747:1:2"]}
+	s.mu.Unlock()
+	close(hold)
+	for _, l := range asking {
+		<-l.done
+	}
+	var ids []accounts.ID
+	for _, versions := range told {
+		for _, v := range versions {
+			ids = append(ids, v.ID)
+		}
+	}
+	slices.SortFunc(ids, func(a, b accounts.ID) int { return slices.Compare(a[:], b[:]) })
+	if !slices.Equal(ids, []accounts.ID{known.ID}) {
+		t.Errorf("told %v, want the known version alone", ids)
 	}
 }

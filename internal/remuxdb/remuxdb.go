@@ -17,9 +17,11 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/moodiness/polyfin/internal/accounts"
@@ -42,7 +44,8 @@ const (
 	// once item details stopped waiting for it (see describeWait).
 	askTimeout = 10 * time.Second
 	// describeWait is how long item details wait for RemuxDB's answer: one
-	// that comes later describes the versions at the next request.
+	// that comes later describes the versions at the next request, and is
+	// told (see OnDescribed).
 	describeWait = time.Second
 	// maxAnswer bounds the bytes read of an answer: a popular movie's takes
 	// a few MB, most of them its files' chapters, which are not read.
@@ -78,6 +81,9 @@ type Service struct {
 	asking map[string]*lookup
 	// pausedUntil is when RemuxDB may be asked again after it failed.
 	pausedUntil time.Time
+	// late is told the versions answers described too late for Describe
+	// (see OnDescribed).
+	late atomic.Pointer[func(versions []library.Version)]
 }
 
 // description is what RemuxDB said of a version: the analysis of its file
@@ -179,15 +185,32 @@ func (s *Service) Described(version library.Version) (media.Analysis, bool) {
 	return kept.Analysis, ok && kept.Found
 }
 
+// OnDescribed has late told the versions an answer described once
+// Describe had stopped waiting for it: item details listed them without
+// the tracks they now list. late runs on the goroutine that asked
+// RemuxDB, so it must return quickly.
+func (s *Service) OnDescribed(late func(versions []library.Version)) {
+	if s != nil {
+		s.late.Store(&late)
+	}
+}
+
 // run asks RemuxDB at base about title, then describes the versions of l
-// from its answer. When RemuxDB fails, none is described: they are asked
-// about again once RemuxDB may be.
+// from its answer, and tells those it described when Describe stopped
+// waiting for it (see OnDescribed). When RemuxDB fails, none is
+// described: they are asked about again once RemuxDB may be.
 func (s *Service) run(title, base string, l *lookup) {
 	defer close(l.done)
 	started := s.now()
 	ctx, cancel := context.WithTimeout(context.Background(), askTimeout)
 	files, err := s.fetch(ctx, base, title)
 	cancel()
+	var told []library.Version
+	defer func() {
+		if late := s.late.Load(); late != nil && len(told) > 0 {
+			(*late)(told)
+		}
+	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.asking, title)
@@ -195,11 +218,16 @@ func (s *Service) run(title, base string, l *lookup) {
 		s.pause(title, err)
 		return
 	}
+	// Describe waits as long from when it asked at the earliest.
+	waited := s.now().Sub(started) >= s.wait
 	described := 0
 	for _, version := range l.versions {
 		d := describe(files, version)
 		if d.Found {
 			described++
+			if waited {
+				told = append(told, version)
+			}
 		}
 		s.descriptions.Put(version.ID, d)
 	}
@@ -345,7 +373,10 @@ type track struct {
 }
 
 // describe is what RemuxDB's files of a title tell of a version: the
-// analysis of the file it is (see match), if any lists tracks.
+// analysis of the file it is (see match), if any lists tracks. A file
+// listed with video and no audio is left undescribed, as if absent: the
+// version would show as silent until its own analysis, which finds the
+// audio of such files.
 func describe(files []file, version library.Version) description {
 	f := match(files, version)
 	if f == nil {
@@ -356,7 +387,10 @@ func describe(files []file, version library.Version) description {
 		return description{}
 	}
 	analysis := f.analysis(tracks)
-	if len(analysis.Streams) == 0 {
+	has := func(kind string) bool {
+		return slices.ContainsFunc(analysis.Streams, func(s media.Stream) bool { return s.Type == kind })
+	}
+	if len(analysis.Streams) == 0 || has("video") && !has("audio") {
 		return description{}
 	}
 	return description{Analysis: analysis, Found: true}

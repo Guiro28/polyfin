@@ -125,6 +125,13 @@ const common = {
     invalid_subtitle_ocr: 'Choose from the list when picture subtitles are turned into text.',
     invalid_subtitle_ocr_tracks:
       'Picture subtitle tracks read at once must be a whole number from 1 to 4.',
+    tessdata_unknown_language: 'Polyfin has no Tesseract data to download for this language.',
+    tessdata_no_folder:
+      'Set POLYFIN_TESSDATA_DIR to the folder Tesseract data is kept in, then start Polyfin again.',
+    tessdata_folder: 'The folder POLYFIN_TESSDATA_DIR names cannot be written.',
+    tessdata_download: 'The language’s data could not be downloaded.',
+    tessdata_checksum:
+      'The downloaded file is not Tesseract’s data, as its SHA-256 differs: it was not kept.',
     invalid_default_language: 'Choose a default language from the list.',
     invalid_encoder_preset: 'Choose an encoding speed from the list.',
     invalid_video_quality: 'Video quality must be 0, or a whole number from 1 to 51.',
@@ -277,6 +284,8 @@ const common = {
       'TMDB no longer gives this series this order. Open it again and choose another one.',
     episode_groups_unreachable:
       'TMDB could not be reached to list this series’ orders. Nothing was saved: try again later.',
+    invalid_numbering:
+      'Choose as the catalog, per season, continuing from season 1, absolute, or an episode order.',
     no_tmdb_key: 'Add a TMDB key in Settings › Content first: the orders come from TMDB.',
     tmdb_unreachable:
       'TMDB could not be reached to check the key. Nothing was saved: try again later.',

@@ -20,6 +20,8 @@ import (
 	"github.com/moodiness/polyfin/internal/hls"
 	"github.com/moodiness/polyfin/internal/https"
 	"github.com/moodiness/polyfin/internal/jellyfin"
+	"github.com/moodiness/polyfin/internal/library"
+	"github.com/moodiness/polyfin/internal/playback"
 	"github.com/moodiness/polyfin/internal/secrets"
 	"github.com/moodiness/polyfin/internal/source"
 	"github.com/moodiness/polyfin/internal/stremio"
@@ -75,15 +77,25 @@ type HealthSources struct {
 	DLNA func() dlna.Status
 	// HTTPS tells how HTTPS stands; nil tells nothing.
 	HTTPS func() https.Status
-	// MissingLanguages lists the languages, by Tesseract's codes, of the
-	// picture subtitle tracks left unread for want of their data; nil
-	// lists none.
-	MissingLanguages func(context.Context) []string
-	// Torrents plays the torrent streams; nil tells nothing.
-	Torrents *torrent.Engine
+	// MissingLanguages lists the languages of the picture subtitle tracks
+	// left unread for want of their data; nil lists none.
+	// DownloadLanguage downloads the data of one, a Tesseract code, as
+	// Health's Download button asks (playback.Service.DownloadLanguage);
+	// nil downloads none.
+	MissingLanguages func(context.Context) []playback.MissingLanguage
+	DownloadLanguage func(ctx context.Context, language string) error
+	// Torrents plays the torrent streams (torrent.Engine); nil tells
+	// nothing.
+	Torrents Torrents
 	// Images keeps the artwork relayed, resized and drawn for apps
 	// (jellyfin.Handler); nil tells nothing.
 	Images ImageCache
+	// Artwork tells how the artwork downloads fared in the last hour
+	// (jellyfin.Handler.ArtworkStatus); nil tells nothing.
+	Artwork func() jellyfin.ArtworkStatus
+	// People tells how people's lookups on TMDB stand
+	// (library.Service.PeopleStatus); nil tells nothing.
+	People func(context.Context) (library.PeopleStatus, error)
 }
 
 // ImageCache keeps the images relayed, resized and drawn for apps, and can
@@ -91,6 +103,15 @@ type HealthSources struct {
 type ImageCache interface {
 	ImageCache() jellyfin.ImageCacheUsage
 	ClearImageCache() jellyfin.ImageCacheUsage
+}
+
+// Torrents is what Health tells of the torrent streams (see
+// torrent.Engine): their route and what runs, the bytes their pieces take,
+// and the bytes shared.
+type Torrents interface {
+	Status(ctx context.Context) torrent.Status
+	Usage() int64
+	Uploaded() int64
 }
 
 type healthJSON struct {
@@ -123,6 +144,92 @@ type healthJSON struct {
 	// Ratings is how the lookups of titles' ratings on MDBList stand,
 	// null while no key is saved.
 	Ratings *ratingsHealthJSON `json:"ratings"`
+	// Artwork is how the artwork downloads fared in the last hour, and
+	// People how people's lookups on TMDB stand, each null when unknown.
+	Artwork *artworkHealthJSON `json:"artwork"`
+	People  *peopleHealthJSON  `json:"people"`
+}
+
+// artworkHealthJSON is how the artwork downloads fared in the last hour:
+// Failed of them failed, by kind ("not_found", "rate_limited", "timeout",
+// "server_error", "other") and by host, most first; Waiting are the hosts
+// that asked to wait, asked nothing until then, and Spared those that
+// showed they were overloaded, asked less at once until then. Only host
+// names are told, never an address.
+type artworkHealthJSON struct {
+	Failed  int               `json:"failed"`
+	Kinds   map[string]int    `json:"kinds"`
+	Hosts   []artworkHostJSON `json:"hosts"`
+	Waiting []artworkWaitJSON `json:"waiting"`
+	Spared  []artworkWaitJSON `json:"spared"`
+}
+
+type artworkHostJSON struct {
+	Host   string `json:"host"`
+	Failed int    `json:"failed"`
+}
+
+type artworkWaitJSON struct {
+	Host  string    `json:"host"`
+	Until time.Time `json:"until"`
+}
+
+// artworkHostsShown bounds the hosts Health tells the failures of.
+const artworkHostsShown = 10
+
+// artworkHealth describes how the artwork downloads fared, nil when
+// unknown.
+func (h *handler) artworkHealth() *artworkHealthJSON {
+	if h.Health.Artwork == nil {
+		return nil
+	}
+	status := h.Health.Artwork()
+	result := &artworkHealthJSON{Failed: status.Failed, Kinds: status.Kinds, Hosts: []artworkHostJSON{},
+		Waiting: []artworkWaitJSON{}, Spared: []artworkWaitJSON{}}
+	for _, host := range status.Hosts[:min(artworkHostsShown, len(status.Hosts))] {
+		result.Hosts = append(result.Hosts, artworkHostJSON{Host: host.Host, Failed: host.Failed})
+	}
+	for _, host := range status.Waiting {
+		result.Waiting = append(result.Waiting, artworkWaitJSON{Host: host.Host, Until: host.Until})
+	}
+	for _, host := range status.Spared {
+		result.Spared = append(result.Spared, artworkWaitJSON{Host: host.Host, Until: host.Until})
+	}
+	return result
+}
+
+// peopleHealthJSON is how people's lookups on TMDB stand: KeySaved while
+// the settings hold a TMDB key; the people TMDB found (Found) and did not
+// (NotFound), those whose last lookup failed (Failing), the lookups
+// waiting or under way (Waiting), and TMDB's last 429 since the start,
+// LimitedAt, null for none, with the seconds its Retry-After asked then,
+// LimitWait, 0 for none.
+type peopleHealthJSON struct {
+	KeySaved  bool       `json:"keySaved"`
+	Found     int        `json:"found"`
+	NotFound  int        `json:"notFound"`
+	Failing   int        `json:"failing"`
+	Waiting   int        `json:"waiting"`
+	LimitedAt *time.Time `json:"limitedAt"`
+	LimitWait int        `json:"limitWait"`
+}
+
+// peopleHealth describes how people's lookups on TMDB stand, nil when
+// unknown or the database cannot tell.
+func (h *handler) peopleHealth(ctx context.Context) *peopleHealthJSON {
+	if h.Health.People == nil {
+		return nil
+	}
+	status, err := h.Health.People(ctx)
+	if err != nil {
+		return nil
+	}
+	result := &peopleHealthJSON{KeySaved: status.Enabled, Found: status.Found, NotFound: status.NotFound, Failing: status.Failing,
+		Waiting: status.Waiting, LimitWait: int(status.LimitWait.Seconds())}
+	if !status.LimitedAt.IsZero() {
+		result.LimitedAt = new(status.LimitedAt.UTC().Truncate(time.Second))
+	}
+	return result
 }
 
 // proxyNameJSON is a host name of Known proxies and the addresses it
@@ -269,17 +376,40 @@ func (h *handler) clearImageCache(w http.ResponseWriter, r *http.Request) {
 // playing, their peers, those of them reached over uTP, and the bytes
 // shared since the server started. Over a WireGuard tunnel, Addresses are
 // the tunnel's addresses and LastHandshake when its last handshake was,
-// null for none yet.
+// null for none yet. Outages are those of the route the plays went on
+// through lately, oldest first (see recentOutages).
 type torrentHealthJSON struct {
-	Route         string     `json:"route"`
-	Name          string     `json:"name"`
-	Addresses     []string   `json:"addresses,omitempty"`
-	LastHandshake *time.Time `json:"lastHandshake,omitempty"`
-	Playing       int        `json:"playing"`
-	AtOnce        int        `json:"atOnce"`
-	Peers         int        `json:"peers"`
-	UTPPeers      int        `json:"utpPeers"`
-	Uploaded      int64      `json:"uploaded"`
+	Route         string              `json:"route"`
+	Name          string              `json:"name"`
+	Addresses     []string            `json:"addresses,omitempty"`
+	LastHandshake *time.Time          `json:"lastHandshake,omitempty"`
+	Playing       int                 `json:"playing"`
+	AtOnce        int                 `json:"atOnce"`
+	Peers         int                 `json:"peers"`
+	UTPPeers      int                 `json:"utpPeers"`
+	Uploaded      int64               `json:"uploaded"`
+	Outages       []torrentOutageJSON `json:"outages,omitempty"`
+}
+
+// torrentOutageJSON is an outage of the route a play went on through: At,
+// when the route stopped answering, and Seconds, how long until it
+// answered again.
+type torrentOutageJSON struct {
+	At      time.Time `json:"at"`
+	Seconds int       `json:"seconds"`
+}
+
+// recentOutages are the outages of the route set the plays survived that
+// ended within routeStoppedFor of now, oldest first: one of a route set
+// before tells nothing of this one.
+func recentOutages(status torrent.Status, now time.Time) []torrentOutageJSON {
+	var recent []torrentOutageJSON
+	for _, outage := range status.Outages {
+		if outage.Route == status.Route && now.Sub(outage.At.Add(outage.For)) < routeStoppedFor {
+			recent = append(recent, torrentOutageJSON{At: outage.At, Seconds: int(outage.For.Round(time.Second) / time.Second)})
+		}
+	}
+	return recent
 }
 
 // diskJSON is the disk one of the server's folders is on: Folder is
@@ -495,7 +625,7 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 		cancelRoute()
 		if status.Enabled {
 			result.Torrents = &torrentHealthJSON{Playing: status.Playing, AtOnce: status.AtOnce, Peers: status.Peers, UTPPeers: status.UTPPeers,
-				Uploaded: h.Health.Torrents.Uploaded()}
+				Uploaded: h.Health.Torrents.Uploaded(), Outages: recentOutages(status, h.now())}
 			switch settings := h.Accounts.Settings(); {
 			case settings.TorrentInterface != "":
 				result.Torrents.Route, result.Torrents.Name = "interface", settings.TorrentInterface
@@ -589,6 +719,10 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	}
 	result.Secrets = h.secretsHealth(r.Context())
 	result.Ratings = h.ratingsHealth()
+	result.Artwork = h.artworkHealth()
+	if result.Database.Reachable {
+		result.People = h.peopleHealth(ctx)
+	}
 	if release, ok := h.Health.Updates.Available(); ok {
 		result.Update = &updateJSON{Version: release.Version, URL: release.URL}
 	}

@@ -600,6 +600,10 @@ func TestTitlePagesAddVersionsAsAddonsAnswer(t *testing.T) {
 		// With held, jellyfin-web fills the menu of a reloaded page only at
 		// the step "render", as when its details come late.
 		held bool
+		// Pushes come as jellyfin-web 12.4 gives its socket's messages,
+		// through ApiClient.subscribe; with legacy, as jellyfin-web before
+		// 12.0 did, through ApiClient's message event, without subscribe.
+		legacy bool
 		// steps: a route the router moves to; "tick" runs the next timer,
 		// logging "idle" when there is none; "focus" and "blur" move focus
 		// to and from the version menu; "pick <id>" picks a version as a
@@ -704,6 +708,9 @@ func TestTitlePagesAddVersionsAsAddonsAnswer(t *testing.T) {
 		"a push after the last answer": {listed: 2, answers: []answer{{0, 2, nil}, {0, 2, nil}, {0, 2, nil}},
 			steps: []string{title, "tick", "tick", "tick", "push 0 3", "menu"},
 			want:  []string{ask, ask, ask, "idle", details, "menu *t v1 v2 shown"}},
+		"a push through the message event, without subscribe": {listed: 1, answers: []answer{{1, 1, nil}, {1, 3, nil}, {0, 3, nil}}, legacy: true,
+			steps: []string{title, "push 1 3", "menu", "tick", "clock", "tick", "clock", "tick"},
+			want:  []string{ask, details, "menu *t v1 v2 shown", ask, "clock 1", ask, "clock 11", "idle"}},
 		// A version listed first takes the title's identifier, and the
 		// former first one an identifier of its own: the version picked by
 		// jellyfin-web stays picked, under that identifier.
@@ -906,6 +913,8 @@ async function run(scenario) {
     },
   }
   const answers = (scenario.answers || []).slice()
+  // What the script subscribed to, by message type.
+  const subscribers = {}
   const ApiClient = {
     getUrl: (path) => 'http://polyfin.test/' + path,
     getCurrentUserId: () => 'user',
@@ -922,6 +931,12 @@ async function run(scenario) {
       log.push('details ' + short(id) + (user === 'user' ? '' : ' for ' + user))
       return Promise.resolve({ Id: id, Name: 'Movie', MediaSources: sources.map((source) => ({ ...source })) })
     },
+  }
+  if (!scenario.legacy) {
+    ApiClient.subscribe = (types, callback) => {
+      for (const type of types) (subscribers[type] ||= []).push(callback)
+      return () => {}
+    }
   }
   vm.runInNewContext(script, {
     location, history, URL, document, CustomEvent, Event, MutationObserver, window: { ApiClient },
@@ -945,12 +960,17 @@ async function run(scenario) {
     } else if (step === 'clock') log.push('clock ' + now / 1000)
     else if (step === 'render') fill(menu.value)
     else if (step.startsWith('push ')) {
-      // As jellyfin-web's events trigger ApiClient's message event.
+      // As jellyfin-web 12.4 gives its socket's messages to subscribers,
+      // or, with legacy, as its events trigger ApiClient's message event.
       const [, pending, count] = step.split(' ')
       const data = pending === 'other' ? { ItemId: 'f'.repeat(32), Pending: 0, Count: 5 } : { ItemId: TITLE.toUpperCase(), Pending: +pending, Count: +count, AddVersions: !scenario.off }
       if (pending !== 'other') sources = versions(+count)
       const message = { MessageType: 'PolyfinVersions', MessageId: 'm', Data: data }
-      for (const callback of ((ApiClient._callbacks || {}).message || []).slice()) callback.apply(ApiClient, [{ type: 'message' }, message])
+      if (scenario.legacy) {
+        for (const callback of ((ApiClient._callbacks || {}).message || []).slice()) callback.apply(ApiClient, [{ type: 'message' }, message])
+      } else {
+        for (const callback of (subscribers.PolyfinVersions || []).slice()) callback(message)
+      }
     } else if (step !== 'tick') history.pushState(null, '', step)
     else {
       let next = -1
@@ -984,11 +1004,12 @@ async function run(scenario) {
 		Forever    bool     `json:"forever"`
 		Off        bool     `json:"off"`
 		Held       bool     `json:"held"`
+		Legacy     bool     `json:"legacy"`
 		Steps      []string `json:"steps"`
 	}
 	inputs := map[string]input{}
 	for name, s := range scenarios {
-		inputs[name] = input{s.listed, s.options, s.picked, s.unplayable, s.noMenu, s.video, s.answers, s.forever, s.off, s.held, s.steps}
+		inputs[name] = input{s.listed, s.options, s.picked, s.unplayable, s.noMenu, s.video, s.answers, s.forever, s.off, s.held, s.legacy, s.steps}
 	}
 	data, _ := json.Marshal(map[string]any{"script": string(webScriptBody), "scenarios": inputs})
 	command := exec.CommandContext(t.Context(), node, "-e", harness)
@@ -2414,9 +2435,12 @@ async function run(scenario) {
 }
 
 // The item menus jellyfin-web opens from a card's ⋮ button, a right click
-// on a card, or a title page's ⋮ button get Polyfin's entries: "Remove
+// on a card, a title page's ⋮ button, or the ⋮ of a selection of one card,
+// which a long press makes on a touch screen, get Polyfin's entries: "Remove
 // from Continue Watching" for a card of a row whose cards all resume,
-// "Hide this title" for a title, or a season or an episode of one, and
+// "Remove from Next Up" for an episode's card in Next Up, whose series
+// then leaves Next Up's answers kept, unless played since, "Hide this
+// title" for a title, or a season or an episode of one, and
 // "Show this title again" for a hidden one, in the page's language. An
 // entry closes the menu as Back does, then sends its change. It runs in
 // Node.js, in a context that stands for the browser and jellyfin-web.
@@ -2436,17 +2460,22 @@ func TestItemMenusGetPolyfinsEntries(t *testing.T) {
 	const page = "0123456789abcdef0123456789abcdef"
 	const untouched = " | reloaded m1,m2 | another user m1,m2 | later m1,m2"
 	scenarios := map[string]string{
-		"a card of Continue Watching":                 "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
-		"a card right-clicked":                        "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
-		"a card taken off, then played again":         "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m1,m2" + untouched,
-		"a card of a row that does not resume":        "Hide this title => back, POST Polyfin/UserItems/m1/Hidden, card m1 gone, toast This title is hidden from your lists. | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
-		"a hidden title's page, in French":            "Afficher de nouveau ce titre => back, DELETE Polyfin/UserItems/" + page + "/Hidden, toast Ce titre est de retour dans vos listes. | refreshed m1,m2" + untouched,
-		"a title's page":                              "Hide this title => back, POST Polyfin/UserItems/" + page + "/Hidden, toast This title is hidden from your lists. | refreshed m1,m2" + untouched,
-		"an episode of a hidden series":               "Show this title again => back, DELETE Polyfin/UserItems/m1/Hidden, toast This title is back in your lists. | refreshed m1,m2" + untouched,
-		"an episode card whose series the user hides": "Hide this title => back, POST Polyfin/UserItems/m1/Hidden, card m1 gone, toast This title is hidden from your lists. | refreshed m3 | reloaded m3 | another user m1,m2,m3 | later m1,m2,m3",
-		"a person's card":                             "",
-		"another click before the menu":               "",
-		"a menu too late":                             "",
+		"a card of Continue Watching":                          "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"a card right-clicked":                                 "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"a card taken off, then played again":                  "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m1,m2" + untouched,
+		"a card of a row that does not resume":                 "Hide this title => back, POST Polyfin/UserItems/m1/Hidden, card m1 gone, toast This title is hidden from your lists. | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"a hidden title's page, in French":                     "Afficher de nouveau ce titre => back, DELETE Polyfin/UserItems/" + page + "/Hidden, toast Ce titre est de retour dans vos listes. | refreshed m1,m2" + untouched,
+		"a title's page":                                       "Hide this title => back, POST Polyfin/UserItems/" + page + "/Hidden, toast This title is hidden from your lists. | refreshed m1,m2" + untouched,
+		"an episode of a hidden series":                        "Show this title again => back, DELETE Polyfin/UserItems/m1/Hidden, toast This title is back in your lists. | refreshed m1,m2" + untouched,
+		"an episode card whose series the user hides":          "Hide this title => back, POST Polyfin/UserItems/m1/Hidden, card m1 gone, toast This title is hidden from your lists. | refreshed m3 | reloaded m3 | another user m1,m2,m3 | later m1,m2,m3",
+		"a Next Up card of an episode":                         "Remove from Next Up | Hide this title => back, DELETE Polyfin/UserItems/m1/NextUp, card m1 gone, toast This series is off Next Up until you play one of its episodes or a new one comes out. | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"a Next Up card of an episode played again":            "Remove from Next Up | Hide this title => back, DELETE Polyfin/UserItems/m1/NextUp, card m1 gone, toast This series is off Next Up until you play one of its episodes or a new one comes out. | refreshed m1,m2" + untouched,
+		"a card of Continue Watching selected by a long press": "Remove from Continue Watching | Hide this title => back, DELETE Polyfin/UserItems/m1/Resume, unselected, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"two cards selected by a long press":                   "",
+		"a card of Continue Watching on a narrow screen":       "Remove from Continue Watching | Hide this title | left 175px => back, DELETE Polyfin/UserItems/m1/Resume, card m1 gone | refreshed m2 | reloaded m2 | another user m1,m2 | later m1,m2",
+		"a person's card":                                      "",
+		"another click before the menu":                        "",
+		"a menu too late":                                      "",
 	}
 	const harness = `
 const vm = require('node:vm')
@@ -2470,7 +2499,10 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     }
     // A row of cards, the first the one the menu is for: a div, whose
     // fetchData jellyfin-web sets once the script runs.
-    const section = { classList: classes(['verticalSection']) }
+    // Next Up's section on the home page has its title link to the Next
+    // Up page.
+    const section = { classList: classes(['verticalSection']),
+      querySelector: (s) => (name.includes('Next Up') && s === '.sectionTitleContainer a[href*="type=nextup"]' ? {} : null) }
     class HTMLDivElement {}
     const row = Object.assign(Object.create(HTMLDivElement.prototype), { cards: [] })
     row.closest = (s) => (s === '.verticalSection' ? section : null)
@@ -2479,14 +2511,16 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     // What the row drew last, as jellyfin-web keeps it, and draws again
     // when it refreshes within the minute: a Continue Watching row.
     const kept = { Items: [
-      { Id: 'm1', UserData: { PlaybackPositionTicks: 6000, LastPlayedDate: name.includes('played again') ? '2026-10-03T20:00:00.0000000Z' : '2026-10-01T20:00:00.0000000Z' } },
+      { Id: 'm1', SeriesId: name.includes('Next Up') ? 's1' : undefined, UserData: { PlaybackPositionTicks: 6000,
+        LastPlayedDate: name.includes('played again') ? '2026-10-03T20:00:00.0000000Z' : name.includes('Next Up') ? undefined : '2026-10-01T20:00:00.0000000Z' } },
       { Id: 'm2', SeriesId: name.includes('user hides') ? 's1' : undefined, UserData: { PlaybackPositionTicks: 6000 } },
       { Id: 'm3', UserData: { PlaybackPositionTicks: 6000 } },
     ].filter((item) => name.includes('user hides') || item.Id !== 'm3') }
     const card = (id, resumes) => {
       const c = { id, attributes: { 'data-id': id, 'data-positionticks': resumes ? '6000' : null } }
       c.getAttribute = (a) => c.attributes[a] || null
-      c.closest = (s) => (s === '.card[data-id]' || s === '.card[data-id], .listItem[data-id]' ? c : s === '.itemsContainer' ? row : null)
+      c.closest = (s) => (s === '.card[data-id]' || s === '.card[data-id], .listItem[data-id]' ? c : s === '.itemsContainer' ? row
+        : s === '.verticalSection' ? section : null)
       c.remove = () => { row.cards = row.cards.filter((x) => x !== c); did.push('card ' + id + ' gone') }
       return c
     }
@@ -2494,7 +2528,14 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     const first = card('m1', !name.includes('person') && !name.includes('episode'))
     row.cards = [first, card('m2', !name.includes('does not resume'))]
     const button = { closest: (s) => (s === 'button[data-action="menu"]' ? button : s === '.card[data-id], .listItem[data-id]' ? first : null) }
-    const target = name.includes('page')
+    // A long press on a touch screen selects cards: the selection's ⋮ is
+    // pressed with one card, or two, checked.
+    const checked = name.includes('selected') ? [{ closest: (s) => (s === '.card[data-id]' ? first : null) }] : []
+    if (name.includes('two cards')) checked.push({ closest: () => null })
+    const unselect = { click: () => did.push('unselected') }
+    const target = name.includes('selected')
+      ? { closest: (s) => (s === '.btnSelectionPanelOptions' ? {} : null) }
+      : name.includes('page')
       ? { closest: (s) => (s === '.btnMoreCommands' ? {} : null) }
       : name.includes('right-clicked') ? { closest: (s) => (s === '.card[data-id]' ? first : null) } : { closest: (s) => (s === 'button[data-action="menu"]' ? button : null) }
     // What Polyfin answers. A title page's scores (the ninth feature) are
@@ -2528,8 +2569,12 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
       return entry
     } }
     const scroller = { querySelector: (s) => (s === '.actionSheetMenuItem' ? model : null), appendChild: (e) => entries.push(e) }
-    const sheet = { style: { top: '10px' }, getAttribute: (a) => (a === 'data-history' ? 'true' : null),
-      querySelector: (s) => (s === '.actionSheetScroller' ? scroller : null), getBoundingClientRect: () => ({ bottom: 100, height: 90 }) }
+    // On a narrow screen, the menu jellyfin-web placed for its own entries
+    // runs past the right edge with Polyfin's.
+    const narrow = name.includes('narrow')
+    const sheet = { style: { top: '10px', left: narrow ? '202px' : '' }, getAttribute: (a) => (a === 'data-history' ? 'true' : null),
+      querySelector: (s) => (s === '.actionSheetScroller' ? scroller : null),
+      getBoundingClientRect: () => ({ bottom: 100, height: 90, right: narrow ? 420 : 300, width: 218 }) }
     const container = { isConnected: true, classList: classes(['dialogContainer']), querySelector: (s) => (s === '.actionSheet' || s === '.dialog' ? sheet : null) }
     const toasts = []
     const element = () => {
@@ -2540,8 +2585,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     const document = {
       head: { appendChild: () => {} }, body, documentElement: { lang: name.includes('French') ? 'fr' : 'en' },
       createElement: element,
-      querySelector: () => null,
-      querySelectorAll: (s) => (s === '.card[data-id]' ? row.cards : s === '.itemsContainer' ? [row] : []),
+      querySelector: (s) => (s === '.selectionCommandsPanel .btnCloseSelectionPanel' && checked.length ? unselect : null),
+      querySelectorAll: (s) => (s === '.card[data-id]' ? row.cards : s === '.itemsContainer' ? [row] : s === '.chkItemSelect:checked' ? checked : []),
     }
     const location = { href: 'http://polyfin.test/web/#/details?id=m1', hash: name.includes('page') ? '#/details?id=0123456789abcdef0123456789abcdef' : '#/home', replace: () => {} }
     if (name.includes('page')) {
@@ -2558,7 +2603,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     }
     vm.runInNewContext(script, {
       location, history, URL, document, MutationObserver, Promise, HTMLDivElement, WeakMap,
-      window: { ApiClient, innerHeight: 800, sessionStorage, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } },
+      window: { ApiClient, innerHeight: 800, innerWidth: narrow ? 393 : 1280, sessionStorage, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } },
       Date: { now: () => now, parse: Date.parse }, setTimeout: (run) => run(), clearTimeout: () => {},
       addEventListener: (type, listener) => { (listeners[type] ||= []).push(listener) },
     })
@@ -2570,6 +2615,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
     observers.forEach((observer) => observer.callback([{ addedNodes: [container] }]))
     for (let i = 0; i < 5; i++) await settle()
     const words = entries.map((e) => e.text.textContent)
+    if (narrow) words.push('left ' + sheet.style.left)
     if (entries.length) {
       const event = { stopPropagation: () => {}, preventDefault: () => {} }
       entries[0].listeners.click(event)
@@ -2596,6 +2642,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
             localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } },
           Date: { now: () => now, parse: Date.parse }, setTimeout: () => {}, clearTimeout: () => {}, addEventListener: () => {},
         })
+        again.closest = row.closest
         again.fetchData = () => Promise.resolve(kept)
         return (await again.fetchData()).Items.map((item) => item.Id).join(',')
       }

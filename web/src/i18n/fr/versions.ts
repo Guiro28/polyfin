@@ -67,6 +67,7 @@ const versions: typeof en = {
       failed: 'En échec récemment',
       hidden: 'Caché par une règle',
       group: 'Au-dessus du groupe de qualité',
+      quality: 'Écartée par le mode 3 qualités',
     },
     stepHelp: {
       nothing: 'Une page web, une vidéo d’un autre site ou un avis : rien que Polyfin lise.',
@@ -77,6 +78,8 @@ const versions: typeof en = {
         'Le même fichier d’un autre addon, gardé comme miroir caché : une lecture reprend dessus quand la source de la version échoue.',
       group:
         'Le groupe de qualité de l’utilisateur écarte les versions plus hautes tant qu’une version y tient.',
+      quality:
+        'Versions proposées ne garde que la meilleure version de chaque qualité : 4K, 1080p et 720p.',
     },
     rules: {
       elsewhere: (marker: string) => `Nomme un autre titre (${marker})`,
@@ -91,8 +94,8 @@ const versions: typeof en = {
     },
     unstarted:
       'N’a pas démarré récemment : les lectures qui ne choisissent pas de version la passent',
-    labelsAsRead: 'Libellés',
-    facts: 'Ce que savent les règles',
+    labelsAsRead: 'Libellés :',
+    facts: 'Ce que savent les règles :',
     analyzed: 'Analysée',
     multi: 'MULTI',
     tiers: { disc: 'Copie de disque', bluray: 'Blu-ray', web: 'Web', dvd: 'DVD', tv: 'TV' },

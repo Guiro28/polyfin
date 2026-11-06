@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -550,7 +551,7 @@ func (s *Service) scan(ctx context.Context, id accounts.ID) error {
 		e.nfo = infos[places[e.unit]].id()
 		old, ok := known[rel]
 		changed := !ok || old.size != e.file.size || !old.modified.Equal(e.file.modified) || old.unit != e.unit ||
-			old.episodes != formatEpisode(e.episode)
+			old.episodes != scannedEpisodes(e.episode)
 		if changed {
 			fresh = append(fresh, rel)
 		}
@@ -709,10 +710,13 @@ func (s *Service) forgetAudio(ctx context.Context) error {
 	return s.db.SendBatch(ctx, batch).Close()
 }
 
-// storedFiles reads the files a folder's scans found, by path.
+// storedFiles reads the files a folder's scans found, by path, with the
+// episodes their names told, not those their show's numbering maps them
+// to (see numbering.go).
 func (s *Service) storedFiles(ctx context.Context, id accounts.ID) (map[string]stored, error) {
-	rows, err := s.db.Query(ctx, `SELECT path, size, modified, unit, stremio_id IS NOT NULL, reason, nfo_id, season, episode, last_episode,
-		plain_id IS NOT NULL FROM local_files WHERE addon_id = $1`, id)
+	rows, err := s.db.Query(ctx, `SELECT path, size, modified, unit, stremio_id IS NOT NULL, reason, nfo_id, coalesce(file_season, season),
+		coalesce(file_episode, episode), coalesce(file_last_episode, last_episode), plain_id IS NOT NULL, absolute FROM local_files
+		WHERE addon_id = $1`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -720,12 +724,16 @@ func (s *Service) storedFiles(ctx context.Context, id accounts.ID) (map[string]s
 	for rows.Next() {
 		var rel string
 		var f stored
-		var season, episode, last *int
-		if err := rows.Scan(&rel, &f.size, &f.modified, &f.unit, &f.matched, &f.reason, &f.nfo, &season, &episode, &last, &f.plain); err != nil {
+		var season, episode, last, absolute *int
+		if err := rows.Scan(&rel, &f.size, &f.modified, &f.unit, &f.matched, &f.reason, &f.nfo, &season, &episode, &last, &f.plain,
+			&absolute); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		if season != nil && episode != nil && last != nil {
+		switch {
+		case absolute != nil:
+			f.episodes = scannedEpisodes(name{episodic: true, absolute: *absolute})
+		case season != nil && episode != nil && last != nil:
 			f.episodes = formatEpisode(name{episodic: true, season: *season, episode: *episode, lastEpisode: *last})
 		}
 		known[rel] = f
@@ -863,14 +871,34 @@ func (s *Service) moveStreamLinks(ctx context.Context, id accounts.ID, files map
 // the scans' times and the windows Added is asked for are taken from
 // too: the database's clock can be another machine's. A file listed as a
 // plain video keeps the items it is as its former titles, so that what
-// users do with them follows it once matched (see plainvideos.go).
+// users do with them follows it once matched (see plainvideos.go). A
+// show's file is placed among the catalog's episodes as its show's
+// numbering tells, once matched; one named by its absolute number is the
+// catalog's episode of that place (see numbering.go and absolute.go).
 func (s *Service) store(ctx context.Context, id accounts.ID, kind string, entries []entry, m match) error {
+	var places map[string]placed
+	var choice ShowNumbering
+	var catalog *stremio.Meta
+	if kind == KindShows && m.stremioID != "" {
+		var err error
+		if choice, err = s.numberingOf(ctx, id, m.stremioID); err != nil {
+			return err
+		}
+		if choice.Numbering != NumberedAsCatalog || slices.ContainsFunc(entries, func(e entry) bool { return e.episode.absolute > 0 }) {
+			catalog = s.catalogOf(ctx, m.stremioID)
+			if places, err = s.entryPlaces(ctx, id, m.stremioID, entries, s.numbererFor(ctx, choice, catalog)); err != nil {
+				return err
+			}
+		}
+	}
 	batch := &pgx.Batch{}
 	added := s.now()
 	for _, e := range entries {
 		var season, episode, last *int
+		var fileSeason, fileEpisode, fileLast *int
 		if e.episode.episodic {
 			season, episode, last = &e.episode.season, &e.episode.episode, &e.episode.lastEpisode
+			fileSeason, fileEpisode, fileLast = season, episode, last
 		}
 		height := e.title.height
 		if e.episode.height > 0 {
@@ -882,6 +910,18 @@ func (s *Service) store(ctx context.Context, id accounts.ID, kind string, entrie
 			if _, _, ok := showTitle(e.path); ok {
 				f.reason = reasonDiscEpisode
 			}
+		}
+		var absolute *int
+		numbering, unmapped := "", ""
+		if e.episode.absolute > 0 {
+			absolute = &e.episode.absolute
+		}
+		if p, ok := places[e.path]; ok && f.stremioID != "" {
+			season, episode, last, numbering, unmapped = &p.season, &p.first, &p.last, p.numbering, p.unmapped
+		} else if absolute != nil && f.stremioID != "" {
+			// A file named by an absolute number no catalog places is an
+			// episode of its own.
+			numbering = numberingAbsoluteBeyond
 		}
 		var length *int
 		if e.file.length > 0 {
@@ -905,13 +945,16 @@ func (s *Service) store(ctx context.Context, id accounts.ID, kind string, entrie
 		plain := plainID(id, e.unit)
 		batch.Queue(`INSERT INTO local_files (addon_id, path, size, modified, unit, title, year, season, episode, last_episode, height,
 				stremio_id, imdb_id, tmdb_id, name, poster, title_year, matched_by, reason, nfo_id, length, search_addon, search_failure, added_at,
-				plain_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+				plain_id, absolute, numbering, file_season, file_episode, file_last_episode, unmapped)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
+				$28, $29, $30, $31)
 			ON CONFLICT (addon_id, path) DO UPDATE SET size = $3, modified = $4, unit = $5, title = $6, year = $7, season = $8, episode = $9,
 				last_episode = $10, height = $11, stremio_id = $12, imdb_id = $13, tmdb_id = $14, name = $15, poster = $16, title_year = $17,
-				matched_by = $18, reason = $19, nfo_id = $20, length = $21, search_addon = $22, search_failure = $23, plain_id = $25`,
+				matched_by = $18, reason = $19, nfo_id = $20, length = $21, search_addon = $22, search_failure = $23, plain_id = $25,
+				absolute = $26, numbering = $27, file_season = $28, file_episode = $29, file_last_episode = $30, unmapped = $31`,
 			id, e.path, e.file.size, e.file.modified, e.unit, e.title.title, year, season, episode, last, heightValue,
-			stremioID, f.imdb, f.tmdb, f.name, f.poster, titleYear, f.by, f.reason, e.nfo, length, f.searchAddon, f.searchFailure, added, plain)
+			stremioID, f.imdb, f.tmdb, f.name, f.poster, titleYear, f.by, f.reason, e.nfo, length, f.searchAddon, f.searchFailure, added, plain,
+			absolute, numbering, fileSeason, fileEpisode, fileLast, unmapped)
 		if !plainFile(kind, f.stremioID, f.reason, e.episode.episodic) {
 			continue
 		}
@@ -919,5 +962,13 @@ func (s *Service) store(ctx context.Context, id accounts.ID, kind string, entrie
 			batch.Queue("INSERT INTO local_former_titles (addon_id, path, item_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", id, e.path, item.ID)
 		}
 	}
-	return s.db.SendBatch(ctx, batch).Close()
+	if err := s.db.SendBatch(ctx, batch).Close(); err != nil {
+		return err
+	}
+	if choice.Numbering == NumberedAsCatalog {
+		return nil
+	}
+	// The show's other files may move with these: in an absolute
+	// numbering, or after the catalog's episodes of their season.
+	return s.renumber(ctx, id, m.stremioID, catalog)
 }

@@ -28,6 +28,7 @@ import {
   stopLibraryRefresh,
   type Addon,
   type Library,
+  type LibraryShowAs,
   type LibraryRefresh,
   type MusicContent,
   type Scope,
@@ -81,7 +82,8 @@ const nameMaxLength = 64
 /**
  * One enabled library being edited. `name` is the text of its name field: empty = catalog name.
  * `genre` and `maxItems` narrow it; null for none. `hideInMenus` leaves it out of the web
- * player's menus. `skipLocal` leaves out the titles local folders hold.
+ * player's menus. `skipLocal` leaves out the titles local folders hold. `showAs` is how it shows
+ * its titles, null while none is chosen (see `Library.showAs`).
  */
 type Entry = {
   key: string
@@ -91,6 +93,7 @@ type Entry = {
   maxItems: number | null
   hideInMenus: boolean
   skipLocal: boolean
+  showAs: LibraryShowAs | null
 }
 
 /** Whether the server takes this maximum: none, or a whole number from 1 to MAX_LIBRARY_ITEMS. */
@@ -115,7 +118,8 @@ function sameEntries(a: Entry[], b: Entry[]): boolean {
         entry.genre === b[i].genre &&
         entry.maxItems === b[i].maxItems &&
         entry.hideInMenus === b[i].hideInMenus &&
-        entry.skipLocal === b[i].skipLocal,
+        entry.skipLocal === b[i].skipLocal &&
+        entry.showAs === b[i].showAs,
     )
   )
 }
@@ -330,7 +334,7 @@ function LibraryForm({
     mutationFn: (entries: Entry[]) =>
       saveLibraries(
         scope,
-        entries.map(({ library, name, genre, maxItems, hideInMenus, skipLocal }) => ({
+        entries.map(({ library, name, genre, maxItems, hideInMenus, skipLocal, showAs }) => ({
           addonId: library.addonId,
           catalogType: library.catalogType,
           catalogId: library.catalogId,
@@ -339,6 +343,7 @@ function LibraryForm({
           maxItems,
           hideInMenus,
           skipLocal,
+          showAs,
         })),
       ),
     onSuccess: (saved, entries) => {
@@ -366,6 +371,7 @@ function LibraryForm({
       maxItems: library.maxItems,
       hideInMenus: library.hideInMenus,
       skipLocal: library.skipLocal,
+      showAs: library.showAs,
     }))
   const entries = draft ?? serverEntries
   const dirty = draft !== null
@@ -444,6 +450,10 @@ function LibraryForm({
     edit(entries.map((entry, i) => (i === index ? { ...entry, skipLocal: skip } : entry)))
   }
 
+  function showAs(index: number, shown: LibraryShowAs) {
+    edit(entries.map((entry, i) => (i === index ? { ...entry, showAs: shown } : entry)))
+  }
+
   /** Opens the genre and maximum editor of `key`, or closes it with null, and the image editor. */
   function openNarrow(key: string | null) {
     setImageOpen(null)
@@ -480,7 +490,16 @@ function LibraryForm({
     ]
     edit([
       ...entries,
-      { key, library, name: '', genre: null, maxItems: null, hideInMenus: false, skipLocal: false },
+      {
+        key,
+        library,
+        name: '',
+        genre: null,
+        maxItems: null,
+        hideInMenus: false,
+        skipLocal: false,
+        showAs: null,
+      },
     ])
     setAnnouncement(t.libraries.addedLive(library.catalogName, entries.length + 1))
   }
@@ -572,6 +591,9 @@ function LibraryForm({
                 const music = musicContent.get(library.addonId)
                 const iptv = iptvAddons.has(library.addonId)
                 const tv = isTvCatalog(library)
+                // How it shows its titles: its choice, else its catalog's default, the first.
+                const shown = entry.showAs ?? library.showAsChoices[0]
+                const otherVideos = library.showAsChoices.includes('home_videos')
                 const imageShown = !tv && imageOpen === entry.key
                 const narrowShown = library.filterable && narrowOpen === entry.key
                 const dragged = rowDrag.dragged === index
@@ -662,6 +684,9 @@ function LibraryForm({
                           {library.skippable && entry.skipLocal && (
                             <StatusPill tone="muted">{t.libraries.skippedLocal}</StatusPill>
                           )}
+                          {shown !== undefined && (otherVideos || shown !== 'listed') && (
+                            <StatusPill tone="muted">{t.libraries.showAs.pill[shown]}</StatusPill>
+                          )}
                         </p>
                         {library.refreshable && (
                           <RefreshStatus refresh={library.refresh} name={name} />
@@ -725,6 +750,31 @@ function LibraryForm({
                               label={t.libraries.skipLocal}
                               help={entry.skipLocal ? t.libraries.skipLocalHelp : undefined}
                             />
+                          )}
+                          {shown !== undefined && (
+                            <Field
+                              className="mt-3"
+                              label={t.libraries.showAs.label}
+                              help={
+                                (shown === 'movies_and_shows'
+                                  ? otherVideos
+                                    ? t.libraries.showAs.help.titles
+                                    : t.libraries.showAs.help.mixed
+                                  : t.libraries.showAs.help[shown]) +
+                                (otherVideos && entry.showAs === null
+                                  ? ' ' + t.libraries.showAs.undecided
+                                  : '')
+                              }
+                            >
+                              <Select
+                                value={shown}
+                                onValue={(value) => showAs(index, value)}
+                                options={library.showAsChoices.map((value) => ({
+                                  value,
+                                  label: t.libraries.showAs.choices[value],
+                                }))}
+                              />
+                            </Field>
                           )}
                         </>
                       )}

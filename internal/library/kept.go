@@ -83,9 +83,10 @@ func (s *Service) shared(ctx context.Context, key string, fetch func(context.Con
 // background runs fetch for key on its own, unless it runs already, and
 // does not wait for it. due, checked once it runs, tells whether it is
 // still to be done: a refresh that ended between the caller's read and
-// this one already did it.
+// this one already did it. Its requests to addons are paced (see
+// Background).
 func (s *Service) background(ctx context.Context, key string, due func() bool, fetch func(context.Context) error) {
-	detached := context.WithoutCancel(ctx)
+	detached := Background(context.WithoutCancel(ctx))
 	s.flight.DoChan(key, func() (any, error) {
 		if !due() {
 			return nil, nil
@@ -415,7 +416,8 @@ func (s *Service) meta(ctx context.Context, addon installed, metaType, id string
 // the addon gave it: the one kept, refreshed in the background once past
 // metaTTL, or past the catalog refresh age when an app opens the title
 // (see iptv.Opening), else the one kept in the database, else the addon's
-// answer.
+// answer. Background work's request waits for its turn (see pacing)
+// before it is shared, so that a user's request never waits behind it.
 func (s *Service) keptMeta(ctx context.Context, addon installed, metaType, id string) (fetched[stremio.Meta], error) {
 	// An IPTV source describes its titles from its database, with details
 	// once a title was opened: it is not cached here, lest a listing's
@@ -431,6 +433,24 @@ func (s *Service) keptMeta(ctx context.Context, addon installed, metaType, id st
 			s.refreshMeta(ctx, addon, key, kept.at)
 		}
 		return kept, nil
+	}
+	if paces(ctx, addon.addon) {
+		// A description kept in the database takes no turn.
+		if kept, ok := s.loadMeta(ctx, addon, key); ok {
+			if s.metaStale(ctx, kept) {
+				s.refreshMeta(ctx, addon, key, kept.at)
+			}
+			return kept, nil
+		}
+		var release func()
+		var err error
+		if ctx, release, err = s.turn(ctx, addon.addon, paceMetas); err != nil {
+			return fetched[stremio.Meta]{}, err
+		}
+		defer release()
+		if kept, ok := s.metas.Get(key); ok {
+			return kept, nil
+		}
 	}
 	result, err := s.shared(ctx, fmt.Sprintf("meta %v", key), func(ctx context.Context) (any, error) {
 		if kept, ok := s.loadMeta(ctx, addon, key); ok {
@@ -469,7 +489,10 @@ func (s *Service) fetchKeptMeta(ctx context.Context, addon installed, key metaKe
 	// The title's people are those of the description its page shows
 	// them from (see givesCredits): a translator's, or another addon's
 	// read meanwhile, are not.
-	if kind, ok := titleKind(key.metaType); ok && (kind == KindMovie || kind == KindSeries) && s.givesCredits(ctx, addon, kind, key.metaType, key.id) {
+	// TMDB's credits of the title, while it shows them, stay (see
+	// titlecredits.go).
+	if kind, ok := titleKind(key.metaType); ok && (kind == KindMovie || kind == KindSeries) && s.givesCredits(ctx, addon, kind, key.metaType, key.id) &&
+		!s.creditedByTMDB(ctx, itemID(titleKey(kind, key.id)), kind, providerIDs(meta)) {
 		if err := s.saveCredits(ctx, itemID(titleKey(kind, key.id)), people(meta), addon.confined); err != nil {
 			s.logger.Debug("The people of a title could not be recorded", "addon", addon.addon.Manifest.Name, "error", err)
 		}
@@ -520,7 +543,9 @@ func (s *Service) refreshMeta(ctx context.Context, addon installed, key metaKey,
 }
 
 // loadMeta reads a description kept in the database, and keeps it in
-// memory.
+// memory. An addon's notice kept as the title's description, before such
+// answers were refused (see stremio.Meta.Describes), is not read: the
+// title is described again.
 func (s *Service) loadMeta(ctx context.Context, addon installed, key metaKey) (fetched[stremio.Meta], bool) {
 	var data []byte
 	var kept fetched[stremio.Meta]
@@ -533,7 +558,7 @@ func (s *Service) loadMeta(ctx context.Context, addon installed, key metaKey) (f
 		}
 		return kept, false
 	}
-	if err := json.Unmarshal(data, &kept.value); err != nil {
+	if err := json.Unmarshal(data, &kept.value); err != nil || !kept.value.Describes(key.metaType, key.id) {
 		return kept, false
 	}
 	s.metas.Put(key, kept)
@@ -691,10 +716,12 @@ const WarmInterval = time.Hour
 // that find their own, so that no home screen, and no library an app
 // opens, waits for an addon: those of the server's addons, and of
 // users' own addons when the settings allow them. Pages already fresh are
-// not asked again; stale ones are refreshed. Then it tells those pages
-// are read (see OnFirstPagesRead). It also forgets the pages and
-// descriptions kept in the database that no one read for long, and the
-// catalogs and titles no read saw for long (see arrivals.go).
+// not asked again; stale ones are refreshed. A library of other videos
+// for which none chose how it shows its titles is decided from that page
+// (see decideShowAs). Then it tells those pages are read (see
+// OnFirstPagesRead). It also forgets the pages and descriptions kept in
+// the database that no one read for long, and the catalogs and titles no
+// read saw for long (see arrivals.go).
 func (s *Service) Warm(ctx context.Context) error {
 	scopes := []struct {
 		scope    addons.Scope
@@ -746,6 +773,15 @@ func (s *Service) Warm(ctx context.Context) error {
 			// narrowed to one.
 			src := source{addon: entry, catalog: l.Catalog, genre: l.Genre}
 			group.Go(func() error {
+				first, err := s.page(ctx, src, 0)
+				switch {
+				case err != nil && ctx.Err() == nil:
+					s.logger.Debug("A library's first page could not be read", "addon", addon.Manifest.Name, "catalog", l.Catalog.ID, "error", err)
+				case err == nil:
+					if err := s.decideShowAs(ctx, l, first); err != nil {
+						s.logger.Warn("How a library shows its titles could not be decided", "catalog", l.Catalog.ID, "error", err)
+					}
+				}
 				s.warmPages(ctx, src, addon.Manifest.Name)
 				if l.Image == addons.LibraryImageAutomatic {
 					s.lookUpImage(ctx, src)

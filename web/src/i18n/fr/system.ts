@@ -151,6 +151,8 @@ const system: typeof en = {
           `Polyfin ne peut pas écouter sur le port UDP ${port} : les applications Jellyfin du réseau local ne le trouvent donc pas d’elles-mêmes. Un autre programme l’utilise sans doute, comme un serveur Jellyfin sur le même hôte. Enregistrer les paramètres réessaie.`,
         torrentRoute: (why: string) =>
           `Les flux torrent ne sont pas lus : ${why}. Rien n’est envoyé par un autre chemin ; vérifiez la route dans Paramètres › Torrents.`,
+        torrentRouteRiding: (why: string, seconds: number) =>
+          `${why}. Les torrents en lecture continuent jusqu’à ${seconds} s ; les nouveaux ne peuvent pas démarrer. Rien n’est envoyé par un autre chemin ; vérifiez la route dans Paramètres › Torrents.`,
         torrentWhy: {
           interface_missing: (name: string) => `l’interface réseau ${name} est absente`,
           interface_down: (name: string) => `l’interface réseau ${name} est désactivée`,
@@ -177,6 +179,22 @@ const system: typeof en = {
           no_peers: 'ses trackers et le DHT n’ont trouvé aucun pair',
           no_trackers: 'l’addon n’a indiqué aucun tracker, et le DHT n’a trouvé aucun pair',
           silent: 'des pairs ont été trouvés, mais aucun ne l’a envoyé',
+        },
+        torrentStopped: (at: string, why: string) =>
+          `Un torrent s’est arrêté pendant la lecture à ${at} : ${why}. Rien n’a été envoyé par un autre chemin. Vérifiez que la route reste joignable ; la prochaine lecture relance le torrent.`,
+        torrentStoppedWhy: {
+          interface_missing: (name: string) => `l’interface réseau ${name} a disparu`,
+          interface_down: (name: string) => `l’interface réseau ${name} s’est désactivée`,
+          interface_no_address: (name: string) => `l’interface réseau ${name} a perdu son adresse`,
+          proxy_unreachable: (name: string) => `le proxy SOCKS5 ${name} n’a pas répondu`,
+          proxy_refused: (name: string) =>
+            `le proxy SOCKS5 ${name} a refusé l’utilisateur et le mot de passe`,
+          wireguard_endpoint: (name: string) =>
+            `le serveur WireGuard ${name} est devenu introuvable`,
+          wireguard_down: (name: string) => `le tunnel WireGuard vers ${name} s’est arrêté`,
+          wireguard_handshake: (name: string) =>
+            `le serveur WireGuard ${name} n’a pas répondu à la négociation`,
+          route: () => 'sa route n’a pas répondu',
         },
         torrentStartPeers: (found: number, why: string) =>
           `${found} ${found > 1 ? 'pairs trouvés' : 'pair trouvé'} : ${why}`,
@@ -213,8 +231,12 @@ const system: typeof en = {
         httpsExpired: (date: string) => `Le certificat HTTPS a expiré le ${date}.`,
         subtitleOcrLanguage: (name: string, file: string) =>
           `Les sous-titres en images en ${name} ne sont pas lus en texte : Tesseract n’a pas de données pour cette langue. Ajoutez le fichier ${file} au dossier que nomme POLYFIN_TESSDATA_DIR.`,
+        subtitleOcrDownloadFailed: (error: string) =>
+          `Le dernier téléchargement de ses données a échoué : ${error}`,
         metadataLanguages: (name: string) =>
           `${name} : chaque addon de métadonnées du serveur a une langue : ils décrivent donc les titres dans leur langue pour tous les utilisateurs, quelle que soit leur langue des métadonnées. Laissez Langue de ses descriptions sur Aucune pour cet addon, ou pour un addon de métadonnées de plus.`,
+        desktopRolledBack: (version: string, previous: string, error: string) =>
+          `Polyfin Desktop est revenu à la version ${previous}, car la version ${version} n’a pas démarré : ${error}. Cette version n’est plus proposée ; la suivante le sera.`,
         themeCopyMissing: (missing: number, files: number) =>
           `La copie du thème du lecteur web n’a plus ${missing} de ses ${files} fichiers dans le dossier de données de Polyfin, comme après la restauration d’une sauvegarde sur un autre système : les navigateurs les chargent en attendant depuis leurs adresses d’origine, ce qui demande internet. Mettez la copie à jour dans Paramètres › Lecteur web, ou choisissez un autre thème.`,
         folderUnwritable: (name: string, path: string) =>
@@ -269,6 +291,9 @@ const system: typeof en = {
       check: 'Vérifier',
       checkLabel: (name: string) => `Vérifier ${name} maintenant`,
       checking: 'Vérification…',
+      downloadLanguage: 'Télécharger',
+      downloadLanguageLabel: (name: string) => `Télécharger les données de Tesseract en ${name}`,
+      downloadingLanguage: 'Téléchargement…',
       iptvTitle: 'Sources IPTV',
       guidesTitle: 'Guides des programmes',
       sharesTitle: 'Partages réseau',
@@ -368,6 +393,15 @@ const system: typeof en = {
       torrentPeers: 'Pairs',
       torrentUTPPeers: 'Pairs joints en uTP',
       torrentsShared: 'Partagé depuis le démarrage',
+      torrentOutageAt: (at: string) => `Coupure à ${at}`,
+      torrentOutage: {
+        interface: (span: string) =>
+          `l’interface réseau n’a pas répondu pendant ${span} ; la lecture a continué`,
+        proxy: (span: string) => `le proxy n’a pas répondu pendant ${span} ; la lecture a continué`,
+        wireguard: (span: string) =>
+          `le serveur WireGuard n’a pas répondu pendant ${span} ; la lecture a continué`,
+        '': (span: string) => `la route n’a pas répondu pendant ${span} ; la lecture a continué`,
+      },
       disksTitle: 'Espace disque',
       folders: {
         cache: 'du cache',
@@ -410,6 +444,48 @@ const system: typeof en = {
       notHeld: 'Dès maintenant',
       titlesWaiting: 'Titres en attente',
       titlesKept: 'Titres dont les notes sont gardées',
+      artworkTitle: 'Illustrations',
+      artworkHelp:
+        'Les téléchargements d’illustrations depuis les serveurs d’images des addons qui ont échoué dans la dernière heure. Une image en échec est redemandée plus tard, d’autant plus tard qu’elle échoue souvent ; un serveur qui demande d’attendre n’est plus sollicité jusque-là.',
+      artworkFailed: 'Échecs dans la dernière heure',
+      artworkKinds: {
+        not_found: 'Introuvables',
+        rate_limited: 'Demandes de ralentir',
+        timeout: 'Délais dépassés',
+        server_error: 'Erreurs du serveur',
+        other: 'Autres échecs',
+      } as Record<string, string>,
+      artworkHosts: 'Serveurs en échec',
+      artworkNoFailures: 'Aucun téléchargement d’illustration n’a échoué dans la dernière heure.',
+      artworkWaiting: 'Serveurs attendus',
+      artworkNoWaiting: 'Aucun serveur n’est attendu.',
+      artworkWaitingUntil: (time: string) => `plus sollicité jusqu’à ${time}`,
+      artworkSparedUntil: (time: string) => `moins sollicité à la fois jusqu’à ${time}`,
+      peopleTitle: 'Personnes',
+      peopleHelp:
+        'Photos et biographies des personnes depuis TMDB. Une personne est cherchée dès que la distribution d’un titre l’affiche sans photo, ou que sa page s’ouvre.',
+      peopleNoKey:
+        'Aucune clé d’API TMDB n’est enregistrée dans Paramètres › Contenu : les personnes et les distributions n’affichent que ce que donnent les addons. Une clé d’un compte TMDB gratuit apporte :',
+      peopleNoKeyBrings: [
+        'Les photos et biographies des personnes',
+        'La distribution et l’équipe de chaque titre depuis TMDB, dans l’ordre du générique, avec photos',
+        'Des pages de personnes listant chaque titre des bibliothèques où elles sont créditées',
+        'Les titres pour lesquels TMDB connaît le mieux chaque personne, sur sa page, au-delà des bibliothèques',
+        'Les affiches des films et séries dont l’addon n’en donne aucune',
+        'Les coffrets dans les applications de Silo',
+        'Les images de TMDB dans « Modifier les images »',
+      ],
+      peopleNoKeyLink: 'Ajouter la clé dans Paramètres › Contenu',
+      tmdbKey: 'Clé d’API TMDB',
+      tmdbKeySaved: 'Enregistrée',
+      peopleFound: 'Trouvées sur TMDB',
+      peopleNotFound: 'Introuvables',
+      peopleFailing: 'Recherches en échec',
+      peopleWaiting: 'Recherches en attente',
+      tmdbLimited: 'Dernière limite de TMDB',
+      tmdbNeverLimited: 'Aucune depuis le démarrage du serveur',
+      tmdbLimitedAt: (time: string, wait: string) =>
+        wait ? `${time}, attente demandée de ${wait}` : time,
       backupTitle: 'Sauvegardes',
       backupOff: 'Les sauvegardes sont désactivées. Activez-les dans Paramètres › Sauvegardes.',
       backup: {

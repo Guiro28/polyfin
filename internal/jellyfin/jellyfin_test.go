@@ -23,6 +23,7 @@ import (
 	"github.com/moodiness/polyfin/internal/accounts"
 	"github.com/moodiness/polyfin/internal/activity"
 	"github.com/moodiness/polyfin/internal/addons"
+	"github.com/moodiness/polyfin/internal/backup"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/database"
 	"github.com/moodiness/polyfin/internal/hls"
@@ -45,6 +46,14 @@ import (
 )
 
 const testServerID = "0123456789abcdef0123456789abcdef"
+
+// The tests hash passwords and derive backup keys at a small cost (see
+// accounts.LowerPasswordCostForTests and backup.LowerKeyCostForTests).
+func TestMain(m *testing.M) {
+	accounts.LowerPasswordCostForTests()
+	backup.LowerKeyCostForTests()
+	m.Run()
+}
 
 type testServer struct {
 	t       *testing.T
@@ -126,6 +135,15 @@ func newTestServer(t *testing.T, failures int) testServer {
 // ffprobe. configure, if any, completes the handler's options.
 func newProbingServer(t *testing.T, failures int, ffprobe string, configure ...func(*Options, *pgxpool.Pool)) testServer {
 	t.Helper()
+	return newServerReaching(t, failures, ffprobe, nil, configure...)
+}
+
+// newServerReaching is newProbingServer whose requests to sources go
+// through reach, when set: a test serves a source on a public address
+// from a local server with it, never reaching that address.
+func newServerReaching(t *testing.T, failures int, ffprobe string, reach func(source.Opener) source.Opener,
+	configure ...func(*Options, *pgxpool.Pool)) testServer {
+	t.Helper()
 	pool := migrated.New(t)
 	store, err := accounts.Open(t.Context(), pool)
 	if err != nil {
@@ -146,7 +164,11 @@ func newProbingServer(t *testing.T, failures int, ffprobe string, configure ...f
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := source.New(t.TempDir(), func() source.Policy { return source.Policy{Limit: 1 << 30} }, client, logger)
+	var opener source.Opener = client
+	if reach != nil {
+		opener = reach(client)
+	}
+	sources, err := source.New(t.TempDir(), func() source.Policy { return source.Policy{Limit: 1 << 30} }, opener, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +190,7 @@ func newProbingServer(t *testing.T, failures int, ffprobe string, configure ...f
 		t.Fatal(err)
 	}
 	t.Cleanup(segments.Close)
-	player, err := playback.New(pool, client, ffprobe, playback.NewSigner(secret), sources, segments, lib.Renew, logger, store.Settings)
+	player, err := playback.New(pool, opener, ffprobe, playback.NewSigner(secret), sources, segments, lib.Renew, logger, store.Settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,6 +237,11 @@ func newProbingServer(t *testing.T, failures int, ffprobe string, configure ...f
 		c(&options, pool)
 	}
 	handler := New(options)
+	// Refresh metadata forgets the artwork failures the handler remembers,
+	// as in main.
+	if options.Library != nil {
+		options.Library.UseArtworkFailures(handler)
+	}
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return testServer{t: t, store: store, addons: addonStore, library: lib, pool: pool, url: server.URL, handler: handler,

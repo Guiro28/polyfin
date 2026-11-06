@@ -234,6 +234,7 @@ const stepTones: Record<string, StatusTone> = {
   failed: 'danger',
   hidden: 'warn',
   group: 'warn',
+  quality: 'muted',
 }
 
 /** What left a stream out, in words: the rule, the failure, or what the step means. */
@@ -276,6 +277,7 @@ function why(t: Messages, stream: VersionStream): string {
     case 'duplicate':
     case 'mirror':
     case 'group':
+    case 'quality':
       return text.stepHelp[stream.step]
   }
   return ''
@@ -416,12 +418,12 @@ function SourceStreams({
                         .join(' · ')}
                       {labels.length > 0 && (
                         <span className="block">
-                          {text.labelsAsRead}: {labels.join(' · ')}
+                          {text.labelsAsRead} {labels.join(' · ')}
                         </span>
                       )}
                       {stream.analyzed && known.length > 0 && known.join() !== labels.join() && (
                         <span className="block">
-                          {text.facts}: {known.join(' · ')}
+                          {text.facts} {known.join(' · ')}
                         </span>
                       )}
                       {stream.facts.labelRules.length > 0 && (

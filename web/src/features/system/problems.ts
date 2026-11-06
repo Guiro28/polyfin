@@ -125,12 +125,21 @@ export function problemText(t: Messages, language: string, problem: HealthProble
       return text.discoveryPort(problem.port)
     case 'dlna_port':
       return text.dlnaPort(problem.port)
-    case 'torrent_route':
-      return text.torrentRoute(text.torrentWhy[problem.failure](problem.name ?? ''))
+    case 'torrent_route': {
+      const why = text.torrentWhy[problem.failure](problem.name ?? '')
+      return problem.grace === undefined
+        ? text.torrentRoute(why)
+        : text.torrentRouteRiding(why.charAt(0).toUpperCase() + why.slice(1), problem.grace)
+    }
     case 'torrent_udp':
       return text.torrentUdp(problem.name)
     case 'torrent_start':
       return text.torrentStart(torrentStartWhy(t, problem))
+    case 'torrent_stopped':
+      return text.torrentStopped(
+        new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(new Date(problem.at)),
+        text.torrentStoppedWhy[problem.failure](problem.name ?? ''),
+      )
     case 'discovery_address':
       return text.discoveryAddress(problem.address)
     case 'proxy_name_unresolved':
@@ -197,8 +206,10 @@ export function problemText(t: Messages, language: string, problem: HealthProble
       return problem.tone === 'error'
         ? text.httpsExpired(dateTime(problem.expires, language))
         : text.httpsExpires(dateTime(problem.expires, language))
-    case 'subtitle_ocr_language':
-      return text.subtitleOcrLanguage(ocrLanguageName(language, problem), problem.file)
+    case 'subtitle_ocr_language': {
+      const missing = text.subtitleOcrLanguage(ocrLanguageName(language, problem), problem.file)
+      return problem.error ? `${missing} ${text.subtitleOcrDownloadFailed(problem.error)}` : missing
+    }
     case 'metadata_languages':
       return text.metadataLanguages(problem.name)
     case 'nvidia_driver':
@@ -207,6 +218,8 @@ export function problemText(t: Messages, language: string, problem: HealthProble
       return text.nvidiaOlderFFmpeg(problem.failure, problem.error)
     case 'theme_copy_missing':
       return text.themeCopyMissing(problem.missing, problem.files)
+    case 'desktop_rolled_back':
+      return text.desktopRolledBack(problem.name, problem.previous, problem.error)
     case 'folder_unwritable':
       return text.folderUnwritable(health.folderTitle[problem.folder], problem.path)
     case 'connection_stopped':
@@ -220,7 +233,7 @@ export function problemText(t: Messages, language: string, problem: HealthProble
  * A language Tesseract has no data for, named in `language` from its file, as jpn.traineddata
  * or chi_sim.traineddata, else as the server names it in English.
  */
-function ocrLanguageName(language: string, problem: { name: string; file: string }): string {
+export function ocrLanguageName(language: string, problem: { name: string; file: string }): string {
   const code = problem.file.replace(/\.traineddata$/, '').split('_')[0]
   try {
     return (

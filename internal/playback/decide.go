@@ -224,7 +224,7 @@ func (r reason) names() []string {
 func Decide(profile *DeviceProfile, source MediaSource, options Options) Decision {
 	d := decider{profile: profile, source: source}
 	d.locate(options)
-	decision := Decision{AudioStreamIndex: -1, SubtitleStreamIndex: -1, Transcoding: d.transcoding()}
+	decision := Decision{AudioStreamIndex: -1, SubtitleStreamIndex: -1, Transcoding: d.transcoding(options.Progressive)}
 	if d.played != nil {
 		decision.AudioStreamIndex = d.played.Index
 	}
@@ -485,8 +485,11 @@ func (d *decider) containerReasons() reason {
 
 // transcoding picks the video TranscodingProfile for streaming: the first
 // that keeps the video, preferably meeting its codec profiles, then the
-// first that keeps the audio that plays.
-func (d *decider) transcoding() *TranscodingProfile {
+// first that keeps the audio that plays. Profiles Polyfin cannot stream,
+// http ones unless progressive is allowed (see stream), rank after every
+// other: an app whose best fit is a progressive file then plays over its
+// HLS profile instead of not at all.
+func (d *decider) transcoding(progressive bool) *TranscodingProfile {
 	var best *TranscodingProfile
 	bestRank := 0
 	for i := range d.profile.TranscodingProfiles {
@@ -495,6 +498,9 @@ func (d *decider) transcoding() *TranscodingProfile {
 			continue
 		}
 		rank := 0
+		if _, oneFile := hls.ParseFormat(candidate.Container); !strings.EqualFold(candidate.Protocol, "hls") && !(progressive && oneFile) {
+			rank += 8
+		}
 		if d.video != nil {
 			switch {
 			case !listHas(candidate.VideoCodec, d.video.Codec):
@@ -725,11 +731,14 @@ func (d *decider) streamAudio(t *TranscodingProfile, options Options, limit int6
 	if copyable && !heavy {
 		return nil, true
 	}
-	channels := 0
+	source := AudioSource{Codec: audio.Codec, ChannelLayout: audio.ChannelLayout}
 	if audio.Channels != nil {
-		channels = *audio.Channels
+		source.Channels = *audio.Channels
 	}
-	conversion := ConvertAudio(StreamAudioCodecs(t), t.MaxAudioChannels, channels, audio.ChannelLayout, limit, options.Can.Tuning)
+	if audio.SampleRate != nil {
+		source.SampleRate = *audio.SampleRate
+	}
+	conversion := ConvertAudio(StreamAudioCodecs(t), t.MaxAudioChannels, source, limit, options.Can.Tuning)
 	if conversion == nil && copyable {
 		return nil, true
 	}

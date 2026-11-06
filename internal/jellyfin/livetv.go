@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/moodiness/polyfin/internal/accounts"
@@ -625,9 +625,7 @@ func (h *Handler) programs(recommended bool) http.HandlerFunc {
 		// come by start time.
 		if recommended && airing {
 			slices.SortStableFunc(programs, func(a, b library.Item) int {
-				x, _ := strconv.Atoi(a.Channel.Number)
-				y, _ := strconv.Atoi(b.Channel.Number)
-				return x - y
+				return library.CompareChannelNumbers(a.Channel.Number, b.Channel.Number)
 			})
 		} else if byName {
 			slices.SortStableFunc(programs, func(a, b library.Item) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
@@ -732,7 +730,8 @@ func webClient(client string) bool {
 // live media source, played as it is when the app takes it, else
 // converted into HLS by FFmpeg as it comes. Unlike Jellyfin's tuners, a
 // channel's source needs no opening (RequiresOpening is false): Polyfin
-// keeps nothing open for it until a player asks for its stream.
+// keeps nothing open for it until a player asks for its stream. A source
+// slow to send its first bytes keeps the app waiting (see patientWriter).
 func (h *Handler) livePlaybackInfo(w http.ResponseWriter, r *http.Request, user accounts.User, channel library.Item, opened accounts.ID, request playbackInfoRequest) {
 	versions, err := h.Library.Versions(r.Context(), user, channel.ID)
 	if err != nil {
@@ -749,6 +748,10 @@ func (h *Handler) livePlaybackInfo(w http.ResponseWriter, r *http.Request, user 
 		}
 		return failure != nil
 	}))
+	// Every answer from here on is a 200.
+	patient := newPatientWriter(w, playbackInfoPatience)
+	defer patient.stop()
+	w = patient
 	requested, asked := parseGUID(request.MediaSourceId)
 	allowed := h.Accounts.Conversions(user)
 	attempts, tries := 0, h.Accounts.Settings().VersionAttempts
@@ -768,7 +771,7 @@ func (h *Handler) livePlaybackInfo(w http.ResponseWriter, r *http.Request, user 
 		}
 		manifest := playback.Manifest(analysis)
 		relay := mustRelay(r, version) || manifest && (webApp(r) || !h.Playback.Redirectable(r.Context(), version))
-		session := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Relay: relay})
+		session := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Device: callerFrom(r.Context()).Device.ID, Relay: relay})
 		permits := h.convertible(allowed, user, version)
 		source, ok := h.liveSource(r, channel, version, id, analysis, request, session, relay, permits)
 		if !ok {
@@ -784,6 +787,77 @@ func (h *Handler) livePlaybackInfo(w http.ResponseWriter, r *http.Request, user 
 	}
 	h.refusePlay(w, r, user, channel, "NoCompatibleStream", plays.FailedNoStream)
 }
+
+// playbackInfoPatience is how long PlaybackInfo of a channel waits before
+// it sends its answer's status and headers, then a space each time again,
+// while the channel's source has not sent its first bytes: JSON allows
+// spaces before a value, and Swiftfin gives up on an answer after 20
+// seconds without a byte (URLSessionConfiguration.swift, line 16), while a
+// source may take as long to start (see playback's liveTimes).
+const playbackInfoPatience = 5 * time.Second
+
+// patientWriter sends an answer's status, 200, and its headers once wait
+// passed with nothing written, then a space after each wait, until the
+// handler writes its answer, whose status must then be 200 too.
+type patientWriter struct {
+	http.ResponseWriter
+	wait time.Duration
+
+	mu    sync.Mutex
+	timer *time.Timer
+	sent  bool
+	done  bool
+}
+
+func newPatientWriter(w http.ResponseWriter, wait time.Duration) *patientWriter {
+	p := &patientWriter{ResponseWriter: w, wait: wait}
+	p.mu.Lock()
+	p.timer = time.AfterFunc(wait, p.keep)
+	p.mu.Unlock()
+	return p
+}
+
+// keep sends the status and headers, the first time, and a space.
+func (p *patientWriter) keep() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done {
+		return
+	}
+	if !p.sent {
+		p.Header().Set("Content-Type", "application/json; charset=utf-8")
+		p.ResponseWriter.WriteHeader(http.StatusOK)
+		p.sent = true
+	}
+	if _, err := io.WriteString(p.ResponseWriter, " "); err != nil {
+		return
+	}
+	_ = http.NewResponseController(p.ResponseWriter).Flush()
+	p.timer.Reset(p.wait)
+}
+
+// stop sends no more spaces; it reports whether the status was sent.
+func (p *patientWriter) stop() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.done = true
+	p.timer.Stop()
+	return p.sent
+}
+
+func (p *patientWriter) WriteHeader(status int) {
+	if !p.stop() {
+		p.ResponseWriter.WriteHeader(status)
+	}
+}
+
+func (p *patientWriter) Write(data []byte) (int, error) {
+	p.stop()
+	return p.ResponseWriter.Write(data)
+}
+
+// Unwrap returns the underlying writer, for http.ResponseController.
+func (p *patientWriter) Unwrap() http.ResponseWriter { return p.ResponseWriter }
 
 // liveSource describes a channel's stream with the decision for the app's
 // device profile. Subtitles in live streams are not offered. Only the
@@ -824,10 +898,26 @@ func (h *Handler) liveSource(r *http.Request, channel library.Item, version libr
 		ConversionHeight:    request.conversionHeight,
 		Can:                 h.Playback.Capabilities(),
 	}
+	// No app names a channel's audio track: when none is flagged default,
+	// the one that plays is passed for the decision to check it (see
+	// flaggedAudio).
+	if !flaggedAudio(streams) {
+		options.AudioStreamIndex = defaultAudio(streams)
+	}
 	described := playback.MediaSource{Container: container, Bitrate: analysis.Bitrate, Streams: streams}
 	decision := playback.Decision{DirectPlay: true, Container: container, AudioStreamIndex: -1, SubtitleStreamIndex: -1}
 	if request.DeviceProfile != nil {
 		decision = playback.Decide(request.DeviceProfile, described, options)
+		// A user who has their sound converted gets it for channels too,
+		// as for videos (see soundConverted); a live stream is never cut
+		// on a grid.
+		if request.convertSound {
+			converting := options
+			convertSound(&converting)
+			if converted := playback.Decide(request.DeviceProfile, described, converting); soundConverted(converted, decision, false, allowed) {
+				decision, options = converted, converting
+			}
+		}
 	}
 	if playback.DASH(analysis) && !decision.HLS {
 		return MediaSourceInfo{}, false
@@ -892,7 +982,8 @@ func (h *Handler) serveChannel(w http.ResponseWriter, r *http.Request, user acco
 	if !playback.Manifest(analysis) {
 		err = h.Playback.ServeChannel(w, r, version, relay)
 	} else if relay {
-		grant := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Relay: true})
+		// The files the playlist names are the same play's.
+		grant := h.Playback.Signer().Sign(playback.Grant{Version: version.ID, User: user.ID, Device: h.mediaDevice(r), Relay: true})
 		err = h.Playback.ServeLive(w, r, version, "", h.liveLink(r, channel.ID, grant))
 	} else {
 		err = h.Playback.Serve(w, r, version, playback.Delivery{})

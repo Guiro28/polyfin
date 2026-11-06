@@ -54,6 +54,8 @@ type fileVersion struct {
 	EffectiveAudioLanguage   string          `json:"effective_audio_language,omitempty"`
 	AudioTracks              []audioTrack    `json:"audio_tracks"`
 	SubtitleTracks           []subtitleTrack `json:"subtitle_tracks"`
+	// sourceID is the version's media source's identifier.
+	sourceID string
 }
 
 // resolution names a height as the apps do.
@@ -141,23 +143,29 @@ func versionOf(source mediaSource, number string, added time.Time) fileVersion {
 		}
 	}
 	// The apps count a version's subtitles as subtitleOrder lists them,
-	// and find the file's own tracks by their index among its streams,
-	// which the Jellyfin API numbers after the files beside it.
+	// and find the file's own tracks by their index among its streams.
 	for _, stream := range subtitleOrder(source) {
 		track := subtitleTrack{Codec: stream.Codec, Language: languageTag(stream.Language), Title: stream.Title, Default: stream.IsDefault,
 			External: stream.IsExternal, Forced: stream.IsForced, HearingImpaired: stream.IsHearingImpaired}
 		if !stream.IsExternal {
-			index := stream.Index
-			for _, other := range source.MediaStreams {
-				if other.IsExternal && other.Index < stream.Index {
-					index--
-				}
-			}
-			track.Index = &index
+			track.Index = new(fileIndex(source, stream))
 		}
 		v.SubtitleTracks = append(v.SubtitleTracks, track)
 	}
 	return v
+}
+
+// fileIndex is the index of a file's own track among its streams, as
+// FFmpeg numbers them: the Jellyfin API numbers the files beside it
+// first.
+func fileIndex(source mediaSource, stream playback.MediaStream) int {
+	index := stream.Index
+	for _, other := range source.MediaStreams {
+		if other.IsExternal && other.Index < stream.Index {
+			index--
+		}
+	}
+	return index
 }
 
 // versionsOf describes an item's versions, as the Jellyfin API describes
@@ -196,6 +204,7 @@ func versionsWith(i item, numbers map[accounts.ID]int32) []fileVersion {
 			continue
 		}
 		version := versionOf(source, strconv.Itoa(int(numbers[id])), added)
+		version.sourceID = source.Id
 		if version.Duration == 0 {
 			version.Duration = int64(seconds(i.RunTimeTicks))
 		}
@@ -240,8 +249,8 @@ type watchVersion struct {
 	EffectiveAudioLanguage   string          `json:"effective_audio_language,omitempty"`
 	AudioTracks              []audioTrack    `json:"audio_tracks"`
 	SubtitleTracks           []subtitleTrack `json:"subtitle_tracks"`
-	MarkerSegments           []struct{}      `json:"marker_segments"`
-	Trickplay                bool            `json:"trickplay_available"`
+	markers
+	Trickplay bool `json:"trickplay_available"`
 }
 
 type watchDetail struct {
@@ -259,6 +268,7 @@ type watchDetail struct {
 	Subtitles     []subtitleInfo `json:"subtitles"`
 	Versions      []watchVersion `json:"versions"`
 	UserData      *rollup        `json:"user_data,omitempty"`
+	firstMarkers
 	subtitlePreferences
 }
 
@@ -301,7 +311,8 @@ func (s *Server) subtitlePreferencesOf(r *http.Request, v viewer) (subtitlePrefe
 }
 
 // watch describes what the player needs of a movie or an episode: its
-// versions, the user's subtitle preferences and progress.
+// versions with their skip markers, the user's subtitle preferences and
+// progress.
 func (s *Server) watch(w http.ResponseWriter, r *http.Request, v viewer) {
 	i, ok := s.itemOf(w, r, v, r.PathValue("id"))
 	if !ok {
@@ -327,11 +338,17 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request, v viewer) {
 		PosterURL: card.PosterURL, BackdropURL: card.BackdropURL, Subtitles: subtitlesOf(i.MediaSources), Versions: []watchVersion{},
 		UserData: rollupOf(i), subtitlePreferences: preferences}
 	for _, version := range versions {
+		// Markers that cannot be read are left out: the title still plays.
+		found, err := s.markersOf(r, v, version.sourceID)
+		if err != nil && r.Context().Err() == nil {
+			s.options.Logger.Warn("The skip markers of a version could not be read for a Silo app", "error", err)
+		}
 		detail.Versions = append(detail.Versions, watchVersion{FileID: version.FileID, FileName: version.FileName, FileSize: version.FileSize,
 			Container: version.Container, CodecVideo: version.CodecVideo, CodecAudio: version.CodecAudio, Resolution: version.Resolution,
 			HDR: version.HDR, Bitrate: version.Bitrate * 1000, DurationSeconds: version.Duration, AddedAt: version.AddedAt,
 			EffectiveAudioTrackIndex: version.EffectiveAudioTrackIndex, EffectiveAudioLanguage: version.EffectiveAudioLanguage,
-			AudioTracks: version.AudioTracks, SubtitleTracks: version.SubtitleTracks, MarkerSegments: []struct{}{}})
+			AudioTracks: version.AudioTracks, SubtitleTracks: version.SubtitleTracks, markers: found})
 	}
+	detail.firstMarkers = detailMarkers(r, detail.Versions)
 	writeJSON(w, http.StatusOK, detail)
 }

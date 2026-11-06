@@ -10,7 +10,7 @@ const libraries = {
     shownHelpMine:
       'Libraries appear in this order, after the server’s libraries if you use them. Leave a name empty to use the catalog name. Libraries that share a name get their type added in apps, for example “Popular (Movies)”.',
     defaultHelp:
-      'When an addon is installed, its collection catalogs become libraries: each one shows its collections (for example genres or decades), which open on their movies and series. An addon without collections gets its movie, series and TV catalogs as libraries, up to 20. This is only a starting point: enable as many catalogs as you like. Each library adds a row to the home screen of Jellyfin apps, except TV catalogs, whose channels appear in Live TV.',
+      'When an addon is installed, its collection catalogs become libraries: each one shows its collections (for example genres or decades), which open on their movies and series. An addon without collections gets its movie, series and TV catalogs as libraries. Polyfin does this only until the server has 20 libraries in all, counting those of every addon. This is only a starting point: enable as many catalogs as you like. Each library adds a row to the home screen of Jellyfin apps, except TV catalogs, whose channels appear in Live TV.',
     manyWarning: 'More than 20 libraries can make the home screen of Jellyfin apps heavy.',
     noAddons: 'Add a source first: its catalogs will be listed here.',
     shownEmpty: 'No library: Jellyfin apps show nothing from these addons.',
@@ -29,6 +29,31 @@ const libraries = {
     skipLocalHelp:
       'A movie or show that a local folder’s library lists, linked to the same identifier, shows only there. Its versions and watched state stay the same, and search finds it once. A user who does not see the folder’s library still finds it here.',
     skippedLocal: 'Without local folders’ titles',
+    showAs: {
+      label: 'Show as',
+      choices: {
+        home_videos: 'Home videos',
+        listed: 'As listed',
+        movies_and_shows: 'Movies and shows',
+      },
+      pill: {
+        home_videos: 'Shown as home videos',
+        listed: 'Shown as listed',
+        movies_and_shows: 'Shown as movies and shows',
+      },
+      help: {
+        home_videos:
+          'Each title is a folder of its videos, or a single video, as in a home videos library. Apps that list only movies and shows leave the library out.',
+        listed:
+          'A movies or shows library, as the catalog’s type says: a title of the other kind counts in its total, but none of its tabs shows it.',
+        titles:
+          'For the Jellyfin apps that list only movies and shows: a title with several videos, or one numbered as an episode, becomes a show, its videos its episodes; a title without videos, or with one file, a movie. Titles the catalog types as movies or shows stay as they are. Played marks, resume points and favorites follow them when you save.',
+        mixed:
+          'A library without a type, as Jellyfin’s mixed movies and shows libraries: each title is listed as the movie or show it is, so its tabs also show a series a movie catalog lists, with exact counts. Played marks and favorites stay.',
+      },
+      undecided:
+        'Polyfin shows it as movies and shows once it reads the catalog’s first page, if every title there is a movie or a show.',
+    },
     remove: 'Remove',
     removeLabel: (name: string) => `Remove ${name}`,
     moreActions: (name: string) => `More actions for ${name}`,

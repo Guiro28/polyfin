@@ -100,6 +100,11 @@ type Remux struct {
 	// AudioFilter is the filter graph converted audio goes through, such
 	// as a downmix to stereo, empty for none.
 	AudioFilter string
+	// AudioDecoder are options of the decoder of converted audio, as
+	// names and values in turn, such as AC-3's drc_scale and its value:
+	// FFmpeg gives them to the Audio stream alone, and none to copied
+	// audio.
+	AudioDecoder []string
 	// Threads is how many threads FFmpeg converts with, 0 letting it
 	// choose.
 	Threads int
@@ -161,6 +166,10 @@ type Remux struct {
 	// AudioRate is the sample rate converted audio is brought to, 0 to
 	// keep the input's: that of the audio the player had before a switch.
 	AudioRate int
+	// timescale is that of the video track of fragmented MP4, 0 for the
+	// muxer's own: for an input switched to, that of the initialization
+	// segment the player has (see encoding.start).
+	timescale uint64
 }
 
 // VideoEncoding is what a job converts the video to: 8-bit, progressive,
@@ -232,6 +241,11 @@ type VideoEncoding struct {
 	// DecodeOnCPU leaves decoding to FFmpeg's own decoder when converting
 	// on a GPU.
 	DecodeOnCPU bool
+	// InBand repeats the encoder's parameter sets before every keyframe,
+	// for a player that decodes the video under the initialization
+	// segment of another encoding, whose own parameter sets these replace
+	// (see Remux.Switch).
+	InBand bool
 }
 
 // Colors are the color range, matrix, transfer and primaries of a video,
@@ -543,8 +557,10 @@ func videoToolboxQuality(factor int) int {
 	return min(max(100-2*factor, 1), 100)
 }
 
-// amfLevel is a codec level as AMF's encoders name it: "5.0" for "5".
-func amfLevel(level string) string {
+// decimalLevel is a codec level as AMF's and VideoToolbox's encoders name
+// it, always with a decimal: "5.0" for "5". VAAPI's take whole levels only
+// without one ("5"), and x264, x265 and NVENC take either.
+func decimalLevel(level string) string {
 	if level != "" && !strings.Contains(level, ".") {
 		return level + ".0"
 	}
@@ -611,7 +627,7 @@ func (v *VideoEncoding) encoderArgs(keyframes, skip string) []string {
 		// its HEVC encoder takes none.
 		args = append(args, "-profile:v", profile)
 		if h264 && v.Level <= "5.2" {
-			args = append(args, "-level:v", v.Level)
+			args = append(args, "-level:v", decimalLevel(v.Level))
 		}
 		if speed := videoToolboxSpeed[v.Preset]; speed != "" {
 			args = append(args, "-prio_speed", speed)
@@ -623,7 +639,7 @@ func (v *VideoEncoding) encoderArgs(keyframes, skip string) []string {
 			args = append(args, "-preset", preset)
 		}
 	case family == familyAMF:
-		args = append(args, "-rc", "vbr_peak", "-forced_idr", "1", "-profile:v", profile, "-level:v", amfLevel(v.Level))
+		args = append(args, "-rc", "vbr_peak", "-forced_idr", "1", "-profile:v", profile, "-level:v", decimalLevel(v.Level))
 		if preset := amfQualities[v.Preset]; preset != "" {
 			args = append(args, "-quality", preset)
 		}
@@ -1260,13 +1276,17 @@ type encoding struct {
 	// changed is closed, then replaced, whenever a segment is ready, a job
 	// ends, or a player asks for another segment. init and fastInit are
 	// set once the initialization segments of the segments other than the
-	// fast ones, and of those, are made.
-	changed   chan struct{}
-	ready     []bool
-	init      bool
-	fastInit  bool
-	job       *job
-	requested int
+	// fast ones, and of those, are made; timescale and fastTimescale are
+	// the timescales of their video tracks, which an input switched to
+	// writes its own in (see start).
+	changed       chan struct{}
+	ready         []bool
+	init          bool
+	fastInit      bool
+	timescale     uint64
+	fastTimescale uint64
+	job           *job
+	requested     int
 	// playback is shared with the other variants of the playback; used is
 	// when a player last asked for this variant, and linger stops its
 	// FFmpeg once the player left it (see lingered).
@@ -1756,6 +1776,17 @@ func (e *encoding) start(n int) {
 		faster.Encode, faster.VideoTag = input.Fast, input.FastTag
 		input = &faster
 	}
+	// A player keeps the initialization segment it has, which an input
+	// switched to does not write: its video's times are in that segment's
+	// timescale.
+	if scale := e.timescale; e.switches > 0 && e.remux.Format == FMP4 {
+		if fast {
+			scale = e.fastTimescale
+		}
+		switched := *input
+		switched.timescale = scale
+		input = &switched
+	}
 	j := &job{start: n, next: n, end: plan.stretchEnd(n), fast: fast, cancel: cancel, progressed: time.Now(), lookback: e.lookback, input: input}
 	e.job = j
 	go e.run(ctx, j)
@@ -1873,9 +1904,9 @@ func (e *encoding) take(ctx context.Context, j *job, p piece) error {
 			return err
 		}
 		if j.fast {
-			e.fastInit = true
+			e.fastInit, e.fastTimescale = true, p.timescale
 		} else {
-			e.init = true
+			e.init, e.timescale = true, p.timescale
 		}
 		e.signal()
 		return nil
@@ -2054,6 +2085,7 @@ func (r Remux) args(n int, lookback time.Duration) []string {
 		args = append(args, r.Encode.inputs()...)
 	}
 	args = append(args, r.InputOptions...)
+	args = append(args, r.decoderArgs()...)
 	args = append(args, "-copyts", "-i", r.Input)
 	video := "0:" + strconv.Itoa(r.Video)
 	if r.Encode != nil && r.Encode.Burns() {
@@ -2074,6 +2106,9 @@ func (r Remux) args(n int, lookback time.Duration) []string {
 	if r.VideoTag != "" {
 		args = append(args, "-tag:v", r.VideoTag)
 	}
+	if r.Encode != nil && r.Encode.InBand {
+		args = append(args, "-bsf:v", "dump_extra=freq=keyframe")
+	}
 	args = append(args, r.audioArgs()...)
 	if r.Audio >= 0 {
 		args = append(args, "-bsf:a", r.audioFilters())
@@ -2088,7 +2123,11 @@ func (r Remux) args(n int, lookback time.Duration) []string {
 		// as for audio. The movie header waits for the first fragment, as
 		// some codecs, such as E-AC-3, describe themselves in their first
 		// packet.
-		args = append(args, "-use_editlist", "0", "-f", "mp4", "-movflags", "+frag_keyframe+empty_moov+delay_moov+default_base_moof+frag_discont", "pipe:1")
+		args = append(args, "-use_editlist", "0")
+		if r.timescale > 0 {
+			args = append(args, "-video_track_timescale", strconv.FormatUint(r.timescale, 10))
+		}
+		args = append(args, "-f", "mp4", "-movflags", "+frag_keyframe+empty_moov+delay_moov+default_base_moof+frag_discont", "pipe:1")
 	}
 	// Each subtitle stream is written as WebVTT, cue by cue, on its pipe.
 	for i, stream := range r.Subtitles {

@@ -13,6 +13,7 @@ import (
 	"github.com/moodiness/polyfin/internal/audiosegments"
 	"github.com/moodiness/polyfin/internal/backup"
 	"github.com/moodiness/polyfin/internal/bandwidth"
+	"github.com/moodiness/polyfin/internal/boxset"
 	"github.com/moodiness/polyfin/internal/cache"
 	"github.com/moodiness/polyfin/internal/collections"
 	"github.com/moodiness/polyfin/internal/commercials"
@@ -159,6 +160,9 @@ type Options struct {
 	// Sent counts the bytes of media sent to apps, by the playback they
 	// serve (see metered); nil counts them for the metrics only.
 	Sent *bandwidth.Meters
+	// BoxSets knows the TMDB collections of movies, whose artwork Silo's
+	// apps load through Polyfin (see boxsetimages.go); nil knows none.
+	BoxSets *boxset.Store
 }
 
 // Handler serves the Jellyfin API.
@@ -228,6 +232,9 @@ type Handler struct {
 	// plays remembers each device's last PlaybackInfo profile and bitrate,
 	// which item details name versions for (see detailsNamer).
 	plays *cache.Cache[accounts.ID, devicePlay]
+	// scripted are the devices whose web player runs Polyfin's script, as
+	// they read the user's sound (see boostRelay).
+	scripted *cache.Cache[accounts.ID, struct{}]
 	// guests are the playbacks of guests through share links (see
 	// share.go).
 	guests *guestPlays
@@ -270,6 +277,7 @@ func New(options Options) *Handler {
 		qualities:      cache.New[string, []int](2000, 12*time.Hour),
 		transcodings:   cache.New[string, TranscodingInfo](2000, 12*time.Hour),
 		plays:          cache.New[accounts.ID, devicePlay](1000, 30*24*time.Hour),
+		scripted:       cache.New[accounts.ID, struct{}](1000, 30*24*time.Hour),
 		guests:         newGuestPlays(),
 		downloads:      newDownloadPlays(),
 		dlna:           newDLNAPlays(),
@@ -292,6 +300,14 @@ func New(options Options) *Handler {
 			h.warmSeries(ctx)
 		})
 	}
+	if options.Playback != nil {
+		options.Playback.OnAnalyzed(func(version library.Version) { h.tracksChanged(version.Item) })
+	}
+	options.RemuxDB.OnDescribed(func(versions []library.Version) {
+		for _, version := range versions {
+			h.tracksChanged(version.Item)
+		}
+	})
 	options.Accounts.OnSignOut(h.signedOut)
 	if options.Thumbnails != nil {
 		options.Thumbnails.WatchPlaybacks(h.thumbnailPlaybacks)
@@ -352,6 +368,7 @@ func New(options Options) *Handler {
 	h.configurationRoutes(rt)
 	h.localizationRoutes(rt)
 	signedIn(http.MethodGet, "/MediaSegments/{itemId}", h.mediaSegments)
+	signedIn(http.MethodGet, "/Polyfin/MediaSegments/{itemId}", h.segmentOrigins)
 	h.playlistRoutes(rt)
 	h.syncPlayRoutes(rt)
 	h.collectionRoutes(rt)
@@ -363,8 +380,10 @@ func New(options Options) *Handler {
 	h.backupRoutes(rt)
 	h.metadataRoutes(rt)
 	h.rootRoutes(rt)
+	h.boxSetImageRoutes(rt)
 	signedIn(http.MethodGet, "/Videos/{itemId}/Trickplay/{width}/{file}", h.trickplayFile)
 	signedIn(http.MethodGet, "/Polyfin/Items/{itemId}/Share", h.mayShare)
+	h.soundRoutes(signedIn)
 
 	h.routes = cors(rt)
 	return h

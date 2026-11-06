@@ -471,6 +471,12 @@ const sources: typeof en = {
       disc_episode: 'Ein Titel einer Serien-Disc: Gib seine Folge an',
       lone_extra:
         'Ein Extra ohne zugehörigen Titel daneben: Verknüpfe es, um es zu einem Titel zu machen',
+      no_season:
+        'Der Name nennt eine Folgennummer, aber keine Staffel: Lege die Datei in den Ordner ihrer Staffel, etwa Season 02, oder benenne sie mit ihrer Staffel, etwa S02E05',
+      air_date:
+        'Der Name nennt ein Ausstrahlungsdatum, das Polyfin nicht liest: Benenne die Datei mit Staffel und Nummer des Katalogs, etwa S02E05',
+      no_episode_number:
+        'Der Name nennt keine Folgennummer: Benenne die Datei mit Staffel und Nummer des Katalogs, etwa S02E05',
       not_found: 'Die Metadaten-Add-ons kennen keinen Titel mit diesem Namen',
       no_search: 'Kein Add-on des Servers beschreibt und sucht Titel dieser Art',
       ambiguous: 'Mehrere Titel haben diesen Namen: Ergänze das Jahr oder verknüpfe ihn',
@@ -498,6 +504,12 @@ const sources: typeof en = {
         : `Kein Add-on kann die Titel von ${figure} Dateien suchen`,
     noSearchHelp:
       'Die Zuordnung braucht ein Add-on des Servers unter Inhalte › Quellen, das diese Titel beschreibt und einen Suchkatalog hat. Die eigenen Add-ons der Benutzer unter „Meine Quellen“ zählen nicht. Scanne den Ordner, sobald eines hinzugefügt ist.',
+    absoluteTitle: (count: number, figure: string) =>
+      count === 1
+        ? '1 Datei ist über ihre absolute Folgennummer zugeordnet'
+        : `${figure} Dateien sind über ihre absolute Folgennummer zugeordnet`,
+    absoluteHelp:
+      'Benannt wie „Show - 41“, sind sie Versionen der 41. Folge, die das Metadaten-Addon ihrer Serie aufführt, ohne Specials, mit deren Staffel und Nummer.',
     searchFailedTitle: (count: number, figure: string) =>
       count === 1
         ? 'Der Titel von 1 Datei konnte nicht gesucht werden'
@@ -551,7 +563,66 @@ const sources: typeof en = {
         ? '1 Folge gibt es nur in den Dateien'
         : `${figure} Folgen gibt es nur in den Dateien`,
     unlistedHelp:
-      'Das Metadaten-Addon, das ihre Serien beschreibt, führt sie nicht auf, etwa weil es Staffeln oder Specials anders nummeriert. Sie werden trotzdem aufgeführt, nach ihren Dateien benannt, und lassen sich abspielen.',
+      'Das Metadaten-Addon, das ihre Serien beschreibt, führt sie nicht auf, etwa weil es Staffeln oder Specials anders nummeriert. Sie werden trotzdem aufgeführt, nach ihren Dateien benannt, und lassen sich abspielen. Ihre Serien und Nummern stehen unter Folgen nur in den Dateien.',
+    unlistedListTitle: 'Folgen nur in den Dateien',
+    unlistedListHelp:
+      'Eine Datei wird nur dann eine Version einer Folge des Katalogs, wenn ihre Staffel und Folgennummer die des Katalogs sind. Diese Dateien sind anders nummeriert, daher ist jede eine eigene Folge neben denen des Katalogs. Benenne sie mit den Nummern des Katalogs um und scanne dann. Oder wähle, wie die Dateien der Serie nummeriert sind: Sie werden dann ohne Umbenennen Versionen der Folgen des Katalogs.',
+    unlistedSeason: (season: number) => (season === 0 ? 'Specials' : `Staffel ${season}`),
+    unlistedFiles: (episodes: string) => `In den Dateien: ${episodes}`,
+    unlistedCatalog: (episodes: string) => `Im Katalog: ${episodes}`,
+    unlistedCatalogNoSeason: (season: number, range: string) =>
+      `Der Katalog hat ${season === 0 ? 'keine Specials' : `keine Staffel ${season}`}: ${range}`,
+    unlistedCatalogRange: (first: string, last: string) => `er führt ${first} bis ${last}`,
+    unlistedCatalogEmpty: 'er führt keine Folgen',
+    unlistedNotDescribed:
+      'Die Nummern des Katalogs erscheinen, sobald eine App die Serie wieder öffnet',
+    numberingTitle: 'Nummerierung der Dateien von Serien',
+    numberingHelp:
+      'Eine Datei ist eine Version der Folge des Katalogs mit ihrer Staffel und Nummer. Sind die Dateien einer Serie anders nummeriert, wähle wie: Polyfin ordnet sie den Folgen des Katalogs zu, ohne sie umzubenennen, und Gesehen-Markierungen, Fortsetzungspunkte und Favoriten folgen ihnen. Eine Datei, die die Nummerierung nicht zuordnen kann, bleibt eine eigene Folge, mit dem Grund.',
+    numberingLabel: (name: string) => `Wie die Dateien von ${name} nummeriert sind`,
+    numberings: {
+      catalog: 'Wie der Katalog',
+      per_season: 'Pro Staffel',
+      continuing: 'Fortlaufend ab Staffel 1',
+      absolute: 'Absolut',
+      order: 'Eine Folgenreihenfolge',
+    },
+    numberingHints: {
+      catalog: 'S02E05 ist S02E05 des Katalogs.',
+      per_season:
+        'Jede Staffel beginnt bei 1: S02E01 ist die erste Folge, die der Katalog in Staffel 2 aufführt.',
+      continuing:
+        'Die Nummern laufen über die Staffeln weiter: Nach 12 Folgen in Staffel 1 ist S02E13 S02E01 des Katalogs.',
+      absolute:
+        'Jede Nummer ist die Stelle der Folge unter allen Folgen der Serie, ohne Specials: E41 ist die 41.',
+      order:
+        'Die Dateien folgen einer der TMDB-Folgengruppen der Serie, etwa ihrer DVD-Reihenfolge.',
+    },
+    numberingGroupLabel: (name: string) =>
+      `Die Folgenreihenfolge, der die Dateien von ${name} folgen`,
+    numberingGroupPlaceholder: 'Folgenreihenfolge wählen',
+    numberingLookup: {
+      no_key:
+        'Füge zuerst unter Einstellungen › Inhalte einen TMDB-Schlüssel hinzu: Die Folgenreihenfolgen kommen von TMDB.',
+      unknown:
+        'TMDB kennt diese Serie nicht, oder kein Metadaten-Addon des Servers beschreibt sie.',
+      failed:
+        'TMDB war nicht erreichbar, um die Folgenreihenfolgen der Serie aufzulisten. Versuche es gleich noch einmal.',
+      none: 'TMDB gibt für diese Serie keine Folgenreihenfolge an.',
+    },
+    numberingSaved: (name: string) => `Die Dateien von ${name} sind neu nummeriert`,
+    numberingFileCount: (files: number) => (files === 1 ? '1 Datei' : `${files} Dateien`),
+    numberingMapped: (mapped: number, files: number) =>
+      `${mapped} von ${files} Dateien den Folgen des Katalogs zugeordnet`,
+    unmappedReasons: {
+      no_catalog: 'Kein Metadaten-Addon des Servers beschreibt die Serie',
+      outside_season: 'Die Staffel des Katalogs hat an dieser Stelle keine Folge',
+      beyond_catalog: 'Der Katalog führt weniger Folgen auf als diese Nummer',
+      not_in_order: 'Die Folgenreihenfolge hat an dieser Stelle keine Folge',
+      not_listed: 'Der Katalog führt die Folge der Reihenfolge an dieser Stelle nicht auf',
+      no_order: 'TMDB kann die Folgenreihenfolge gerade nicht angeben',
+    } as Record<string, string>,
+    unmappedListed: (listed: string) => `Als eigene Folge aufgeführt, ${listed}`,
     linkNotDescribedShow:
       'Kein Metadaten-Addon des Servers beschreibt diese Kennung als Serie. Prüfen Sie, dass es die der Serie ist, nicht die einer Folge.',
     linkNotDescribedMovie:

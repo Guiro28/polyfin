@@ -129,6 +129,11 @@ type limitsJSON struct {
 	// LocalFirst offers the user the versions of local folders and network
 	// shares before the others, whatever the version order's criteria.
 	LocalFirst bool `json:"localFirst"`
+	// BoostVolume makes the user's web player louder in the browser;
+	// ConvertSound converts and evens the audio of their videos and
+	// channels, the video copied (see accounts.User).
+	BoostVolume  bool `json:"boostVolume"`
+	ConvertSound bool `json:"convertSound"`
 }
 
 func newLimitsJSON(limits accounts.Limits) limitsJSON {
@@ -158,6 +163,8 @@ func newLimitsJSON(limits accounts.Limits) limitsJSON {
 		QualityGroup:         limits.QualityGroup,
 		LiveTvChannels:       newChannelRuleJSON(limits.LiveTvChannels),
 		LocalFirst:           limits.LocalFirst,
+		BoostVolume:          limits.BoostVolume,
+		ConvertSound:         limits.ConvertSound,
 	}
 }
 
@@ -186,6 +193,8 @@ type limitChanges struct {
 	QualityGroup         *int                     `json:"qualityGroup"`
 	LiveTvChannels       *channelRuleJSON         `json:"liveTvChannels"`
 	LocalFirst           *bool                    `json:"localFirst"`
+	BoostVolume          *bool                    `json:"boostVolume"`
+	ConvertSound         *bool                    `json:"convertSound"`
 }
 
 // changes returns what l sets, or answers the request with its error and
@@ -210,6 +219,8 @@ func (l limitChanges) changes(w http.ResponseWriter) (accounts.UserChanges, bool
 		TorrentStreams:       l.TorrentStreams,
 		RemoteAccess:         l.RemoteAccess,
 		LocalFirst:           l.LocalFirst,
+		BoostVolume:          l.BoostVolume,
+		ConvertSound:         l.ConvertSound,
 	}
 	if p := l.ParentalControl; p != nil {
 		changes.Parental = &accounts.ParentalControl{MaxRating: p.MaxRating, MaxSubRating: p.MaxSubRating, BlockUnrated: p.BlockUnrated}
@@ -467,6 +478,7 @@ type settingsJSON struct {
 	CatalogLimit        *int   `json:"catalogLimit"`
 	ChannelLimit        *int   `json:"channelLimit"`
 	UpdateCheck         *bool  `json:"updateCheck"`
+	IncludePrereleases  *bool  `json:"includePrereleases"`
 	// LocalDiscovery and LocalAddress keep their current values when a
 	// PUT leaves them out; an empty address announces the interface's.
 	LocalDiscovery *bool   `json:"localDiscovery"`
@@ -586,10 +598,12 @@ type settingsJSON struct {
 	MaxConversions      *int    `json:"maxConversions"`
 	MaxConversionHeight *int    `json:"maxConversionHeight"`
 	ConvertedDownloads  *bool   `json:"convertedDownloads"`
-	// SubtitleOCR ("off", "played" or "scans") and SubtitleOCRTracks keep
-	// their current values when a PUT leaves them out.
-	SubtitleOCR       *string `json:"subtitleOcr"`
-	SubtitleOCRTracks *int    `json:"subtitleOcrTracks"`
+	// SubtitleOCR ("off", "played" or "scans"), SubtitleOCRTracks and
+	// SubtitleOCRDownload keep their current values when a PUT leaves them
+	// out.
+	SubtitleOCR         *string `json:"subtitleOcr"`
+	SubtitleOCRTracks   *int    `json:"subtitleOcrTracks"`
+	SubtitleOCRDownload *bool   `json:"subtitleOcrDownload"`
 	// DefaultAudioLanguage and DefaultSubtitleLanguage, "" or one of the
 	// ISO 639-2/B codes of TrackLanguages, keep their current values when
 	// a PUT leaves them out. TrackLanguages are the languages they offer,
@@ -621,6 +635,8 @@ type settingsJSON struct {
 	DownmixBoost               *float64               `json:"downmixBoost"`
 	MaxAudioChannels           *int                   `json:"maxAudioChannels"`
 	AudioBitratePerChannel     *int                   `json:"audioBitratePerChannel"`
+	NormalizeConvertedAudio    *bool                  `json:"normalizeConvertedAudio"`
+	DynamicRangeCompression    *string                `json:"dynamicRangeCompression"`
 	EncodingThreads            *int                   `json:"encodingThreads"`
 	AheadSeconds               *int                   `json:"aheadSeconds"`
 	KeepConvertedVideo         *bool                  `json:"keepConvertedVideo"`
@@ -891,6 +907,7 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		CatalogLimit:        &settings.CatalogLimit,
 		ChannelLimit:        &settings.ChannelLimit,
 		UpdateCheck:         &settings.UpdateCheck,
+		IncludePrereleases:  &settings.IncludePrereleases,
 		LocalDiscovery:      &settings.LocalDiscovery,
 		LocalAddress:        &settings.LocalAddress,
 		DLNA:                &settings.DLNA,
@@ -955,6 +972,7 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		ConvertedDownloads:    &settings.ConvertedDownloads,
 		SubtitleOCR:           &settings.SubtitleOCR,
 		SubtitleOCRTracks:     &settings.SubtitleOCRTracks,
+		SubtitleOCRDownload:   &settings.SubtitleOCRDownload,
 
 		DefaultAudioLanguage:    &settings.DefaultAudioLanguage,
 		DefaultSubtitleLanguage: &settings.DefaultSubtitleLanguage,
@@ -979,6 +997,8 @@ func newSettingsJSON(settings accounts.Settings) settingsJSON {
 		DownmixBoost:               &settings.DownmixBoost,
 		MaxAudioChannels:           &settings.MaxAudioChannels,
 		AudioBitratePerChannel:     &settings.AudioBitratePerChannel,
+		NormalizeConvertedAudio:    &settings.NormalizeConvertedAudio,
+		DynamicRangeCompression:    &settings.DynamicRangeCompression,
 		EncodingThreads:            &settings.EncodingThreads,
 		AheadSeconds:               &settings.AheadSeconds,
 		KeepConvertedVideo:         &settings.KeepConvertedVideo,
@@ -1701,6 +1721,7 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		CatalogLimit:        valueOr(body.CatalogLimit, current.CatalogLimit),
 		ChannelLimit:        valueOr(body.ChannelLimit, current.ChannelLimit),
 		UpdateCheck:         valueOr(body.UpdateCheck, current.UpdateCheck),
+		IncludePrereleases:  valueOr(body.IncludePrereleases, current.IncludePrereleases),
 		LocalDiscovery:      valueOr(body.LocalDiscovery, current.LocalDiscovery),
 		LocalAddress:        valueOr(body.LocalAddress, current.LocalAddress),
 		DLNA:                valueOr(body.DLNA, current.DLNA),
@@ -1767,6 +1788,7 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		ConvertedDownloads:    valueOr(body.ConvertedDownloads, current.ConvertedDownloads),
 		SubtitleOCR:           valueOr(body.SubtitleOCR, current.SubtitleOCR),
 		SubtitleOCRTracks:     valueOr(body.SubtitleOCRTracks, current.SubtitleOCRTracks),
+		SubtitleOCRDownload:   valueOr(body.SubtitleOCRDownload, current.SubtitleOCRDownload),
 
 		DefaultAudioLanguage:    valueOr(body.DefaultAudioLanguage, current.DefaultAudioLanguage),
 		DefaultSubtitleLanguage: valueOr(body.DefaultSubtitleLanguage, current.DefaultSubtitleLanguage),
@@ -1790,6 +1812,8 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		DownmixBoost:               valueOr(body.DownmixBoost, current.DownmixBoost),
 		MaxAudioChannels:           valueOr(body.MaxAudioChannels, current.MaxAudioChannels),
 		AudioBitratePerChannel:     valueOr(body.AudioBitratePerChannel, current.AudioBitratePerChannel),
+		NormalizeConvertedAudio:    valueOr(body.NormalizeConvertedAudio, current.NormalizeConvertedAudio),
+		DynamicRangeCompression:    valueOr(body.DynamicRangeCompression, current.DynamicRangeCompression),
 		EncodingThreads:            valueOr(body.EncodingThreads, current.EncodingThreads),
 		AheadSeconds:               valueOr(body.AheadSeconds, current.AheadSeconds),
 		KeepConvertedVideo:         valueOr(body.KeepConvertedVideo, current.KeepConvertedVideo),
@@ -1946,6 +1970,11 @@ func (h *handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if encoder := h.Health.Encoder; encoder != nil &&
 		(settings.HardwareAcceleration != current.HardwareAcceleration || settings.VAAPIDevice != current.VAAPIDevice) {
 		encoder.SelectHardware(settings.HardwareAcceleration, settings.VAAPIDevice)
+	}
+	// Pre-releases included, or the check turned on, are looked for at
+	// once rather than at the next daily check.
+	if settings.UpdateCheck && settings.IncludePrereleases && (!current.UpdateCheck || !current.IncludePrereleases) {
+		h.Health.Updates.Wake()
 	}
 	// Recording turned on, or moved, has the scheduler look at its timers.
 	if settings.RecordingsDir(h.DataDir) != current.RecordingsDir(h.DataDir) {

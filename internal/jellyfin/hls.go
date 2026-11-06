@@ -284,8 +284,8 @@ func (h *Handler) remuxFor(w http.ResponseWriter, r *http.Request, user accounts
 		// known already (see playback.Remux.Alternates).
 		remux.Alternates = func(ctx context.Context) []library.Version {
 			versions, ok := h.Library.CachedVersions(ctx, user, item.ID)
-			if ok && h.reordered(user) {
-				versions = h.ordered(ctx, user, versions)
+			if ok && h.reordered(ctx, user) {
+				versions = h.ordered(ctx, user, item, versions)
 			}
 			return h.pinnedFirst(ctx, versions)
 		}
@@ -336,14 +336,20 @@ func (h *Handler) remuxFor(w http.ResponseWriter, r *http.Request, user accounts
 		}
 	}
 	if strings.EqualFold(query(r, "allowAudioStreamCopy"), "false") {
-		channels, layout := 0, ""
+		var source playback.AudioSource
 		for _, stream := range analysis.Streams {
 			if stream.Index == remux.Audio {
-				channels, layout = stream.Channels, stream.ChannelLayout
+				source = playback.AudioTrack(stream)
 			}
 		}
-		remux.ConvertAudio = playback.ConvertAudio(query(r, "audioCodec"), query(r, "transcodingMaxAudioChannels"), channels, layout,
-			limits.Bitrate, h.Playback.Capabilities().Tuning)
+		// A user who has their sound converted gets it evened, whatever
+		// the settings, and so does a source the play switches to.
+		tuning := h.Playback.Capabilities().Tuning
+		if user.ConvertSound {
+			tuning.Normalize, remux.Normalize = true, true
+		}
+		remux.ConvertAudio = playback.ConvertAudio(query(r, "audioCodec"), query(r, "transcodingMaxAudioChannels"), source,
+			limits.Bitrate, tuning)
 	}
 	// PlaybackInfo copies no video above the user's bitrate limit, nor
 	// taller than their quality group: this guards URLs kept from before

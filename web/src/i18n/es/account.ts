@@ -9,6 +9,7 @@ const account: typeof en = {
       statistics: 'Estadísticas',
       tracking: 'Seguimiento',
       resume: 'Seguir viendo',
+      nextUp: 'A continuación',
       hidden: 'Títulos ocultos',
       homeRows: 'Filas de inicio',
       trackChoices: 'Elección de pistas',
@@ -16,6 +17,7 @@ const account: typeof en = {
       metadataLanguage: 'Idioma de los metadatos',
       webTheme: 'Tema del reproductor web',
       audioRegion: 'Región de audio',
+      sound: 'Sonido',
       sharedLinks: 'Enlaces compartidos',
       reminders: 'Recordatorios',
       import: 'Importar desde otro servidor',
@@ -58,6 +60,17 @@ const account: typeof en = {
         'pt-BR': 'Portugués (Brasil)',
         'pt-PT': 'Portugués (Portugal)',
       },
+    },
+    sound: {
+      help: 'Dos formas de que sus vídeos suenen más fuerte y más parejos de lo que los reproducen sus aplicaciones, cada una con su coste. Se aplican desde su próxima reproducción.',
+      boostVolume: 'Subir el volumen en el reproductor web',
+      boostVolumeHelp:
+        'Hace que los vídeos suenen más fuerte en el reproductor web, en un navegador y en las aplicaciones de Jellyfin para Android e iOS: unos 8 dB en los pasajes tranquilos y 5 dB en los fuertes, con un compresor que contiene los picos, y el volumen del reproductor sigue funcionando. El trabajo lo hace su navegador, pero para que llegue a las emisiones de las extensiones, el servidor envía él mismo esas emisiones a su reproductor web en lugar de mandarlo a su fuente, lo que consume ancho de banda del servidor. No llega a los reproductores propios de las aplicaciones, ni a las emisiones que un iPhone o un iPad reproduce como HLS. El menú de ajustes del reproductor también lo activa y lo desactiva.',
+      convertSound: 'Convertir el sonido para igualarlo',
+      convertSoundHelp:
+        'El servidor convierte el audio de sus vídeos y canales y lo iguala a -16 LUFS, con la imagen copiada, para que todas las aplicaciones lo reproduzcan más fuerte y parejo. El coste: nada se reproduce directamente, cada reproducción usa un poco del procesador del servidor, y el sonido envolvente llega a un receptor convertido en lugar de como la pista original.',
+      saved: 'Sonido guardado.',
+      group: 'Su grupo los define: un administrador los cambia en la página del grupo.',
     },
     taste: {
       help: 'Lo que Polyfin ha aprendido de sus gustos a partir de las películas y series que terminó, volvió a ver, dejó pronto, le gustaron, no le gustaron, marcó como favoritas y ocultó, contando más las más recientes. Cuando lo conoce lo suficiente, ordena Recomendados para usted, los títulos similares y las sugerencias. Se queda en el servidor: solo usted lo ve.',
@@ -126,6 +139,21 @@ const account: typeof en = {
       hiddenEmpty: 'Ningún título oculto',
       hiddenEmptyHelp: 'Oculte un título desde su menú ⋮ en el reproductor web.',
       hiddenOn: 'Oculto',
+      nextUpHelp:
+        'El siguiente episodio de cada serie que está viendo, como sus aplicaciones muestran «A continuación». «Eliminar» quita una serie de «A continuación» sin cambiar lo que ha visto, hasta que reproduzca uno de sus episodios o salga uno nuevo; su página sigue abriéndose en su siguiente episodio. En el reproductor web, el menú ⋮ de una tarjeta de «A continuación» hace lo mismo.',
+      nextUpRemoveLabel: (name: string) => `Eliminar ${name} de «A continuación»`,
+      nextUpRemoved: (name: string) => `${name} se ha eliminado de «A continuación».`,
+      nextUpEmpty: 'Nada a continuación',
+      nextUpEmptyHelp: 'Las series que está viendo se muestran aquí con su siguiente episodio.',
+      nextUpRemovedList: 'Series eliminadas de «A continuación»',
+      nextUpRemovedOn: 'Eliminada',
+      nextUpShowLabel: (name: string) => `Volver a mostrar ${name} en «A continuación»`,
+      nextUpShown: (name: string) => `${name} vuelve a estar en «A continuación».`,
+      withResume: 'Eliminar de «Seguir viendo» también quita la serie de «A continuación»',
+      withResumeHelp:
+        'Quitar un episodio de «Seguir viendo» quita entonces también su serie de «A continuación», de la misma manera, hasta que reproduzca uno de sus episodios o salga uno nuevo.',
+      withResumeOn: 'Eliminar de «Seguir viendo» ahora también quita la serie de «A continuación».',
+      withResumeOff: 'Eliminar de «Seguir viendo» ya no quita la serie de «A continuación».',
       kinds: {
         movie: 'Película',
         series: 'Serie',
@@ -611,6 +639,10 @@ const account: typeof en = {
         `${name} no está configurado en este servidor: un administrador debe añadir primero la aplicación de ${name}.`,
       appRefused: (name: string) =>
         `${name} ha rechazado la aplicación de este servidor. Un administrador debe comprobar sus credenciales en Ajustes › Seguimiento.`,
+      traktCodeEnded:
+        'El código caducó, o Trakt lo rechazó. Si Trakt rechazó su inicio de sesión, compruebe dos cosas: que un administrador haya añadido su nombre de usuario de Trakt a la aplicación de Trakt de este servidor, en Members; y, con una cuenta gratuita de Trakt, que no haya otra aplicación conectada, ya que Trakt solo permite una (desconéctela en Trakt, en Settings › Connected apps, o use Trakt VIP). Luego obtenga un código nuevo.',
+      traktAppRefused:
+        'Trakt ha rechazado este inicio de sesión. Compruebe que un administrador haya añadido su nombre de usuario de Trakt a la aplicación de Trakt de este servidor, en Members, y que su cuenta gratuita de Trakt no tenga otra aplicación conectada, ya que Trakt solo permite una. Si no es el caso, un administrador debe comprobar las credenciales de la aplicación en Ajustes › Seguimiento.',
       history: {
         toggle: (name: string) => `Importar mi historial de ${name}`,
         toggleHelp: (name: string, every: string) =>
@@ -720,6 +752,7 @@ const account: typeof en = {
     webTheme: 'Tema del reproductor web: El del servidor, salvo si tu administrador eligió el tuyo',
     audioRegion: 'Región de audio: Ninguna',
     homeRows: 'Filas de inicio: todas las filas vuelven a mostrarse',
+    nextUpWithResume: 'Eliminar de «Seguir viendo»: deja «A continuación» como está',
     trackChoices: 'Elección de pistas: olvidada para cada serie y película',
     appPreferences:
       'Las preferencias que las aplicaciones de Jellyfin guardaron en tu cuenta: idiomas y modo del audio y los subtítulos, preferencias de la pantalla de inicio y de visualización',

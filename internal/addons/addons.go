@@ -129,6 +129,21 @@ type Addon struct {
 	// UsedBy is who uses a server addon (see UsedBy); a user's own addon
 	// is used by everyone, its owner being the only one to see it.
 	UsedBy UsedBy
+	// titleCatalogs are its catalogs of other videos whose enabled library
+	// shows their titles as movies and shows (see Library.ShowAs).
+	titleCatalogs []catalogRef
+}
+
+// catalogRef names a catalog of an addon by its type and identifier.
+type catalogRef struct {
+	catalogType, catalogID string
+}
+
+// ShowsAsTitles reports whether the enabled library of the addon's catalog
+// of other videos of catalogType and catalogID shows its titles as movies
+// and shows (see Library.ShowAs), wherever they are listed or found.
+func (a Addon) ShowsAsTitles(catalogType, catalogID string) bool {
+	return slices.Contains(a.titleCatalogs, catalogRef{catalogType, catalogID})
 }
 
 // UsedBy is who uses a server addon: everyone, the default, or only the
@@ -219,6 +234,15 @@ type Library struct {
 	// whether it can.
 	SkipLocal bool
 	Skippable bool
+	// ShowAs is how an enabled library shows its catalog's titles, one of
+	// ShowAsChoices: ShowAsHomeVideos or ShowAsMoviesAndShows for a
+	// catalog of other videos, ShowAsListed or ShowAsMoviesAndShows for a
+	// catalog of movies or series. Empty while none is chosen, or for a
+	// catalog that takes none: a catalog of other videos is then shown as
+	// home videos until Polyfin decides from its first page (see
+	// DecidedShowAs and Store.DecideShowAs), the others as listed.
+	ShowAs        string
+	ShowAsChoices []string
 	// Image is how an enabled library finds the image apps show on its
 	// tile: LibraryImageNone, LibraryImageAutomatic or
 	// LibraryImageGenerated. An image uploaded for the library's item wins
@@ -246,6 +270,85 @@ func Filterable(addon Addon, catalog stremio.Catalog) bool {
 func Skippable(addon Addon, catalog stremio.Catalog) bool {
 	return !addon.Local() && !addon.IPTV() && !addon.HasMusic() &&
 		slices.Contains([]string{"movie", "anime.movie", "series", "anime.series", "anime"}, catalog.Type)
+}
+
+// The ways a library may show its catalog's titles (see Library.ShowAs).
+// ShowAsHomeVideos shows those of a catalog of other videos as folders of
+// videos, and videos; ShowAsListed shows those of a catalog of movies or
+// series in a library of that type. ShowAsMoviesAndShows shows them in a
+// library without a type, as Jellyfin's mixed libraries: a catalog of
+// other videos as movies and series made of its titles (see
+// library.shownTitle), a catalog of movies or series as each title's own
+// kind.
+const (
+	ShowAsHomeVideos     = "home_videos"
+	ShowAsListed         = "listed"
+	ShowAsMoviesAndShows = "movies_and_shows"
+)
+
+// ShowAsChoices lists the ways a library of a catalog of addon may show
+// its titles, the default first: home videos or movies and shows for a
+// catalog of OtherVideos; as listed or movies and shows for a catalog of
+// movies or series of an addon, not of a local folder, an IPTV source or
+// a music addon, which have their own; none for any other.
+func ShowAsChoices(addon Addon, catalog stremio.Catalog) []string {
+	switch {
+	case OtherVideos(addon, catalog):
+		return []string{ShowAsHomeVideos, ShowAsMoviesAndShows}
+	case !addon.Local() && !addon.IPTV() && !addon.HasMusic() &&
+		slices.Contains([]string{"movie", "anime.movie", "series", "anime.series"}, catalog.Type):
+		return []string{ShowAsListed, ShowAsMoviesAndShows}
+	}
+	return nil
+}
+
+// OtherVideos reports whether a catalog of addon lists other videos, which
+// its library shows as home videos unless it shows them as movies and
+// shows (see Library.ShowAs): a catalog of a type Polyfin has no use of
+// its own for (see OtherType), of an addon that is not a music addon.
+func OtherVideos(addon Addon, catalog stremio.Catalog) bool {
+	return !addon.HasMusic() && OtherType(catalog.Type)
+}
+
+// DecidedShowAs is how a library of a catalog of other videos shows its
+// titles when none was chosen, as the titles of the catalog's first page
+// tell: as movies and shows when it lists some and each is a movie or a
+// series by its own type, as an addon of lists of movies and shows types
+// them, which a library of home videos would show none of; as home videos
+// otherwise. A library shown so has items of the same identifiers either
+// way: those of movies and series.
+func DecidedShowAs(first []stremio.Meta) string {
+	if len(first) == 0 {
+		return ""
+	}
+	for _, meta := range first {
+		switch meta.Type {
+		case "movie", "anime.movie", "series", "anime.series", "anime":
+		default:
+			return ShowAsHomeVideos
+		}
+	}
+	return ShowAsMoviesAndShows
+}
+
+// OtherType reports whether titles of a Stremio type are other videos:
+// other, channel, and every type Polyfin has no use of its own for (see
+// knownType).
+func OtherType(stremioType string) bool {
+	return stremioType == "other" || stremioType == "channel" || !knownType(stremioType)
+}
+
+// knownType reports whether Polyfin has a use of its own for a Stremio
+// type: movies, series and anime, other and channel videos, collections,
+// live TV, the rows of Eclipse music addons, and Polyfin's own types, as
+// its home videos' and extras'. A title without a type is not known
+// either way.
+func knownType(stremioType string) bool {
+	switch stremioType {
+	case "", "movie", "anime.movie", "series", "anime.series", "anime", "other", "channel", "collection", "tv":
+		return true
+	}
+	return eclipse.CatalogType(stremioType) || strings.HasPrefix(stremioType, "polyfin.")
 }
 
 // Genres lists the genres a catalog offers in its genre filter, in order.
@@ -330,7 +433,8 @@ type LibraryKey struct {
 
 // LibraryChoice selects a catalog as a library, with an optional name,
 // optionally narrowed to a genre and limited to MaxItems titles, and
-// possibly left out of the web player's menus (see Library).
+// possibly left out of the web player's menus (see Library). ShowAs is
+// empty for none chosen.
 type LibraryChoice struct {
 	AddonID     accounts.ID
 	CatalogType string
@@ -340,6 +444,7 @@ type LibraryChoice struct {
 	MaxItems    *int
 	HideInMenus bool
 	SkipLocal   bool
+	ShowAs      string
 }
 
 // Store is the addons repository. Reads of the addons and libraries are
@@ -1217,20 +1322,21 @@ type libraryRow struct {
 	maxItems          *int
 	hideInMenus       bool
 	skipLocal         bool
+	showAs            *string
 }
 
 // libraryRows reads the libraries filter selects, l being the library
 // and a its addon, in order.
 func libraryRows(ctx context.Context, db queryer, filter string, args ...any) ([]libraryRow, error) {
 	rows, err := db.Query(ctx, `SELECT a.owner_id, l.addon_id, l.catalog_type, l.catalog_id, l.name, l.guide_channels, l.guide_matched, l.image,
-		l.genre, l.max_items, l.hide_in_menus, l.skip_local FROM libraries l JOIN addons a ON a.id = l.addon_id`+filter+" ORDER BY l.position", args...)
+		l.genre, l.max_items, l.hide_in_menus, l.skip_local, l.show_as FROM libraries l JOIN addons a ON a.id = l.addon_id`+filter+" ORDER BY l.position", args...)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (libraryRow, error) {
 		var r libraryRow
 		err := row.Scan(&r.owner, &r.key.AddonID, &r.key.CatalogType, &r.key.CatalogID, &r.name, &r.channels, &r.matched, &r.image,
-			&r.genre, &r.maxItems, &r.hideInMenus, &r.skipLocal)
+			&r.genre, &r.maxItems, &r.hideInMenus, &r.skipLocal, &r.showAs)
 		return r, err
 	})
 }
@@ -1283,8 +1389,13 @@ func listLibraries(installed []Addon, rows []libraryRow, guides []guideRow) []Li
 		chosen[row.key] = len(enabled)
 		library := Library{AddonID: addon.ID, AddonName: addon.Manifest.Name, Catalog: catalog, KeyType: addon.LibraryKeyTypes[catalog.ID],
 			Name: row.name, Enabled: true, AddonActive: addon.Enabled, Filterable: Filterable(addon, catalog), Image: row.image,
-			HideInMenus: row.hideInMenus, Skippable: Skippable(addon, catalog)}
+			HideInMenus: row.hideInMenus, Skippable: Skippable(addon, catalog), ShowAsChoices: ShowAsChoices(addon, catalog)}
 		library.SkipLocal = row.skipLocal && library.Skippable
+		// A choice the catalog no longer takes, its type having changed,
+		// is none.
+		if row.showAs != nil && slices.Contains(library.ShowAsChoices, *row.showAs) {
+			library.ShowAs = *row.showAs
+		}
 		// A genre the catalog no longer offers lists the whole catalog.
 		if row.genre != nil && library.Filterable && slices.Contains(GenreChoices(catalog), *row.genre) {
 			library.Genre = *row.genre
@@ -1310,7 +1421,7 @@ func listLibraries(installed []Addon, rows []libraryRow, guides []guideRow) []Li
 			}
 			result = append(result, Library{AddonID: addon.ID, AddonName: addon.Manifest.Name, Catalog: catalog,
 				KeyType: addon.LibraryKeyTypes[catalog.ID], AddonActive: addon.Enabled, Filterable: Filterable(addon, catalog),
-				Skippable: Skippable(addon, catalog), Image: NewLibraryImage(catalog.Type)})
+				Skippable: Skippable(addon, catalog), ShowAsChoices: ShowAsChoices(addon, catalog), Image: NewLibraryImage(catalog.Type)})
 		}
 	}
 	return result
@@ -1319,8 +1430,11 @@ func listLibraries(installed []Addon, rows []libraryRow, guides []guideRow) []Li
 // SetLibraries replaces the scope's libraries with choices, in order. A
 // choice's genre must be one its catalog offers, and its maximum from 1 to
 // MaxLibraryItems, on a Filterable catalog; an empty genre lists the whole
-// catalog. A live TV catalog may not be hidden from the menus, and only a
-// Skippable catalog may leave out the titles local folders hold.
+// catalog. A live TV catalog may not be hidden from the menus, only a
+// Skippable catalog may leave out the titles local folders hold, and a
+// library shows its titles as one of its ShowAsChoices. A library given
+// no ShowAs keeps the one it had, which Polyfin may have decided (see
+// DecideShowAs).
 func (s *Store) SetLibraries(ctx context.Context, scope Scope, choices []LibraryChoice) ([]Library, error) {
 	defer s.changed()
 	for i, choice := range choices {
@@ -1371,7 +1485,8 @@ func (s *Store) SetLibraries(ctx context.Context, scope Scope, choices []Library
 			if choice.MaxItems != nil && !filterable {
 				return ErrInvalidLibraryMaxItems
 			}
-			if choice.HideInMenus && catalog.Type == "tv" || choice.SkipLocal && !Skippable(installed[index], catalog) {
+			if choice.HideInMenus && catalog.Type == "tv" || choice.SkipLocal && !Skippable(installed[index], catalog) ||
+				choice.ShowAs != "" && !slices.Contains(ShowAsChoices(installed[index], catalog), choice.ShowAs) {
 				return ErrInvalidLibrary
 			}
 		}
@@ -1400,12 +1515,12 @@ func (s *Store) SetLibraries(ctx context.Context, scope Scope, choices []Library
 		}
 		for position, choice := range choices {
 			if _, err := tx.Exec(ctx, `INSERT INTO libraries (addon_id, catalog_type, catalog_id, name, position, genre, max_items, hide_in_menus,
-				skip_local, image)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (addon_id, catalog_type, catalog_id) DO UPDATE
+				skip_local, show_as, image)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), $11) ON CONFLICT (addon_id, catalog_type, catalog_id) DO UPDATE
 				SET name = excluded.name, position = excluded.position, genre = excluded.genre, max_items = excluded.max_items,
-				hide_in_menus = excluded.hide_in_menus, skip_local = excluded.skip_local`,
+				hide_in_menus = excluded.hide_in_menus, skip_local = excluded.skip_local, show_as = coalesce(excluded.show_as, libraries.show_as)`,
 				choice.AddonID, choice.CatalogType, choice.CatalogID, choice.Name, position+1, choice.Genre, choice.MaxItems,
-				choice.HideInMenus, choice.SkipLocal, NewLibraryImage(choice.CatalogType)); err != nil {
+				choice.HideInMenus, choice.SkipLocal, choice.ShowAs, NewLibraryImage(choice.CatalogType)); err != nil {
 				return err
 			}
 		}
@@ -1413,6 +1528,27 @@ func (s *Store) SetLibraries(ctx context.Context, scope Scope, choices []Library
 		return err
 	})
 	return result, err
+}
+
+// DecideShowAs stores how the enabled library of a catalog of other videos
+// shows its titles while none is chosen (see DecidedShowAs): it reports
+// whether it did, which it does not once an administrator or a user chose
+// one, or Polyfin decided one before. A choice the catalog no longer
+// takes, its type having changed, is none.
+func (s *Store) DecideShowAs(ctx context.Context, key LibraryKey, showAs string) (bool, error) {
+	if showAs != ShowAsHomeVideos && showAs != ShowAsMoviesAndShows {
+		return false, ErrInvalidLibrary
+	}
+	tag, err := s.db.Exec(ctx, `UPDATE libraries SET show_as = $4 WHERE addon_id = $1 AND catalog_type = $2 AND catalog_id = $3
+		AND (show_as IS NULL OR show_as NOT IN ('home_videos', 'movies_and_shows'))`, key.AddonID, key.CatalogType, key.CatalogID, showAs)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	s.changed()
+	return true, nil
 }
 
 // SetLibraryImage sets how one of the scope's enabled libraries finds its

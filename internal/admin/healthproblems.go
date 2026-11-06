@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/moodiness/polyfin/internal/accounts"
 	"github.com/moodiness/polyfin/internal/addons"
@@ -75,14 +77,20 @@ const (
 	// read into text.
 	problemOCRLanguage = "subtitle_ocr_language"
 	// Torrent streams do not play: their route cannot carry them, Failure
-	// tells why (a torrent.RouteError's kind, or "no_route") and Name the
-	// interface or the proxy; or their proxy offers no UDP ASSOCIATE, so
+	// tells why (a torrent.RouteError's kind, or "no_route"), Name the
+	// interface or the proxy, and Grace, while torrents playing ride the
+	// outage out, how long they go on for; or their proxy offers no UDP ASSOCIATE, so
 	// UDP trackers and the DHT are off; or a torrent did not start in time
 	// lately, Failure telling why (see torrentStartFailure) and Peers, when
-	// some were found, why they did not connect.
-	problemTorrentRoute = "torrent_route"
-	problemTorrentUDP   = "torrent_udp"
-	problemTorrentStart = "torrent_start"
+	// some were found, why they did not connect; or a torrent stopped while
+	// it played lately, At, as its route did not answer through the grace
+	// (see torrent.RouteGrace), Failure telling why (a torrent.RouteError's
+	// kind, or "route") and Name the interface, the proxy or the WireGuard
+	// server.
+	problemTorrentRoute   = "torrent_route"
+	problemTorrentUDP     = "torrent_udp"
+	problemTorrentStart   = "torrent_start"
+	problemTorrentStopped = "torrent_stopped"
 	// Every metadata addon of the server has a language: Name and To are
 	// the first one's, whose Language of its descriptions should be None.
 	problemMetadataLanguages = "metadata_languages"
@@ -115,6 +123,11 @@ const (
 	// after a backup restored on another system: Missing counts them, out
 	// of Files. While the Custom theme is chosen and loads the copy only.
 	problemThemeCopyMissing = "theme_copy_missing"
+	// Polyfin Desktop went back to the version that runs, as the new
+	// one's server stopped before it answered: Name is the version that
+	// did not start, Previous the one put back, and Error why. It lasts
+	// while an older version than Name runs.
+	problemDesktopRolledBack = "desktop_rolled_back"
 )
 
 // healthProblemJSON is something System › Health shows as needing
@@ -137,9 +150,12 @@ const (
 // Error, Let's Encrypt's, for a renewal that failed; Expires for a
 // certificate close to its end, an error once it ended; Addon, with Name
 // and Failure, for a local folder whose searches failed; Peers for a
-// torrent that did not start; Missing and Files for a theme copy missing
+// torrent that did not start; Grace for torrents playing through a route
+// that does not answer; At, Failure and Name for a torrent its
+// route stopped while it played; Missing and Files for a theme copy missing
 // files; Folder, Path and Error for a folder of the settings that cannot
-// be written into. To is the admin app's page that describes
+// be written into; Name, Previous and Error for Polyfin Desktop's return
+// to its previous version. To is the admin app's page that describes
 // it, with its anchor. Transient ones are not told as health problems:
 // they come and go with the load, or, for stopped connections, the
 // connection_stopped event told them already.
@@ -166,9 +182,16 @@ type healthProblemJSON struct {
 	File      string           `json:"file,omitempty"`
 	Error     string           `json:"error,omitempty"`
 	Expires   *time.Time       `json:"expires,omitempty"`
+	At        *time.Time       `json:"at,omitempty"`
 	Peers     *peerCountsJSON  `json:"peers,omitempty"`
-	Missing   int              `json:"missing,omitempty"`
-	Files     int              `json:"files,omitempty"`
+	// Grace, for a route that does not answer while torrents play, is the
+	// seconds they go on for, the most (see torrent.RouteGrace).
+	Grace    int    `json:"grace,omitempty"`
+	Missing  int    `json:"missing,omitempty"`
+	Files    int    `json:"files,omitempty"`
+	Previous string `json:"previous,omitempty"`
+	// Download offers to download the data of a language Tesseract lacks.
+	Download bool `json:"download,omitempty"`
 }
 
 // peerCountsJSON counts the peers a torrent that did not start found:
@@ -380,6 +403,11 @@ func (h *handler) healthProblems(ctx context.Context, language string) ([]health
 			add(p)
 		}
 	}
+	if back := h.desktopRolledBack(); back != nil {
+		p := warning("desktop_rolled_back:"+back.Version, problemDesktopRolledBack, "process")
+		p.Name, p.Previous, p.Error = back.Version, back.Previous, back.Reason
+		add(p)
+	}
 	if h.ThemeCopier != nil && h.Accounts.Settings().WebTheme == accounts.WebThemeCustom {
 		status, err := h.ThemeCopier.Status(ctx)
 		if err != nil {
@@ -447,6 +475,10 @@ func (h *handler) healthProblems(ctx context.Context, language string) ([]health
 				if errors.As(status.RouteError, &routeErr) {
 					p.Failure, p.Name = routeErr.Kind, routeErr.Route
 				}
+				if !status.RouteDownSince.IsZero() && status.Playing > 0 {
+					// The torrents playing ride the outage out, for their grace.
+					p.Grace = int(torrent.RouteGrace / time.Second)
+				}
 				add(p)
 			} else if status.NoUDP {
 				add(healthProblemJSON{Key: "torrents:udp", Code: problemTorrentUDP, Tone: notifications.SeverityWarning,
@@ -461,12 +493,26 @@ func (h *handler) healthProblems(ctx context.Context, language string) ([]health
 				add(healthProblemJSON{Key: "torrents:start", Code: problemTorrentStart, Tone: notifications.SeverityWarning,
 					To: to, Failure: failure, Peers: newPeerCountsJSON(u)})
 			}
+			if stopped := status.Stopped; stopped != nil && status.RouteError == nil && h.now().Sub(status.StoppedAt) < routeStoppedFor {
+				// While the route does not answer, its own problem tells it.
+				at := status.StoppedAt
+				p := healthProblemJSON{Key: "torrents:stopped", Code: problemTorrentStopped, Tone: notifications.SeverityWarning,
+					To: "/settings/torrents#torrent-route", Failure: "route", At: &at}
+				var routeErr *torrent.RouteError
+				if errors.As(stopped, &routeErr) {
+					p.Failure, p.Name = routeErr.Kind, routeErr.Route
+				}
+				add(p)
+			}
 		}
 	}
 	if h.Health.MissingLanguages != nil {
-		for _, code := range h.Health.MissingLanguages(ctx) {
-			add(healthProblemJSON{Key: "subtitle_ocr_language:" + code, Code: problemOCRLanguage, Tone: notifications.SeverityWarning,
-				To: "/settings/conversion#subtitle-ocr", Name: ocrLanguageName(code), File: code + ".traineddata"})
+		// A language whose data can be downloaded has the Download button,
+		// and tells why its last download failed.
+		for _, l := range h.Health.MissingLanguages(ctx) {
+			add(healthProblemJSON{Key: "subtitle_ocr_language:" + l.Language, Code: problemOCRLanguage, Tone: notifications.SeverityWarning,
+				To: "/settings/conversion#subtitle-ocr", Name: ocrLanguageName(l.Language), File: l.Language + ".traineddata",
+				Download: l.Downloadable, Error: l.Error})
 		}
 	}
 
@@ -865,6 +911,15 @@ func (p healthProblemJSON) text(language string) string {
 		default:
 			why = i18n.Text{"no route is set", "aucune route n’est définie", "es ist keine Route festgelegt", "no hay ninguna ruta definida", "nessun percorso impostato", "nenhuma rota está definida"}
 		}
+		if p.Grace > 0 {
+			return say(i18n.Text{"%s. The torrents playing go on for up to %d s; new ones cannot start. Nothing is sent another way; check the route under Settings › Torrents.",
+				"%s. Les torrents en lecture continuent jusqu’à %d s ; les nouveaux ne peuvent pas démarrer. Rien n’est envoyé par un autre chemin ; vérifiez la route dans Paramètres › Torrents.",
+				"%s. Laufende Torrents spielen bis zu %d s weiter; neue können nicht starten. Es wird nichts auf anderem Weg gesendet; prüfe die Route unter Einstellungen › Torrents.",
+				"%s. Los torrents en reproducción continúan hasta %d s; los nuevos no pueden iniciarse. No se envía nada por otra vía; compruebe la ruta en Ajustes › Torrents.",
+				"%s. I torrent in riproduzione continuano fino a %d s; quelli nuovi non possono partire. Nulla viene inviato per altra via; verifica il percorso in Impostazioni › Torrent.",
+				"%s. Os torrents em reprodução continuam por até %d s; os novos não podem começar. Nada é enviado por outro caminho; verifique a rota em Configurações › Torrents."},
+				upperFirst(why.In(language)), p.Grace)
+		}
 		return say(i18n.Text{"Torrent streams do not play: %s. Nothing is sent another way; check the route under Settings › Torrents.",
 			"Les flux torrent ne sont pas lus : %s. Rien n’est envoyé par un autre chemin ; vérifiez la route dans Paramètres › Torrents.", "Torrent-Streams werden nicht abgespielt: %s. Es wird nichts auf anderem Weg gesendet; prüfe die Route unter Einstellungen › Torrents.", "Las transmisiones torrent no se reproducen: %s. No se envía nada por otra vía; compruebe la ruta en Ajustes › Torrents.", "Gli stream torrent non vengono riprodotti: %s. Nulla viene inviato per altra via; verifica il percorso in Impostazioni › Torrent.", "As streams de torrent não são reproduzidas: %s. Nada é enviado por outro caminho; verifique a rota em Configurações › Torrents."}, why.In(language))
 	case problemTorrentUDP:
@@ -904,6 +959,44 @@ func (p healthProblemJSON) text(language string) string {
 			"Un torrent non è partito in tempo: %s. Verifica che il percorso raggiunga Internet; il log riporta la risposta di ogni tracker a livello di debug.",
 			"Um torrent não começou a tempo: %s. Verifique se a rota alcança a internet; o registro mostra a resposta de cada tracker no nível de depuração."},
 			why.In(language))
+	case problemTorrentStopped:
+		why, known := map[string]i18n.Text{
+			torrent.InterfaceMissing: {"the network interface " + p.Name + " went missing", "l’interface réseau " + p.Name + " a disparu",
+				"die Netzwerkschnittstelle " + p.Name + " ist verschwunden", "la interfaz de red " + p.Name + " desapareció",
+				"l’interfaccia di rete " + p.Name + " è scomparsa", "a interface de rede " + p.Name + " desapareceu"},
+			torrent.InterfaceDown: {"the network interface " + p.Name + " went down", "l’interface réseau " + p.Name + " s’est désactivée",
+				"die Netzwerkschnittstelle " + p.Name + " wurde deaktiviert", "la interfaz de red " + p.Name + " se desactivó",
+				"l’interfaccia di rete " + p.Name + " è stata disattivata", "a interface de rede " + p.Name + " ficou inativa"},
+			torrent.InterfaceNoAddress: {"the network interface " + p.Name + " lost its address", "l’interface réseau " + p.Name + " a perdu son adresse",
+				"die Netzwerkschnittstelle " + p.Name + " hat ihre Adresse verloren", "la interfaz de red " + p.Name + " perdió su dirección",
+				"l’interfaccia di rete " + p.Name + " ha perso il suo indirizzo", "a interface de rede " + p.Name + " perdeu o endereço"},
+			torrent.ProxyUnreachable: {"the SOCKS5 proxy " + p.Name + " did not answer", "le proxy SOCKS5 " + p.Name + " n’a pas répondu",
+				"der SOCKS5-Proxy " + p.Name + " hat nicht geantwortet", "el proxy SOCKS5 " + p.Name + " no respondió",
+				"il proxy SOCKS5 " + p.Name + " non ha risposto", "o proxy SOCKS5 " + p.Name + " não respondeu"},
+			torrent.ProxyRefused: {"the SOCKS5 proxy " + p.Name + " refused the user and password", "le proxy SOCKS5 " + p.Name + " a refusé l’utilisateur et le mot de passe",
+				"der SOCKS5-Proxy " + p.Name + " hat Benutzer und Passwort abgelehnt", "el proxy SOCKS5 " + p.Name + " rechazó el usuario y la contraseña",
+				"il proxy SOCKS5 " + p.Name + " ha rifiutato l’utente e la password", "o proxy SOCKS5 " + p.Name + " recusou o usuário e a senha"},
+			torrent.WireGuardEndpoint: {"the WireGuard server " + p.Name + " could not be looked up", "le serveur WireGuard " + p.Name + " est devenu introuvable",
+				"der WireGuard-Server " + p.Name + " konnte nicht aufgelöst werden", "no se pudo encontrar el servidor WireGuard " + p.Name,
+				"non è stato possibile risolvere il server WireGuard " + p.Name, "não foi possível encontrar o servidor WireGuard " + p.Name},
+			torrent.WireGuardDown: {"the WireGuard tunnel to " + p.Name + " stopped", "le tunnel WireGuard vers " + p.Name + " s’est arrêté",
+				"der WireGuard-Tunnel zu " + p.Name + " wurde beendet", "el túnel WireGuard hacia " + p.Name + " se detuvo",
+				"il tunnel WireGuard verso " + p.Name + " si è fermato", "o túnel WireGuard para " + p.Name + " parou"},
+			torrent.WireGuardHandshake: {"the WireGuard server " + p.Name + " did not answer the handshake", "le serveur WireGuard " + p.Name + " n’a pas répondu à la négociation",
+				"der WireGuard-Server " + p.Name + " hat nicht auf den Handshake geantwortet", "el servidor WireGuard " + p.Name + " no respondió a la negociación",
+				"il server WireGuard " + p.Name + " non ha risposto all’handshake", "o servidor WireGuard " + p.Name + " não respondeu ao handshake"},
+		}[p.Failure]
+		if !known {
+			why = i18n.Text{"its route did not answer", "sa route n’a pas répondu", "seine Route hat nicht geantwortet", "su ruta no respondió",
+				"il suo percorso non ha risposto", "a rota não respondeu"}
+		}
+		return say(i18n.Text{"A torrent stopped while playing at %s: %s. Nothing was sent another way. Check that the route stays reachable; the next play starts the torrent again.",
+			"Un torrent s’est arrêté pendant la lecture à %s : %s. Rien n’a été envoyé par un autre chemin. Vérifiez que la route reste joignable ; la prochaine lecture relance le torrent.",
+			"Ein Torrent wurde um %s während der Wiedergabe beendet: %s. Es wurde nichts auf anderem Weg gesendet. Prüfe, ob die Route erreichbar bleibt; die nächste Wiedergabe startet den Torrent erneut.",
+			"Un torrent se detuvo durante la reproducción a las %s: %s. No se envió nada por otra vía. Compruebe que la ruta sigue accesible; la próxima reproducción vuelve a iniciar el torrent.",
+			"Un torrent si è fermato durante la riproduzione alle %s: %s. Nulla è stato inviato per altra via. Verifica che il percorso resti raggiungibile; la prossima riproduzione riavvia il torrent.",
+			"Um torrent parou durante a reprodução às %s: %s. Nada foi enviado por outro caminho. Verifique se a rota continua acessível; a próxima reprodução inicia o torrent de novo."},
+			p.At.Local().Format("15:04"), why.In(language))
 	case problemDLNAPort:
 		return say(i18n.Text{"Polyfin cannot listen on UDP port %d, so DLNA devices on the local network do not find it by themselves. " +
 			"Another program probably uses it, such as another DLNA server on the same host. Saving the settings tries again.",
@@ -940,10 +1033,16 @@ func (p healthProblemJSON) text(language string) string {
 		}
 		return say(i18n.Text{"The HTTPS certificate expires on %s.", "Le certificat HTTPS expire le %s.", "Das HTTPS-Zertifikat läuft am %s ab.", "El certificado HTTPS caduca el %s.", "Il certificato HTTPS scade il %s.", "O certificado HTTPS expira em %s."}, p.Expires.Format(time.DateOnly))
 	case problemOCRLanguage:
+		failed := ""
+		if p.Error != "" {
+			failed = " " + say(i18n.Text{"The last download of its data failed: %s", "Le dernier téléchargement de ses données a échoué : %s",
+				"Der letzte Download der Daten ist fehlgeschlagen: %s", "La última descarga de sus datos falló: %s",
+				"L’ultimo download dei suoi dati non è riuscito: %s", "O último download dos dados falhou: %s"}, p.Error)
+		}
 		return say(i18n.Text{"Picture subtitles in %s are not read into text: Tesseract has no data for this language. " +
 			"Add the file %s to the folder POLYFIN_TESSDATA_DIR names.",
 			"Les sous-titres en images en %s ne sont pas lus en texte : Tesseract n’a pas de données pour cette langue. " +
-				"Ajoutez le fichier %s au dossier que nomme POLYFIN_TESSDATA_DIR.", "Bilduntertitel in %s werden nicht in Text umgewandelt: Tesseract hat keine Daten für diese Sprache. Füge die Datei %s dem Ordner hinzu, den POLYFIN_TESSDATA_DIR angibt.", "Los subtítulos en imagen en %s no se convierten a texto: Tesseract no tiene datos para este idioma. Añada el archivo %s a la carpeta que indica POLYFIN_TESSDATA_DIR.", "I sottotitoli grafici in %s non vengono convertiti in testo: Tesseract non ha dati per questa lingua. Aggiungi il file %s alla cartella indicata da POLYFIN_TESSDATA_DIR.", "As legendas em imagem em %s não são convertidas em texto: o Tesseract não tem dados para este idioma. Adicione o arquivo %s à pasta indicada por POLYFIN_TESSDATA_DIR."}, p.Name, p.File)
+				"Ajoutez le fichier %s au dossier que nomme POLYFIN_TESSDATA_DIR.", "Bilduntertitel in %s werden nicht in Text umgewandelt: Tesseract hat keine Daten für diese Sprache. Füge die Datei %s dem Ordner hinzu, den POLYFIN_TESSDATA_DIR angibt.", "Los subtítulos en imagen en %s no se convierten a texto: Tesseract no tiene datos para este idioma. Añada el archivo %s a la carpeta que indica POLYFIN_TESSDATA_DIR.", "I sottotitoli grafici in %s non vengono convertiti in testo: Tesseract non ha dati per questa lingua. Aggiungi il file %s alla cartella indicata da POLYFIN_TESSDATA_DIR.", "As legendas em imagem em %s não são convertidas em texto: o Tesseract não tem dados para este idioma. Adicione o arquivo %s à pasta indicada por POLYFIN_TESSDATA_DIR."}, p.Name, p.File) + failed
 	case problemMetadataLanguages:
 		return say(i18n.Text{"%s: every metadata addon of the server has a language, so they describe titles in their language for every user, whatever their metadata language. " +
 			"Keep Language of its descriptions at None on this addon, or on one more metadata addon.",
@@ -957,6 +1056,14 @@ func (p healthProblemJSON) text(language string) string {
 			"%s, %s, non è scrivibile: nel frattempo Polyfin tiene questi file nella cache della sua cartella dei dati. Rendi la cartella scrivibile o scegline un’altra, poi riavvia Polyfin.",
 			"%s, %s, não pode ser gravada: enquanto isso, o Polyfin guarda esses arquivos no cache da sua pasta de dados. Torne a pasta gravável ou escolha outra, depois reinicie o Polyfin."},
 			workFolders[p.Folder].In(language), p.Path)
+	case problemDesktopRolledBack:
+		return say(i18n.Text{"Polyfin Desktop went back to version %s, as version %s did not start: %s. That version is no longer offered; the next one will be.",
+			"Polyfin Desktop est revenu à la version %s, car la version %s n’a pas démarré : %s. Cette version n’est plus proposée ; la suivante le sera.",
+			"Polyfin Desktop ist zu Version %s zurückgekehrt, da Version %s nicht gestartet ist: %s. Diese Version wird nicht mehr angeboten, die nächste schon.",
+			"Polyfin Desktop volvió a la versión %s, ya que la versión %s no se inició: %s. Esa versión ya no se ofrece; la siguiente sí.",
+			"Polyfin Desktop è tornato alla versione %s, perché la versione %s non si è avviata: %s. Quella versione non viene più proposta; la prossima sì.",
+			"O Polyfin Desktop voltou para a versão %s, pois a versão %s não iniciou: %s. Essa versão não é mais oferecida; a próxima será."},
+			p.Previous, p.Name, p.Error)
 	case problemThemeCopyMissing:
 		return say(i18n.Text{"The copy of the web player theme misses %d of its %d files in Polyfin’s data folder, as after a backup restored on another system: browsers load them from their original addresses meanwhile, which needs the internet. Update the copy under Settings › Web player, or choose another theme.",
 			"La copie du thème du lecteur web n’a plus %d de ses %d fichiers dans le dossier de données de Polyfin, comme après la restauration d’une sauvegarde sur un autre système : les navigateurs les chargent en attendant depuis leurs adresses d’origine, ce qui demande internet. Mettez la copie à jour dans Paramètres › Lecteur web, ou choisissez un autre thème.",
@@ -1021,3 +1128,15 @@ func gigabytes(bytes int64, language string) string {
 // unless a torrent starts meanwhile: as long as a play leaves its version
 // out.
 const unstartedFor = 15 * time.Minute
+
+// routeStoppedFor is how long Health tells of a torrent its route stopped
+// while it played, and of the outages of the route plays went on through:
+// as long as of a torrent that did not start.
+const routeStoppedFor = unstartedFor
+
+// upperFirst is text with its first letter in capitals, as a sentence
+// starts.
+func upperFirst(text string) string {
+	r, size := utf8.DecodeRuneInString(text)
+	return string(unicode.ToUpper(r)) + text[size:]
+}

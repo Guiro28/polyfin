@@ -54,6 +54,7 @@ func DefaultSettings() Settings {
 		CatalogLimit:        DefaultCatalogLimit,
 		ChannelLimit:        DefaultChannelLimit,
 		UpdateCheck:         true,
+		IncludePrereleases:  false,
 		LocalDiscovery:      true,
 		LocalAddress:        "",
 		DLNA:                false,
@@ -116,6 +117,7 @@ func DefaultSettings() Settings {
 		ConvertedDownloads:  false,
 		SubtitleOCR:         SubtitleOCRModes[0],
 		SubtitleOCRTracks:   DefaultSubtitleOCRTracks,
+		SubtitleOCRDownload: false,
 
 		EncoderPreset:              EncoderPresets[0],
 		AllowHevcEncoding:          false,
@@ -134,6 +136,8 @@ func DefaultSettings() Settings {
 		AheadSeconds:               DefaultAheadSeconds,
 		KeepConvertedVideo:         false,
 		FastStart:                  false,
+		NormalizeConvertedAudio:    false,
+		DynamicRangeCompression:    DynamicRangeCompressions[0],
 
 		Trickplay:          false,
 		TrickplayInterval:  DefaultTrickplayInterval,
@@ -293,6 +297,7 @@ func SettingsBounds() map[string]SettingBounds {
 		"catalogLimit":        between(MinCatalogLimit, MaxCatalogLimit, d.CatalogLimit),
 		"channelLimit":        between(MinChannelLimit, MaxChannelLimit, d.ChannelLimit),
 		"updateCheck":         is(d.UpdateCheck),
+		"includePrereleases":  is(d.IncludePrereleases),
 		"localDiscovery":      is(d.LocalDiscovery),
 		"localAddress":        text(MaxLocalAddressBytes, d.LocalAddress),
 		"dlna":                is(d.DLNA),
@@ -364,6 +369,7 @@ func SettingsBounds() map[string]SettingBounds {
 		"convertedDownloads":  is(d.ConvertedDownloads),
 		"subtitleOcr":         choice(d.SubtitleOCR, anys(SubtitleOCRModes)),
 		"subtitleOcrTracks":   between(MinSubtitleOCRTracks, MaxSubtitleOCRTracks, d.SubtitleOCRTracks),
+		"subtitleOcrDownload": is(d.SubtitleOCRDownload),
 		// "" or the ISO 639-2/B code of a language (see TrackLanguages).
 		"defaultAudioLanguage":    choice(d.DefaultAudioLanguage, anys(TrackLanguages())),
 		"defaultSubtitleLanguage": choice(d.DefaultSubtitleLanguage, anys(TrackLanguages())),
@@ -391,6 +397,8 @@ func SettingsBounds() map[string]SettingBounds {
 		"aheadSeconds":               between(MinAheadSeconds, MaxAheadSeconds, d.AheadSeconds),
 		"keepConvertedVideo":         is(d.KeepConvertedVideo),
 		"fastStart":                  is(d.FastStart),
+		"normalizeConvertedAudio":    is(d.NormalizeConvertedAudio),
+		"dynamicRangeCompression":    choice(d.DynamicRangeCompression, anys(DynamicRangeCompressions)),
 
 		"trickplay":          is(d.Trickplay),
 		"trickplayInterval":  between(MinTrickplayInterval, MaxTrickplayInterval, d.TrickplayInterval),

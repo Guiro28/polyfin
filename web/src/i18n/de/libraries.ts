@@ -11,7 +11,7 @@ const libraries: typeof en = {
     shownHelpMine:
       'Bibliotheken erscheinen in dieser Reihenfolge, nach den Bibliotheken des Servers, falls du sie verwendest. Lass einen Namen leer, um den Katalognamen zu verwenden. Bei Bibliotheken mit gleichem Namen wird in den Apps der Typ ergänzt, zum Beispiel „Beliebt (Filme)“.',
     defaultHelp:
-      'Wenn ein Add-on installiert wird, werden seine Sammlungskataloge zu Bibliotheken: Jede zeigt ihre Sammlungen (zum Beispiel Genres oder Jahrzehnte), die sich mit ihren Filmen und Serien öffnen. Bei einem Add-on ohne Sammlungen werden seine Film-, Serien- und TV-Kataloge zu Bibliotheken, bis zu 20. Das ist nur ein Ausgangspunkt: Aktiviere so viele Kataloge, wie du möchtest. Jede Bibliothek fügt dem Startbildschirm der Jellyfin-Apps eine Zeile hinzu, außer TV-Kataloge, deren Kanäle unter Live-TV erscheinen.',
+      'Wenn ein Add-on installiert wird, werden seine Sammlungskataloge zu Bibliotheken: Jede zeigt ihre Sammlungen (zum Beispiel Genres oder Jahrzehnte), die sich mit ihren Filmen und Serien öffnen. Bei einem Add-on ohne Sammlungen werden seine Film-, Serien- und TV-Kataloge zu Bibliotheken. Polyfin macht das nur, bis der Server insgesamt 20 Bibliotheken hat, die aller Add-ons zusammen. Das ist nur ein Ausgangspunkt: Aktiviere so viele Kataloge, wie du möchtest. Jede Bibliothek fügt dem Startbildschirm der Jellyfin-Apps eine Zeile hinzu, außer TV-Kataloge, deren Kanäle unter Live-TV erscheinen.',
     manyWarning: 'Mehr als 20 Bibliotheken können den Startbildschirm der Jellyfin-Apps überladen.',
     noAddons: 'Füge zuerst eine Quelle hinzu: Ihre Kataloge werden dann hier aufgelistet.',
     shownEmpty: 'Keine Bibliothek: Jellyfin-Apps zeigen nichts aus diesen Add-ons an.',
@@ -30,6 +30,31 @@ const libraries: typeof en = {
     skipLocalHelp:
       'Ein Film oder eine Serie, die die Bibliothek eines lokalen Ordners unter derselben Kennung auflistet, erscheint nur dort. Versionen und Gesehen-Status bleiben gleich, und die Suche findet den Titel einmal. Wer die Bibliothek des Ordners nicht sieht, findet ihn weiterhin hier.',
     skippedLocal: 'Ohne Titel lokaler Ordner',
+    showAs: {
+      label: 'Anzeigen als',
+      choices: {
+        home_videos: 'Heimvideos',
+        listed: 'Wie im Katalog',
+        movies_and_shows: 'Filme und Serien',
+      },
+      pill: {
+        home_videos: 'Als Heimvideos angezeigt',
+        listed: 'Wie im Katalog angezeigt',
+        movies_and_shows: 'Als Filme und Serien angezeigt',
+      },
+      help: {
+        home_videos:
+          'Jeder Titel ist ein Ordner seiner Videos oder ein einzelnes Video, wie in einer Heimvideo-Bibliothek. Apps, die nur Filme und Serien auflisten, lassen die Bibliothek weg.',
+        listed:
+          'Eine Film- oder Serienbibliothek, wie es der Typ des Katalogs sagt: Ein Titel der anderen Art zählt in ihrer Gesamtzahl, aber keiner ihrer Tabs zeigt ihn.',
+        titles:
+          'Für Jellyfin-Apps, die nur Filme und Serien auflisten: Ein Titel mit mehreren Videos oder einem als Episode nummerierten wird zur Serie, seine Videos zu ihren Episoden; ein Titel ohne Videos oder mit einer Datei zum Film. Titel, die der Katalog als Filme oder Serien angibt, bleiben, wie sie sind. Gesehen-Markierungen, Fortsetzungspunkte und Favoriten gehen beim Speichern mit.',
+        mixed:
+          'Eine Bibliothek ohne Typ, wie die gemischten Film- und Serienbibliotheken von Jellyfin: Jeder Titel wird als der Film oder die Serie aufgelistet, die er ist, sodass ihre Tabs auch eine Serie zeigen, die ein Filmkatalog listet, mit genauen Zahlen. Gesehen-Markierungen und Favoriten bleiben.',
+      },
+      undecided:
+        'Polyfin zeigt sie als Filme und Serien an, sobald es die erste Seite des Katalogs liest, wenn dort jeder Titel ein Film oder eine Serie ist.',
+    },
     remove: 'Entfernen',
     removeLabel: (name: string) => `${name} entfernen`,
     moreActions: (name: string) => `Weitere Aktionen für ${name}`,

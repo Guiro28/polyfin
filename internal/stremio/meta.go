@@ -406,8 +406,8 @@ func extraPath(extra []ExtraValue) string {
 
 // Catalog lists one page of a catalog.
 func (c *Client) Catalog(ctx context.Context, manifestURL, catalogType, catalogID string, extra []ExtraValue, confined bool) ([]Meta, error) {
-	target := BaseURL(manifestURL) + "/catalog/" + encodeComponent(catalogType) + "/" + encodeComponent(catalogID) + extraPath(extra)
-	body, err := c.get(ctx, manifestURL, target+".json", confined)
+	target := ResourceURL(manifestURL, "/catalog/"+encodeComponent(catalogType)+"/"+encodeComponent(catalogID)+extraPath(extra)+".json")
+	body, err := c.get(ctx, manifestURL, target, confined)
 	if err != nil {
 		return nil, err
 	}
@@ -446,9 +446,13 @@ func unmarshal(data []byte, v any) error {
 	return err
 }
 
-// Meta returns the complete description of a title.
+// Meta returns the complete description of a title. A description that
+// is not the title's (see Describes) is ErrInvalidResponse, a failed
+// description, so that it is never kept as the title's; one of another
+// identifier that says the addon refused the request for its rate is,
+// whatever its type, and ErrRateLimited too.
 func (c *Client) Meta(ctx context.Context, manifestURL, metaType, id string, confined bool) (Meta, error) {
-	body, err := c.get(ctx, manifestURL, BaseURL(manifestURL)+"/meta/"+encodeComponent(metaType)+"/"+encodeComponent(id)+".json", confined)
+	body, err := c.get(ctx, manifestURL, ResourceURL(manifestURL, "/meta/"+encodeComponent(metaType)+"/"+encodeComponent(id)+".json"), confined)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -461,7 +465,23 @@ func (c *Client) Meta(ctx context.Context, manifestURL, metaType, id string, con
 	if response.Meta == nil || response.Meta.ID == "" {
 		return Meta{}, ErrNotFound
 	}
+	if response.Meta.ID != id && SaysRateLimited(response.Meta.Name, response.Meta.Description) {
+		return Meta{}, fmt.Errorf("%w: %w: meta: asked for %s %q", ErrInvalidResponse, ErrRateLimited, metaType, id)
+	}
+	if !response.Meta.Describes(metaType, id) {
+		return Meta{}, fmt.Errorf("%w: meta: asked for %s %q, the addon described %s %q", ErrInvalidResponse, metaType, id,
+			response.Meta.Type, response.Meta.Name)
+	}
 	meta := response.Meta.Meta
 	response.Meta.Links.credit(&meta)
 	return meta, nil
+}
+
+// Describes reports whether m may describe the title of type metaType
+// and identifier id. A description of another identifier and another
+// type is not the title's but the addon's notice, such as an error it
+// describes as a title when it refuses a request. An addon may describe a
+// title by another identifier, or say nothing of its type.
+func (m Meta) Describes(metaType, id string) bool {
+	return m.ID == id || m.Type == "" || m.Type == metaType
 }

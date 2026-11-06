@@ -151,6 +151,8 @@ const system: typeof en = {
           `Polyfin kann nicht auf UDP-Port ${port} lauschen, daher finden Jellyfin-Apps im lokalen Netzwerk den Server nicht von selbst. Wahrscheinlich nutzt ein anderes Programm den Port, etwa ein Jellyfin-Server auf demselben Host. Beim Speichern der Einstellungen wird es erneut versucht.`,
         torrentRoute: (why: string) =>
           `Torrent-Streams werden nicht abgespielt: ${why}. Es wird nichts auf anderem Weg gesendet; prüfe die Route unter Einstellungen › Torrents.`,
+        torrentRouteRiding: (why: string, seconds: number) =>
+          `${why}. Laufende Torrents spielen bis zu ${seconds} s weiter; neue können nicht starten. Es wird nichts auf anderem Weg gesendet; prüfe die Route unter Einstellungen › Torrents.`,
         torrentWhy: {
           interface_missing: (name: string) => `die Netzwerkschnittstelle ${name} fehlt`,
           interface_down: (name: string) => `die Netzwerkschnittstelle ${name} ist deaktiviert`,
@@ -180,6 +182,23 @@ const system: typeof en = {
           no_trackers:
             'das Add-on hat keinen Tracker genannt, und das DHT hat keinen Peer gefunden',
           silent: 'es wurden Peers gefunden, aber keiner hat ihn gesendet',
+        },
+        torrentStopped: (at: string, why: string) =>
+          `Ein Torrent wurde um ${at} während der Wiedergabe beendet: ${why}. Es wurde nichts auf anderem Weg gesendet. Prüfe, ob die Route erreichbar bleibt; die nächste Wiedergabe startet den Torrent erneut.`,
+        torrentStoppedWhy: {
+          interface_missing: (name: string) => `die Netzwerkschnittstelle ${name} ist verschwunden`,
+          interface_down: (name: string) => `die Netzwerkschnittstelle ${name} wurde deaktiviert`,
+          interface_no_address: (name: string) =>
+            `die Netzwerkschnittstelle ${name} hat ihre Adresse verloren`,
+          proxy_unreachable: (name: string) => `der SOCKS5-Proxy ${name} hat nicht geantwortet`,
+          proxy_refused: (name: string) =>
+            `der SOCKS5-Proxy ${name} hat Benutzer und Passwort abgelehnt`,
+          wireguard_endpoint: (name: string) =>
+            `der WireGuard-Server ${name} konnte nicht aufgelöst werden`,
+          wireguard_down: (name: string) => `der WireGuard-Tunnel zu ${name} wurde beendet`,
+          wireguard_handshake: (name: string) =>
+            `der WireGuard-Server ${name} hat nicht auf den Handshake geantwortet`,
+          route: () => 'seine Route hat nicht geantwortet',
         },
         torrentStartPeers: (found: number, why: string) =>
           `${found} ${found === 1 ? 'Peer' : 'Peers'} gefunden: ${why}`,
@@ -216,8 +235,12 @@ const system: typeof en = {
         httpsExpired: (date: string) => `Das HTTPS-Zertifikat ist am ${date} abgelaufen.`,
         subtitleOcrLanguage: (name: string, file: string) =>
           `Bilduntertitel in ${name} werden nicht in Text umgewandelt: Tesseract hat keine Daten für diese Sprache. Füge die Datei ${file} dem Ordner hinzu, den POLYFIN_TESSDATA_DIR angibt.`,
+        subtitleOcrDownloadFailed: (error: string) =>
+          `Der letzte Download der Daten ist fehlgeschlagen: ${error}`,
         metadataLanguages: (name: string) =>
           `${name}: Jedes Metadaten-Add-on des Servers hat eine Sprache, daher beschreiben sie Titel für jeden Benutzer in ihrer Sprache, unabhängig von seiner Metadatensprache. Belasse „Sprache der Beschreibungen“ bei diesem Add-on oder bei einem weiteren Metadaten-Add-on auf „Keine“.`,
+        desktopRolledBack: (version: string, previous: string, error: string) =>
+          `Polyfin Desktop ist zu Version ${previous} zurückgekehrt, da Version ${version} nicht gestartet ist: ${error}. Diese Version wird nicht mehr angeboten, die nächste schon.`,
         themeCopyMissing: (missing: number, files: number) =>
           `Der Kopie des Web-Player-Themes fehlen ${missing} ihrer ${files} Dateien im Datenordner von Polyfin, wie nach dem Wiederherstellen einer Sicherung auf einem anderen System: Browser laden sie bis dahin von ihren ursprünglichen Adressen, was Internet braucht. Aktualisiere die Kopie unter Einstellungen › Web-Player oder wähle ein anderes Theme.`,
         folderUnwritable: (name: string, path: string) =>
@@ -272,6 +295,9 @@ const system: typeof en = {
       check: 'Prüfen',
       checkLabel: (name: string) => `${name} jetzt prüfen`,
       checking: 'Wird geprüft…',
+      downloadLanguage: 'Herunterladen',
+      downloadLanguageLabel: (name: string) => `Tesseract-Daten für ${name} herunterladen`,
+      downloadingLanguage: 'Wird heruntergeladen…',
       iptvTitle: 'IPTV-Quellen',
       guidesTitle: 'Fernsehprogramme',
       sharesTitle: 'Netzwerkfreigaben',
@@ -377,6 +403,17 @@ const system: typeof en = {
       torrentPeers: 'Peers',
       torrentUTPPeers: 'Peers über uTP',
       torrentsShared: 'Geteilt seit dem Start',
+      torrentOutageAt: (at: string) => `Ausfall um ${at}`,
+      torrentOutage: {
+        interface: (span: string) =>
+          `die Netzwerkschnittstelle hat ${span} lang nicht geantwortet; die Wiedergabe lief weiter`,
+        proxy: (span: string) =>
+          `der Proxy hat ${span} lang nicht geantwortet; die Wiedergabe lief weiter`,
+        wireguard: (span: string) =>
+          `der WireGuard-Server hat ${span} lang nicht geantwortet; die Wiedergabe lief weiter`,
+        '': (span: string) =>
+          `die Route hat ${span} lang nicht geantwortet; die Wiedergabe lief weiter`,
+      },
       disksTitle: 'Speicherplatz',
       folders: {
         cache: 'Cache',
@@ -419,6 +456,47 @@ const system: typeof en = {
       notHeld: 'Jetzt',
       titlesWaiting: 'Wartende Titel',
       titlesKept: 'Titel mit gespeicherten Bewertungen',
+      artworkTitle: 'Artwork',
+      artworkHelp:
+        'Artwork-Downloads von den Bildservern der Add-ons, die in der letzten Stunde fehlgeschlagen sind. Ein fehlgeschlagenes Bild wird später erneut angefragt, mit jedem Fehlschlag später; ein Server, der um Warten bittet, wird bis dahin nicht angefragt.',
+      artworkFailed: 'Fehlgeschlagen in der letzten Stunde',
+      artworkKinds: {
+        not_found: 'Nicht gefunden',
+        rate_limited: 'Um Drosselung gebeten',
+        timeout: 'Zeitüberschreitung',
+        server_error: 'Serverfehler',
+        other: 'Andere Fehler',
+      } as Record<string, string>,
+      artworkHosts: 'Fehlgeschlagene Server',
+      artworkNoFailures: 'In der letzten Stunde ist kein Artwork-Download fehlgeschlagen.',
+      artworkWaiting: 'Abgewartete Server',
+      artworkNoWaiting: 'Kein Server wird abgewartet.',
+      artworkWaitingUntil: (time: string) => `nicht angefragt bis ${time}`,
+      artworkSparedUntil: (time: string) => `weniger gleichzeitig angefragt bis ${time}`,
+      peopleTitle: 'Personen',
+      peopleHelp:
+        'Fotos und Biografien von Personen von TMDB. Eine Person wird nachgeschlagen, sobald die Besetzung eines Titels sie ohne Foto zeigt oder ihre Seite geöffnet wird.',
+      peopleNoKey:
+        'Unter Einstellungen › Inhalte ist kein TMDB-API-Schlüssel gespeichert: Personen und Besetzungen zeigen nur, was die Add-ons liefern. Ein Schlüssel eines kostenlosen TMDB-Kontos bringt:',
+      peopleNoKeyBrings: [
+        'Fotos und Biografien von Personen',
+        'Besetzung und Stab jedes Titels von TMDB, in der Reihenfolge des Abspanns, mit Fotos',
+        'Personenseiten mit jedem Bibliothekstitel, in dem sie genannt werden',
+        'Die Titel, für die TMDB jede Person am besten kennt, auf ihrer Seite, über die Bibliotheken hinaus',
+        'Poster für Filme und Serien, deren Add-on keines liefert',
+        'Box-Sets in den Apps von Silo',
+        'TMDB-Bilder in „Bilder bearbeiten“',
+      ],
+      peopleNoKeyLink: 'Schlüssel unter Einstellungen › Inhalte hinzufügen',
+      tmdbKey: 'TMDB-API-Schlüssel',
+      tmdbKeySaved: 'Gespeichert',
+      peopleFound: 'Auf TMDB gefunden',
+      peopleNotFound: 'Nicht gefunden',
+      peopleFailing: 'Fehlgeschlagene Abfragen',
+      peopleWaiting: 'Wartende Abfragen',
+      tmdbLimited: 'Letzte Drosselung durch TMDB',
+      tmdbNeverLimited: 'Keine seit dem Serverstart',
+      tmdbLimitedAt: (time: string, wait: string) => (wait ? `${time}, Wartezeit ${wait}` : time),
       backupTitle: 'Backups',
       backupOff: 'Backups sind deaktiviert. Aktiviere sie unter Einstellungen › Backups.',
       backup: {

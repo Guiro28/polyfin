@@ -108,6 +108,13 @@ export type User = {
    * others, whatever the version order's criteria.
    */
   localFirst: boolean
+  /** Whether the user's web player boosts the volume of videos, in the browser. */
+  boostVolume: boolean
+  /**
+   * Whether the server converts the audio of the user's videos and channels, evened at -16 LUFS,
+   * their video copied: louder in every app, without direct play.
+   */
+  convertSound: boolean
   /** The date the account ends, YYYY-MM-DD in the server's time zone; null for never. */
   endsOn: string | null
   /** Whether the end date has come: the account is refused as a disabled one is. */
@@ -151,6 +158,8 @@ export type GroupLimits = Pick<
   | 'maxBitrate'
   | 'qualityGroup'
   | 'localFirst'
+  | 'boostVolume'
+  | 'convertSound'
   | 'syncPlay'
   | 'liveTv'
   | 'remoteControl'
@@ -348,6 +357,7 @@ export type Settings = {
   legacyAuthorization: boolean
   /** Asks GitHub once a day for Polyfin's latest release, to tell administrators of a new version. */
   updateCheck: boolean
+  includePrereleases: boolean
   /** Answers the discovery messages Jellyfin apps broadcast on the local network (UDP port 7359). */
   localDiscovery: boolean
   /**
@@ -519,6 +529,8 @@ export type Settings = {
   subtitleOcr: SubtitleOcr
   /** Picture subtitle tracks read at once. */
   subtitleOcrTracks: number
+  /** Downloads the Tesseract data of a language the first time a track needs it. */
+  subtitleOcrDownload: boolean
   /**
    * The audio and subtitle languages of the users who chose none, ISO 639-2/B codes as their own
    * preferences take them, or '' for none.
@@ -581,6 +593,10 @@ export type Settings = {
   /** Stereo downmix, and the volume it is multiplied by. */
   downmixAlgorithm: DownmixAlgorithm
   downmixBoost: number
+  /** Evens the loudness of converted video audio at -16 LUFS; direct play, copied audio and music keep theirs. */
+  normalizeConvertedAudio: boolean
+  /** How converted AC-3 and E-AC-3 apply their tracks' dynamic range compression. */
+  dynamicRangeCompression: DynamicRangeCompression
   /** Most channels of converted audio, 0 for no limit but the app's. */
   maxAudioChannels: number
   /** Bitrate of converted audio per channel, in kb/s; 0 keeps Polyfin's. */
@@ -869,6 +885,7 @@ export type ToneMappingAlgorithm =
 export type DeinterlaceMethod = 'yadif' | 'bwdif'
 export type AdaptiveQuality = 'off' | 'remote' | 'always'
 export type DownmixAlgorithm = 'None' | 'Dave750' | 'NightmodeDialogue' | 'Rfc7845' | 'Ac4'
+export type DynamicRangeCompression = 'encoded' | 'none' | 'night'
 export type SubtitleOcr = 'off' | 'played' | 'scans'
 
 /** A GPU conversions run on. */
@@ -964,6 +981,8 @@ export type UserPatch = Partial<{
   liveTvChannels: ChannelRule
   qualityGroup: QualityGroup
   localFirst: boolean
+  boostVolume: boolean
+  convertSound: boolean
   /** YYYY-MM-DD, or null for never. */
   endsOn: string | null
   /** Joins this group and takes its values; '' leaves the group, keeping them as own settings. */
@@ -1151,6 +1170,13 @@ export type LocalFolder = {
    * last described; they are listed all the same, named after their files.
    */
   unlistedEpisodes: number
+  /**
+   * Its files named by an absolute number, as "Show - 41", that are versions of the catalog's episodes
+   * of their places.
+   */
+  absoluteEpisodes: number
+  /** Its shows' files their numbering could not place, each an episode of its own. */
+  unmappedEpisodes: number
 }
 
 /**
@@ -1199,6 +1225,7 @@ export type UnmatchedFile = {
     | 'disc_title'
     | 'disc_episode'
     | 'lone_extra'
+    | EpisodeNameReason
   /** For a failed search, the addon that failed it and why; null for another reason. */
   search: SearchFailure | null
   /**
@@ -1218,6 +1245,69 @@ export type UnmatchedFile = {
     episode: string | null
     suggested: string | null
   } | null
+}
+
+/**
+ * Why the name of a matched show's file tells no episode: an episode's number outside a season's
+ * folder, an air date, or no number at all.
+ */
+export type EpisodeNameReason = 'no_season' | 'air_date' | 'no_episode_number'
+
+/** Episodes as ranges of numbers that follow one another, `[first, last]`. */
+export type EpisodeRanges = [number, number][]
+
+/**
+ * A show of a local folder whose files hold episodes its metadata addon does not list: by season,
+ * the numbers its files hold that the addon does not list, and those the addon lists in the
+ * season, empty when it has no such season. `described` is false while the addon's numbers are not
+ * known yet; `catalogFirst` and `catalogLast` are the addon's first and last episodes, specials
+ * left out unless it lists only specials, null when it lists none.
+ */
+export type UnlistedShow = {
+  imdbId: string
+  name: string
+  unit: string
+  described: boolean
+  catalogFirst: { season: number; episode: number } | null
+  catalogLast: { season: number; episode: number } | null
+  seasons: { season: number; files: EpisodeRanges; catalog: EpisodeRanges }[]
+  numbering: ShowNumbering
+  group: string
+}
+
+/**
+ * How a show's files are numbered: as its catalog, per season, continuing from season 1, by
+ * absolute number, or in one of the series' TMDB episode groups.
+ */
+export type ShowNumbering = 'catalog' | 'per_season' | 'continuing' | 'absolute' | 'order'
+
+/** Why a show's numbering could not place a file, which is then an episode of its own. */
+export type UnmappedReason =
+  'no_catalog' | 'outside_season' | 'beyond_catalog' | 'not_in_order' | 'not_listed' | 'no_order'
+
+/**
+ * A show a shows folder holds: how its files are numbered (`group` the TMDB episode group of
+ * `order`), how many its numbering mapped to the catalog's episodes, and those it could not place,
+ * each with the season and episodes it tells, its absolute number when its name tells one alone,
+ * the episode of its own it is listed as, and why.
+ */
+export type FolderShow = {
+  imdbId: string
+  name: string
+  unit: string
+  files: number
+  numbering: ShowNumbering
+  group: string
+  mapped: number
+  unmapped: {
+    path: string
+    season: number
+    episode: number
+    lastEpisode: number
+    absolute: number | null
+    listed: { season: number; episode: number }
+    reason: UnmappedReason
+  }[]
 }
 
 export type NewLocalFolder = {
@@ -1496,8 +1586,9 @@ export type LineupChannel = {
   moved: boolean
   enabled: boolean
   shown: boolean
-  number: number | null
-  providerNumber: number | null
+  /** The number the channel shows, and the provider's, as written (`104.5`). */
+  number: string | null
+  providerNumber: string | null
   fixedNumber: number | null
   /** The provider's tvg-id, empty without. */
   guideId: string
@@ -1568,7 +1659,7 @@ export type MappingState = 'all' | 'mapped' | 'unmapped' | 'manual'
 export type MappingItem = {
   channelId: string
   name: string
-  number: number | null
+  number: string
   guideId: string
   mapping: GuideMapping | null
 }
@@ -1657,6 +1748,18 @@ export type Library = {
    */
   skippable: boolean
   /**
+   * How the library shows its catalog's titles, one of `showAsChoices`; null while none is chosen:
+   * a catalog of other videos is then shown as home videos until the server decides from its first
+   * page (movies and shows when its titles are all movies and series), the others as listed.
+   */
+  showAs: LibraryShowAs | null
+  /**
+   * The ways the library may show its titles, the default first: `home_videos` or
+   * `movies_and_shows` for a catalog of other videos, `listed` or `movies_and_shows` for a catalog of
+   * movies or series of an addon. Empty for any other catalog.
+   */
+  showAsChoices: LibraryShowAs[]
+  /**
    * Whether an enabled library of the server's has its descriptions read again on request: a movie
    * or series library of a Stremio addon or a local folder. False in the users' own scopes.
    */
@@ -1700,8 +1803,8 @@ export const libraryOrders = () =>
 export const applyLibraryOrder = () =>
   request<LibraryOrders>('DELETE', '/scopes/shared/libraries/user-orders')
 
-/** A series as Episode orders lists and finds it. */
-export type OrderedSeries = { id: string; name: string; year: number }
+/** A series as Episode orders lists and finds it; `posterId` as `AccountTitle`'s. */
+export type OrderedSeries = { id: string; name: string; year: number; posterId: string }
 
 /** The name Jellyfin gives a TMDB episode group's type, a series' DisplayOrder. */
 export type EpisodeGroupType =
@@ -1778,7 +1881,15 @@ export const MAX_LIBRARY_ITEMS = 20000
 
 /** One enabled library in the list sent to PUT /scopes/{scope}/libraries. */
 export type LibrarySelection = Pick<Library, 'addonId' | 'catalogType' | 'catalogId' | 'name'> &
-  Partial<Pick<Library, 'genre' | 'maxItems' | 'hideInMenus' | 'skipLocal'>>
+  Partial<Pick<Library, 'genre' | 'maxItems' | 'hideInMenus' | 'skipLocal' | 'showAs'>>
+
+/**
+ * How a library shows its titles: as home videos (folders of videos, and videos); as its catalog
+ * lists them (a movie or series library); or as movies and shows, in a library without a type:
+ * the titles of other videos made movies and shows, or a movie or series catalog's titles each as
+ * its own type.
+ */
+export type LibraryShowAs = 'home_videos' | 'listed' | 'movies_and_shows'
 
 export type LibraryImageChoice = 'none' | 'automatic' | 'generated' | 'custom'
 
@@ -2176,6 +2287,18 @@ export const saveOwnAudioRegion = (region: string) =>
   request<AudioRegion>('PUT', '/account/audio-region', { region })
 
 /**
+ * The signed-in user's sound options (see User), and whether their group holds them, which they
+ * then cannot change.
+ */
+export type OwnSound = { boostVolume: boolean; convertSound: boolean; followsGroup: boolean }
+
+export const fetchOwnSound = (signal?: AbortSignal) =>
+  request<OwnSound>('GET', '/account/sound', undefined, signal)
+
+export const saveOwnSound = (change: Partial<Pick<OwnSound, 'boostVolume' | 'convertSound'>>) =>
+  request<OwnSound>('PUT', '/account/sound', change)
+
+/**
  * Puts back the server's defaults for what the signed-in user chose: their metadata language, their
  * audio region, the home rows they turned off, the tracks they chose on titles, the preferences
  * Jellyfin apps saved in their account, and their web player theme unless the administrator chose
@@ -2380,6 +2503,27 @@ export const fetchOwnHidden = (signal?: AbortSignal) =>
   request<HiddenTitle[]>('GET', '/account/hidden', undefined, signal)
 
 export const showOwnHidden = (id: string) => request<void>('DELETE', `/account/hidden/${seg(id)}`)
+
+/** A series taken off Next Up and still off it, and when. */
+export type NextUpRemoval = { item: AccountTitle; removedAt: string }
+
+/**
+ * The user's Next Up: its episodes, the series taken off it, and whether Remove from Continue
+ * Watching also takes a series off Next Up.
+ */
+export type OwnNextUp = { items: AccountTitle[]; removed: NextUpRemoval[]; withResume: boolean }
+
+export const fetchOwnNextUp = (signal?: AbortSignal) =>
+  request<OwnNextUp>('GET', '/account/next-up', undefined, signal)
+
+export const removeOwnNextUp = (id: string) =>
+  request<void>('DELETE', `/account/next-up/${seg(id)}`)
+
+export const putBackOwnNextUp = (id: string) =>
+  request<void>('DELETE', `/account/next-up/removed/${seg(id)}`)
+
+export const setOwnNextUpWithResume = (withResume: boolean) =>
+  request<{ withResume: boolean }>('PUT', '/account/next-up/settings', { withResume })
 
 /** A reminder of one programme, set from the web player. */
 export type ProgrammeReminder = {
@@ -2978,6 +3122,7 @@ export type VersionStep =
   | 'failed'
   | 'hidden'
   | 'group'
+  | 'quality'
 
 /** The hide rule that hides a version; label rules may add their own. */
 export type VersionHideRule = 'elsewhere' | 'larger' | 'codec' | 'release' | 'words' | string
@@ -4062,6 +4207,46 @@ export const fetchLooserMatches = (id: string, signal?: AbortSignal) =>
     signal,
   )
 
+/** The shows of a shows folder, with how their files are numbered. */
+export const fetchFolderShows = (id: string, signal?: AbortSignal) =>
+  request<{ shows: FolderShow[] }>(
+    'GET',
+    `${scopePath('shared')}/folders/${seg(id)}/shows`,
+    undefined,
+    signal,
+  )
+
+/** Says how a show's files are numbered, and answers the folder. */
+export const setShowNumbering = (
+  id: string,
+  imdbId: string,
+  numbering: ShowNumbering,
+  group = '',
+) =>
+  request<Addon>(
+    'PUT',
+    `${scopePath('shared')}/folders/${seg(id)}/shows/${seg(imdbId)}/numbering`,
+    { numbering, group },
+  )
+
+/** The TMDB episode groups a show of a folder may be numbered in. */
+export const fetchShowNumberingGroups = (id: string, imdbId: string, signal?: AbortSignal) =>
+  request<{ groups: EpisodeGroup[]; lookup: '' | 'no_key' | 'unknown' | 'failed' }>(
+    'GET',
+    `${scopePath('shared')}/folders/${seg(id)}/shows/${seg(imdbId)}/groups`,
+    undefined,
+    signal,
+  )
+
+/** The shows of a local folder whose files hold episodes their metadata addon does not list. */
+export const fetchUnlistedEpisodes = (id: string, signal?: AbortSignal) =>
+  request<{ shows: UnlistedShow[] }>(
+    'GET',
+    `${scopePath('shared')}/folders/${seg(id)}/unlisted`,
+    undefined,
+    signal,
+  )
+
 /**
  * A title the metadata addons found for a local folder's unit, that a link can name: `posterId` is
  * the item whose Primary image is its poster, null without one.
@@ -4766,7 +4951,9 @@ export type Health = {
    * How torrent streams play, null while they are off: their route ('' for none) and its name,
    * the WireGuard server for a tunnel, the torrents playing, their peers, those of them reached
    * over uTP, and the bytes shared since the server started. Over a tunnel, `addresses` are its
-   * addresses and `lastHandshake` when its last handshake was, absent for none yet.
+   * addresses and `lastHandshake` when its last handshake was, absent for none yet. `outages` are
+   * those of the route the plays went on through in the last 15 minutes, oldest first: when the
+   * route stopped answering, and for how many seconds.
    */
   torrents: {
     route: 'interface' | 'proxy' | 'wireguard' | ''
@@ -4779,6 +4966,7 @@ export type Health = {
     peers: number
     utpPeers: number
     uploaded: number
+    outages?: { at: string; seconds: number }[]
   } | null
   disks: {
     folder: WorkFolderName | 'recordings' | 'backups'
@@ -4852,7 +5040,36 @@ export type Health = {
     waiting: number
     kept: number
   } | null
+  /**
+   * How artwork downloads fared in the last hour, null when unknown: those that failed, by kind and
+   * by host name (ten at most, most first), and the hosts that asked to wait, asked nothing until
+   * then, or showed they were overloaded, asked less at once until then. No address is told.
+   */
+  artwork: {
+    failed: number
+    kinds: Partial<Record<ArtworkFailureKind, number>>
+    hosts: { host: string; failed: number }[]
+    waiting: { host: string; until: string }[]
+    spared: { host: string; until: string }[]
+  } | null
+  /**
+   * How people's lookups on TMDB stand, null when unknown: whether a TMDB key is saved, the people
+   * TMDB found and did not find, those whose last lookup failed, the lookups waiting or under way,
+   * and TMDB's last 429 since the start, with the seconds it asked to wait (0 for none).
+   */
+  people: {
+    keySaved: boolean
+    found: number
+    notFound: number
+    failing: number
+    waiting: number
+    limitedAt: string | null
+    limitWait: number
+  } | null
 }
+
+/** The kinds of artwork download failures System › Health counts. */
+export type ArtworkFailureKind = 'not_found' | 'rate_limited' | 'timeout' | 'server_error' | 'other'
 
 /**
  * A stored secret POLYFIN_SECRET_KEY cannot decrypt: a server setting (the SMTP password is one,
@@ -4924,7 +5141,8 @@ export type HealthProblem = {
   | { code: 'dlna_port'; port: number }
   /**
    * Torrent streams do not play: their route cannot carry them, `failure` tells why, `name` names
-   * the interface or the proxy; or the proxy offers no UDP ASSOCIATE.
+   * the interface or the proxy, and `grace`, while torrents playing ride the outage out, how long
+   * they go on for; or the proxy offers no UDP ASSOCIATE.
    */
   | {
       code: 'torrent_route'
@@ -4940,6 +5158,8 @@ export type HealthProblem = {
         | 'wireguard_handshake'
         | 'no_route'
       name?: string
+      /** While torrents play through the outage, the seconds they go on for, the most. */
+      grace?: number
     }
   | { code: 'torrent_udp'; name: string }
   /**
@@ -4950,6 +5170,26 @@ export type HealthProblem = {
       code: 'torrent_start'
       failure: 'no_udp' | 'refused' | 'no_trackers' | 'no_peers' | 'silent'
       peers?: TorrentPeerCounts
+    }
+  /**
+   * A torrent stopped while it played lately, `at`, as its route did not answer: `failure` tells
+   * why, a route failure's kind, or 'route' for another; `name` names the interface, the proxy or
+   * the WireGuard server.
+   */
+  | {
+      code: 'torrent_stopped'
+      failure:
+        | 'interface_missing'
+        | 'interface_down'
+        | 'interface_no_address'
+        | 'proxy_unreachable'
+        | 'proxy_refused'
+        | 'wireguard_endpoint'
+        | 'wireguard_down'
+        | 'wireguard_handshake'
+        | 'route'
+      name?: string
+      at: string
     }
   | { code: 'proxy_name_unresolved'; name: string }
   | { code: 'secrets_unreadable'; secrets: UnreadableSecret[] }
@@ -4971,7 +5211,17 @@ export type HealthProblem = {
   | { code: 'https_files'; failure: 'missing' | 'unreadable' | 'mismatch'; file: string }
   | { code: 'https_renewal'; error: string }
   | { code: 'https_expiry'; expires: string }
-  | { code: 'subtitle_ocr_language'; name: string; file: string }
+  /**
+   * Tesseract has no data for a language tracks are in: `file` is the file to add, `download` tells
+   * that Polyfin can download it, and `error` why its last download failed.
+   */
+  | {
+      code: 'subtitle_ocr_language'
+      name: string
+      file: string
+      download?: boolean
+      error?: string
+    }
   /** Every metadata addon of the server has a language: `name` is the first one's. */
   | { code: 'metadata_languages'; name: string }
   /** NVENC needs a newer NVIDIA driver than the GPU's: `name` is the version it needs. */
@@ -4980,6 +5230,8 @@ export type HealthProblem = {
   | { code: 'nvidia_older_ffmpeg'; failure: 'download' | 'encode'; error: string }
   /** The copy kept of the Custom theme's files misses `missing` of its `files`. */
   | { code: 'theme_copy_missing'; missing: number; files: number }
+  /** Polyfin Desktop went back to `previous`, as `name` did not start, for `error`. */
+  | { code: 'desktop_rolled_back'; name: string; previous: string; error: string }
   /**
    * A folder the settings chose could not be written into at start: `path` is the folder, `error`
    * why; the cache in the data folder keeps its files until the next start.
@@ -5320,6 +5572,10 @@ export type ImageCacheUsage = {
 /** Empties the image cache, answering what it freed. */
 export const clearImageCache = () => request<ImageCacheUsage>('POST', '/health/images/clear')
 
+/** Downloads the Tesseract data of a language, its code as in jpn.traineddata, into POLYFIN_TESSDATA_DIR. */
+export const downloadLanguage = (language: string) =>
+  request<void>('POST', `/health/languages/${seg(language)}/download`)
+
 export const checkAddon = (id: string) =>
   request<AddonHealth>('POST', `/health/addons/${seg(id)}/check`)
 
@@ -5515,6 +5771,7 @@ export const queryKeys = {
   ownTwoStep: ['account', 'two-step'] as const,
   ownResume: ['account', 'resume'] as const,
   ownHidden: ['account', 'hidden'] as const,
+  ownNextUp: ['account', 'next-up'] as const,
   ownHomeRows: ['account', 'home-rows'] as const,
   ownTrackChoices: ['account', 'track-choices'] as const,
   ownTaste: ['account', 'taste'] as const,
@@ -5526,6 +5783,7 @@ export const queryKeys = {
   reminderSettings: ['account', 'reminders', 'settings'] as const,
   ownMetadataLanguage: ['account', 'metadata-language'] as const,
   ownAudioRegion: ['account', 'audio-region'] as const,
+  ownSound: ['account', 'sound'] as const,
   /** The languages the server's addons were given: refreshed with the server's addons. */
   metadataLanguages: ['scopes', 'shared', 'metadata-languages'] as const,
   ownWebTheme: ['account', 'web-theme'] as const,
@@ -5608,6 +5866,12 @@ export const queryKeys = {
   unmatched: (id: string) => ['unmatched', id] as const,
   /** The units of a local folder a looser rule matched. */
   looser: (id: string) => ['looser', id] as const,
+  /** The shows of a local folder whose files hold episodes their metadata addon does not list. */
+  unlisted: (id: string) => ['unlisted', id] as const,
+  /** The shows of a shows folder, with how their files are numbered. */
+  folderShows: (id: string) => ['folderShows', id] as const,
+  /** The TMDB episode groups a show of a folder may be numbered in. */
+  numberingGroups: (id: string, imdbId: string) => ['numberingGroups', id, imdbId] as const,
   /** A title search for a local folder's unit. */
   folderTitles: (id: string, query: string, year: number | null) =>
     ['folder-titles', id, query, year] as const,

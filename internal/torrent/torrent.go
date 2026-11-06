@@ -118,10 +118,13 @@ type torrent struct {
 	reads      map[*Reader]readSpan
 	files      []File
 	changed    chan struct{}
-	// flowing is closed, and replaced, as a block of a piece arrives: the
-	// reads waiting for pieces tell their callers bytes are coming (see
-	// Reader.ReadAtProgress).
+	// flowing is closed, and replaced, as a block of a piece arrives, and
+	// as the route is found down within its grace, at waitedOn: the reads
+	// waiting for pieces tell their callers to wait on (see
+	// Reader.ReadAtProgress and guard), and the torrent counts as
+	// receiving (see Engine.Received).
 	flowing   chan struct{}
+	waitedOn  time.Time
 	err       error
 	upBytes   int64
 	downBytes int64
@@ -214,6 +217,7 @@ func (t *torrent) seed(kept keptRun) {
 	if kept.info != nil {
 		t.info, t.infoData = kept.info, kept.infoData
 		t.have = make([]bool, len(kept.info.Pieces))
+		t.engine.store.mark(t.hash, t.have)
 		if kept.info.Private {
 			t.stopExtra()
 		}
@@ -255,6 +259,7 @@ func (t *torrent) named() int {
 // of the settings, besides those its listing names.
 func (t *torrent) start(extra []string) {
 	go t.watch()
+	go t.guard()
 	go t.connect()
 	t.mu.Lock()
 	t.addExtra(extra)
@@ -353,17 +358,13 @@ func (t *torrent) recovered(what string, then func(error)) {
 	}
 }
 
-// watch stops the torrent as soon as its route cannot carry it, or is no
-// longer the one set: nothing falls back to another route. A panic stops
-// the torrent too. Meanwhile, it chooses the peers shared with, and asks
-// again for the blocks peers dropped (see reask).
+// watch chooses the peers shared with, and asks again for the blocks peers
+// dropped (see reask), until the torrent stops. A panic stops the torrent.
 func (t *torrent) watch() {
-	defer t.recovered("route check", func(err error) {
+	defer t.recovered("watch of its peers", func(err error) {
 		t.engine.failed(err)
 		t.engine.remove(t, err)
 	})
-	ticker := time.NewTicker(t.engine.checkEvery)
-	defer ticker.Stop()
 	chokes := time.NewTicker(chokeEvery)
 	defer chokes.Stop()
 	stale := time.NewTicker(max(t.engine.dropWait/4, 10*time.Millisecond))
@@ -378,21 +379,105 @@ func (t *torrent) watch() {
 			t.mu.Unlock()
 		case <-stale.C:
 			t.reask()
-		case <-ticker.C:
-			route, err := t.engine.currentRoute()
-			if err == nil && route != t.route {
-				err = errors.New("the route for torrents changed")
-			}
-			if err == nil {
-				err = t.route.Check(t.ctx)
-			}
-			if err != nil && t.ctx.Err() == nil {
-				t.engine.failed(err)
-				t.engine.remove(t, err)
-				return
-			}
 		}
 	}
+}
+
+// guard checks the torrent's route every checkEvery while it runs, apart
+// from watch, which a check that waits for the route would hold up.
+// Nothing falls back to another route: a route the settings no longer
+// set, or torrents turned off, stop the torrent at once. A route that does
+// not answer stops it once it gave no answer, and the peers no byte, for
+// the engine's grace (RouteGrace), counted from the later of its first
+// failed check and the last byte received: meanwhile the connections open
+// go on through it, new ones are dialed through it alone, failing while
+// it does not answer, and each failed check tells the reads waiting for
+// pieces to wait on, as a block arriving does, so that the source cache,
+// and a play waiting for the torrent, do not take them for stalled before
+// the grace is over. Once the route answers again, the peers waiting to be
+// dialed again are dialed at once (see redialNow). A panic stops the
+// torrent too.
+func (t *torrent) guard() {
+	defer t.recovered("route check", func(err error) {
+		t.engine.failed(err)
+		t.engine.remove(t, err)
+	})
+	ticker := time.NewTicker(t.engine.checkEvery)
+	defer ticker.Stop()
+	// downSince is the first failed check of the outage under way, zero
+	// while the route answers; heard is the last byte received.
+	var downSince, heard time.Time
+	for {
+		select {
+		case <-t.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		route, err := t.engine.currentRoute()
+		if err == nil && route != t.route {
+			err = errors.New("the route for torrents changed")
+		}
+		if err != nil {
+			if t.ctx.Err() == nil {
+				t.engine.failed(err)
+				t.engine.remove(t, err)
+			}
+			return
+		}
+		err = t.route.Check(t.ctx)
+		if t.ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			if !downSince.IsZero() {
+				downSince = time.Time{}
+				t.engine.routeUp(t)
+				t.redialNow()
+			}
+			continue
+		}
+		now := time.Now()
+		if downSince.IsZero() {
+			downSince = now
+			t.engine.routeDown(t, err)
+		}
+		if last := t.lastByte(); last.After(heard) {
+			heard = last
+		}
+		if now.Sub(later(downSince, heard)) >= t.engine.routeGrace {
+			t.engine.routeStopped(err, downSince)
+			t.engine.remove(t, err)
+			return
+		}
+		t.mu.Lock()
+		close(t.flowing)
+		t.flowing = make(chan struct{})
+		t.waitedOn = now
+		t.mu.Unlock()
+	}
+}
+
+// lastByte is when a peer connected to the torrent last sent it a byte,
+// zero when none did.
+func (t *torrent) lastByte() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var last int64
+	for _, p := range t.peers {
+		last = max(last, p.received.Load())
+	}
+	if last == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, last)
+}
+
+// later is the later of a and b.
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
 }
 
 // addPeers queues peers to connect to.
@@ -498,6 +583,28 @@ func (t *torrent) redial(address netip.AddrPort, last outcome, fails int) {
 	t.signal()
 }
 
+// redialNow has the peers waiting to be dialed again dialed at once, but
+// those given up for their silence, as the route answers again after an
+// outage: their dials, and connections, failed for the route rather than
+// for them, and they may take a connection now. The dials go through the
+// route, as every other.
+func (t *torrent) redialNow() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	waiting := false
+	for _, address := range t.redials {
+		if c := t.known[address]; c.fails < givenUpFails && c.retryAt.After(now) {
+			c.retryAt, waiting = now, true
+			t.known[address] = c
+		}
+	}
+	if waiting {
+		t.nextRedial = now
+		t.signal()
+	}
+}
+
 // dial connects to a peer, and reads it until the connection ends. A peer
 // that sent nothing for the engine's idleTimeout is given up.
 func (t *torrent) dial(address netip.AddrPort) {
@@ -544,7 +651,15 @@ func (t *torrent) join(address netip.AddrPort) *peer {
 			conn.Close()
 		}
 		if err != nil {
-			t.redial(address, outcomeOf(err), t.known[address].fails+1)
+			// A dial the route did not carry tells nothing of the peer:
+			// it does not count among its failures, and the peer is
+			// dialed at once when the route answers again (see
+			// redialNow).
+			fails := t.known[address].fails
+			if !RouteFailure(err) {
+				fails++
+			}
+			t.redial(address, outcomeOf(err), fails)
 		}
 		return nil
 	}
@@ -1167,7 +1282,10 @@ func (f File) pieces(length int64) (first, last int) {
 }
 
 // window is how many pieces past a read are fetched: readWindow, within
-// room in the store for the pieces read now. The lock is held.
+// room in the store for the pieces read now. A read asks for them again
+// each time it moves past the back half of the window last asked (see
+// Reader.ReadAtProgress), so the window rolls ahead of it, never past
+// its bound. The lock is held.
 func (t *torrent) window() int {
 	length := t.info.PieceLength
 	return int(max(1, min(max(4, readWindow/length), t.engine.store.budget()/length/2)))
@@ -1503,6 +1621,7 @@ func (t *torrent) receivedMetadata(index int64, data []byte) {
 	t.info, t.infoData = &info, t.metadata
 	t.metadata, t.metadataGot = nil, nil
 	t.have = make([]bool, len(info.Pieces))
+	t.engine.store.mark(t.hash, t.have)
 	for _, p := range t.peers {
 		if len(p.has) > len(info.Pieces) {
 			p.has = p.has[:len(info.Pieces)]
@@ -1529,12 +1648,16 @@ func (t *torrent) receivedMetadata(index int64, data []byte) {
 // Reader reads a file of a torrent being played, as a source of the
 // source cache: each read asks for its pieces first. whole marks a read
 // of a file whole (see Engine.ReadFile), which fetches its pieces alone.
+// ahead is the piece the read-ahead was last asked from, once rolled
+// tells it was; the torrent's lock guards them.
 type Reader struct {
-	t     *torrent
-	file  File
-	ctx   context.Context
-	size  int64
-	whole bool
+	t      *torrent
+	file   File
+	ctx    context.Context
+	size   int64
+	whole  bool
+	ahead  int
+	rolled bool
 }
 
 // Size is the file's size.
@@ -1574,7 +1697,14 @@ func (r *Reader) ReadAtProgress(p []byte, off int64, progress func()) (int, erro
 		chunk := min(end-position, length-within)
 		has := t.have[index]
 		err, changed, flowing := t.err, t.changed, t.flowing
-		if !has {
+		// The read-ahead rolls: a read that misses its piece, or moves
+		// past the back half of the window asked last, or before it, has
+		// the peers asked for the pieces ahead of it now. Otherwise the
+		// next window would be asked only once a read misses its first
+		// piece, and a reader paced by playback would wait for it at each
+		// step of the window, the swarm idle meanwhile.
+		if !has || !r.rolled || index < r.ahead || index-r.ahead >= max(1, t.window()/2) {
+			r.ahead, r.rolled = index, true
 			for _, peer := range t.peers {
 				t.fill(peer)
 			}

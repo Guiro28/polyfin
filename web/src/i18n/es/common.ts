@@ -132,6 +132,14 @@ const common: typeof en = {
       'Elija de la lista cuándo se convierten en texto los subtítulos en imagen.',
     invalid_subtitle_ocr_tracks:
       'Las pistas de subtítulos en imagen leídas a la vez deben ser un número entero entre 1 y 4.',
+    tessdata_unknown_language:
+      'Polyfin no tiene datos de Tesseract que descargar para este idioma.',
+    tessdata_no_folder:
+      'Indique en POLYFIN_TESSDATA_DIR la carpeta de los datos de Tesseract y vuelva a iniciar Polyfin.',
+    tessdata_folder: 'No se puede escribir en la carpeta que indica POLYFIN_TESSDATA_DIR.',
+    tessdata_download: 'No se pudieron descargar los datos del idioma.',
+    tessdata_checksum:
+      'El archivo descargado no son los datos de Tesseract, ya que su SHA-256 es distinto: no se ha conservado.',
     invalid_default_language: 'Elija un idioma predeterminado de la lista.',
     invalid_encoder_preset: 'Elija una velocidad de codificación de la lista.',
     invalid_video_quality: 'La calidad de vídeo debe ser 0 o un número entero entre 1 y 51.',
@@ -300,6 +308,8 @@ const common: typeof en = {
       'TMDB ya no da este orden para esta serie. Ábrala de nuevo y elija otro.',
     episode_groups_unreachable:
       'No se pudo contactar con TMDB para ver los órdenes de esta serie. No se guardó nada: inténtelo más tarde.',
+    invalid_numbering:
+      'Elija como el catálogo, por temporada, seguida desde la temporada 1, absoluta o un orden de episodios.',
     no_tmdb_key:
       'Añada primero una clave de TMDB en Ajustes › Contenido: los órdenes vienen de TMDB.',
     tmdb_unreachable:

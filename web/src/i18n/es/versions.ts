@@ -69,6 +69,7 @@ const versions: typeof en = {
       failed: 'Falló hace poco',
       hidden: 'Oculta por una regla',
       group: 'Por encima del grupo de calidad',
+      quality: 'Descartada por las 3 calidades',
     },
     stepHelp: {
       nothing: 'Una página web, un vídeo de otro sitio o un aviso: nada que Polyfin reproduzca.',
@@ -79,6 +80,8 @@ const versions: typeof en = {
         'El mismo archivo de otra extensión, guardado como espejo oculto: una reproducción sigue en él cuando la fuente de la versión falla.',
       group:
         'El grupo de calidad del usuario deja fuera las versiones más altas mientras alguna quepa.',
+      quality:
+        'Versiones ofrecidas solo conserva la mejor versión de cada calidad: 4K, 1080p y 720p.',
     },
     rules: {
       elsewhere: (marker: string) => `Nombra otro título (${marker})`,
@@ -92,8 +95,8 @@ const versions: typeof en = {
       none: 'Oculta por una regla cambiada desde entonces',
     },
     unstarted: 'No arrancó hace poco: las reproducciones que no eligen versión la pasan por alto',
-    labelsAsRead: 'Etiquetas',
-    facts: 'Lo que saben las reglas',
+    labelsAsRead: 'Etiquetas:',
+    facts: 'Lo que saben las reglas:',
     analyzed: 'Analizada',
     multi: 'MULTI',
     tiers: { disc: 'Copia de disco', bluray: 'Blu-ray', web: 'Web', dvd: 'DVD', tv: 'TV' },

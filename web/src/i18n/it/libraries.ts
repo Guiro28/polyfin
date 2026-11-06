@@ -11,7 +11,7 @@ const libraries: typeof en = {
     shownHelpMine:
       'Le librerie compaiono in questo ordine, dopo le librerie del server se le usi. Lascia un nome vuoto per usare il nome del catalogo. Alle librerie con lo stesso nome viene aggiunto il tipo nelle applicazioni, per esempio «Popolari (Film)».',
     defaultHelp:
-      'Quando installi un add-on, i suoi cataloghi di collezioni diventano librerie: ognuna mostra le sue collezioni (per esempio generi o decenni), che si aprono sui rispettivi film e serie TV. Un add-on senza collezioni ottiene come librerie i suoi cataloghi di film, serie TV e TV, fino a 20. È solo un punto di partenza: abilita tutti i cataloghi che vuoi. Ogni libreria aggiunge una riga alla schermata iniziale delle applicazioni Jellyfin, tranne i cataloghi TV, i cui canali compaiono in Diretta TV.',
+      'Quando installi un add-on, i suoi cataloghi di collezioni diventano librerie: ognuna mostra le sue collezioni (per esempio generi o decenni), che si aprono sui rispettivi film e serie TV. Un add-on senza collezioni ottiene come librerie i suoi cataloghi di film, serie TV e TV. Polyfin lo fa solo finché il server non ha 20 librerie in tutto, contando quelle di ogni add-on. È solo un punto di partenza: abilita tutti i cataloghi che vuoi. Ogni libreria aggiunge una riga alla schermata iniziale delle applicazioni Jellyfin, tranne i cataloghi TV, i cui canali compaiono in Diretta TV.',
     manyWarning:
       'Più di 20 librerie possono appesantire la schermata iniziale delle applicazioni Jellyfin.',
     noAddons: 'Aggiungi prima un’origine: i suoi cataloghi verranno elencati qui.',
@@ -31,6 +31,31 @@ const libraries: typeof en = {
     skipLocalHelp:
       'Un film o una serie che la libreria di una cartella locale elenca, collegato allo stesso identificativo, compare solo lì. Le sue versioni e il suo stato di visione restano gli stessi, e la ricerca lo trova una volta. Un utente che non vede la libreria della cartella lo trova ancora qui.',
     skippedLocal: 'Senza i titoli delle cartelle locali',
+    showAs: {
+      label: 'Mostra come',
+      choices: {
+        home_videos: 'Video personali',
+        listed: 'Come il catalogo',
+        movies_and_shows: 'Film e serie',
+      },
+      pill: {
+        home_videos: 'Mostrata come video personali',
+        listed: 'Mostrata come il catalogo',
+        movies_and_shows: 'Mostrata come film e serie',
+      },
+      help: {
+        home_videos:
+          'Ogni titolo è una cartella dei suoi video, o un solo video, come in una libreria di video personali. Le applicazioni che elencano solo film e serie tralasciano la libreria.',
+        listed:
+          'Una libreria di film o di serie, secondo il tipo del catalogo: un titolo dell’altro tipo conta nel suo totale, ma nessuna delle sue schede lo mostra.',
+        titles:
+          'Per le applicazioni Jellyfin che elencano solo film e serie: un titolo con più video, o con uno numerato come episodio, diventa una serie, i suoi video i suoi episodi; un titolo senza video, o con un solo file, un film. I titoli che il catalogo indica come film o serie restano come sono. Gli stati di visione, i punti di ripresa e i preferiti li seguono al salvataggio.',
+        mixed:
+          'Una libreria senza tipo, come le librerie miste di film e serie di Jellyfin: ogni titolo è elencato come il film o la serie che è, quindi le sue schede mostrano anche una serie che un catalogo di film elenca, con totali esatti. Gli stati di visione e i preferiti restano.',
+      },
+      undecided:
+        'Polyfin la mostra come film e serie appena legge la prima pagina del catalogo, se ogni titolo lì è un film o una serie.',
+    },
     remove: 'Rimuovi',
     removeLabel: (name: string) => `Rimuovi ${name}`,
     moreActions: (name: string) => `Altre azioni per ${name}`,

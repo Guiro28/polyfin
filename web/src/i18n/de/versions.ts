@@ -66,6 +66,7 @@ const versions: typeof en = {
       failed: 'Kürzlich fehlgeschlagen',
       hidden: 'Von einer Regel ausgeblendet',
       group: 'Über der Qualitätsgruppe',
+      quality: 'Durch die 3 Qualitäten ausgeschlossen',
     },
     stepHelp: {
       nothing:
@@ -76,6 +77,8 @@ const versions: typeof en = {
       mirror:
         'Dieselbe Datei eines anderen Add-ons, als verborgener Spiegel behalten: Eine Wiedergabe läuft darauf weiter, wenn die Quelle der Version ausfällt.',
       group: 'Die Qualitätsgruppe des Benutzers lässt höhere Versionen weg, solange eine passt.',
+      quality:
+        'Angebotene Versionen behält nur die beste Version jeder Qualität: 4K, 1080p und 720p.',
     },
     rules: {
       elsewhere: (marker: string) => `Nennt einen anderen Titel (${marker})`,
@@ -88,8 +91,8 @@ const versions: typeof en = {
       none: 'Von einer inzwischen geänderten Regel ausgeblendet',
     },
     unstarted: 'Ist kürzlich nicht gestartet: Wiedergaben ohne gewählte Version überspringen sie',
-    labelsAsRead: 'Bezeichnungen',
-    facts: 'Was die Regeln wissen',
+    labelsAsRead: 'Bezeichnungen:',
+    facts: 'Was die Regeln wissen:',
     analyzed: 'Analysiert',
     multi: 'MULTI',
     tiers: { disc: 'Disc-Kopie', bluray: 'Blu-ray', web: 'Web', dvd: 'DVD', tv: 'TV' },

@@ -149,6 +149,8 @@ const system: typeof en = {
           `O Polyfin não consegue escutar na porta UDP ${port}, então os aplicativos Jellyfin na rede local não o encontram sozinhos. Provavelmente outro programa a está usando, como um servidor Jellyfin no mesmo host. Salvar as configurações tenta novamente.`,
         torrentRoute: (why: string) =>
           `As streams de torrent não são reproduzidas: ${why}. Nada é enviado por outro caminho; verifique a rota em Configurações › Torrents.`,
+        torrentRouteRiding: (why: string, seconds: number) =>
+          `${why}. Os torrents em reprodução continuam por até ${seconds} s; os novos não podem começar. Nada é enviado por outro caminho; verifique a rota em Configurações › Torrents.`,
         torrentWhy: {
           interface_missing: (name: string) => `a interface de rede ${name} não existe`,
           interface_down: (name: string) => `a interface de rede ${name} está inativa`,
@@ -176,6 +178,21 @@ const system: typeof en = {
           no_trackers:
             'o complemento não indicou nenhum tracker, e a DHT não encontrou nenhum peer',
           silent: 'foram encontrados peers, mas nenhum o enviou',
+        },
+        torrentStopped: (at: string, why: string) =>
+          `Um torrent parou durante a reprodução às ${at}: ${why}. Nada foi enviado por outro caminho. Verifique se a rota continua acessível; a próxima reprodução inicia o torrent de novo.`,
+        torrentStoppedWhy: {
+          interface_missing: (name: string) => `a interface de rede ${name} desapareceu`,
+          interface_down: (name: string) => `a interface de rede ${name} ficou inativa`,
+          interface_no_address: (name: string) => `a interface de rede ${name} perdeu o endereço`,
+          proxy_unreachable: (name: string) => `o proxy SOCKS5 ${name} não respondeu`,
+          proxy_refused: (name: string) => `o proxy SOCKS5 ${name} recusou o usuário e a senha`,
+          wireguard_endpoint: (name: string) =>
+            `não foi possível encontrar o servidor WireGuard ${name}`,
+          wireguard_down: (name: string) => `o túnel WireGuard para ${name} parou`,
+          wireguard_handshake: (name: string) =>
+            `o servidor WireGuard ${name} não respondeu ao handshake`,
+          route: () => 'a rota não respondeu',
         },
         torrentStartPeers: (found: number, why: string) =>
           `${found} ${found === 1 ? 'peer encontrado' : 'peers encontrados'}: ${why}`,
@@ -211,8 +228,12 @@ const system: typeof en = {
         httpsExpired: (date: string) => `O certificado HTTPS expirou em ${date}.`,
         subtitleOcrLanguage: (name: string, file: string) =>
           `As legendas em imagem em ${name} não são convertidas em texto: o Tesseract não tem dados para este idioma. Adicione o arquivo ${file} à pasta indicada por POLYFIN_TESSDATA_DIR.`,
+        subtitleOcrDownloadFailed: (error: string) =>
+          `O último download dos dados falhou: ${error}`,
         metadataLanguages: (name: string) =>
           `${name}: todos os complementos de metadados do servidor têm um idioma, então eles descrevem os títulos no idioma deles para todos os usuários, seja qual for o idioma dos metadados de cada um. Mantenha Idioma das descrições como Nenhum neste complemento, ou em mais um complemento de metadados.`,
+        desktopRolledBack: (version: string, previous: string, error: string) =>
+          `O Polyfin Desktop voltou para a versão ${previous}, pois a versão ${version} não iniciou: ${error}. Essa versão não é mais oferecida; a próxima será.`,
         themeCopyMissing: (missing: number, files: number) =>
           `Faltam à cópia do tema do player web ${missing} dos seus ${files} arquivos na pasta de dados do Polyfin, como depois de restaurar um backup em outro sistema: enquanto isso, os navegadores os carregam dos endereços originais, o que exige internet. Atualize a cópia em Configurações › Player web, ou escolha outro tema.`,
         folderUnwritable: (name: string, path: string) =>
@@ -267,6 +288,9 @@ const system: typeof en = {
       check: 'Verificar',
       checkLabel: (name: string) => `Verificar ${name} agora`,
       checking: 'Verificando…',
+      downloadLanguage: 'Baixar',
+      downloadLanguageLabel: (name: string) => `Baixar os dados do Tesseract para ${name}`,
+      downloadingLanguage: 'Baixando…',
       iptvTitle: 'Fontes IPTV',
       guidesTitle: 'Guias de programação',
       sharesTitle: 'Compartilhamentos de rede',
@@ -372,6 +396,15 @@ const system: typeof en = {
       torrentPeers: 'Pares',
       torrentUTPPeers: 'Pares via uTP',
       torrentsShared: 'Compartilhado desde o início',
+      torrentOutageAt: (at: string) => `Queda às ${at}`,
+      torrentOutage: {
+        interface: (span: string) =>
+          `a interface de rede não respondeu por ${span}; a reprodução continuou`,
+        proxy: (span: string) => `o proxy não respondeu por ${span}; a reprodução continuou`,
+        wireguard: (span: string) =>
+          `o servidor WireGuard não respondeu por ${span}; a reprodução continuou`,
+        '': (span: string) => `a rota não respondeu por ${span}; a reprodução continuou`,
+      },
       disksTitle: 'Espaço em disco',
       folders: {
         cache: 'cache',
@@ -414,6 +447,48 @@ const system: typeof en = {
       notHeld: 'Agora',
       titlesWaiting: 'Títulos aguardando',
       titlesKept: 'Títulos com avaliações guardadas',
+      artworkTitle: 'Artes',
+      artworkHelp:
+        'Downloads de artes dos servidores de imagens dos complementos que falharam na última hora. Uma imagem que falhou é pedida de novo mais tarde, cada vez mais tarde se continuar falhando; um servidor que pede para esperar não recebe pedidos até lá.',
+      artworkFailed: 'Falhas na última hora',
+      artworkKinds: {
+        not_found: 'Não encontradas',
+        rate_limited: 'Pediram para desacelerar',
+        timeout: 'Tempo esgotado',
+        server_error: 'Erros do servidor',
+        other: 'Outras falhas',
+      } as Record<string, string>,
+      artworkHosts: 'Servidores com falhas',
+      artworkNoFailures: 'Nenhum download de arte falhou na última hora.',
+      artworkWaiting: 'Servidores aguardados',
+      artworkNoWaiting: 'Nenhum servidor é aguardado.',
+      artworkWaitingUntil: (time: string) => `sem pedidos até ${time}`,
+      artworkSparedUntil: (time: string) => `menos pedidos de uma vez até ${time}`,
+      peopleTitle: 'Pessoas',
+      peopleHelp:
+        'Fotos e biografias de pessoas do TMDB. Uma pessoa é consultada assim que o elenco de um título a mostra sem foto, ou sua página é aberta.',
+      peopleNoKey:
+        'Nenhuma chave da API do TMDB está salva em Configurações › Conteúdo: as pessoas e os elencos mostram só o que os complementos dão. Uma chave de uma conta gratuita do TMDB traz:',
+      peopleNoKeyBrings: [
+        'Fotos e biografias das pessoas',
+        'Elenco e equipe de cada título do TMDB, na ordem dos créditos, com fotos',
+        'Páginas de pessoas com cada título das bibliotecas em que aparecem',
+        'Os títulos pelos quais o TMDB mais conhece cada pessoa, na página dela, além das bibliotecas',
+        'Pôsteres de filmes e séries cujo complemento não fornece nenhum',
+        'Coleções nos apps do Silo',
+        'Imagens do TMDB no Editar imagens',
+      ],
+      peopleNoKeyLink: 'Adicionar a chave em Configurações › Conteúdo',
+      tmdbKey: 'Chave da API do TMDB',
+      tmdbKeySaved: 'Salva',
+      peopleFound: 'Encontradas no TMDB',
+      peopleNotFound: 'Não encontradas',
+      peopleFailing: 'Consultas com falha',
+      peopleWaiting: 'Consultas aguardando',
+      tmdbLimited: 'Último limite do TMDB',
+      tmdbNeverLimited: 'Nenhum desde que o servidor iniciou',
+      tmdbLimitedAt: (time: string, wait: string) =>
+        wait ? `${time}, pediu para esperar ${wait}` : time,
       backupTitle: 'Backups',
       backupOff: 'Os backups estão desativados. Ative-os em Configurações › Backups.',
       backup: {

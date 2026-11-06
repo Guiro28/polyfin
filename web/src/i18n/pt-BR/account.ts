@@ -9,6 +9,7 @@ const account: typeof en = {
       statistics: 'Estatísticas',
       tracking: 'Acompanhamento',
       resume: 'Continuar assistindo',
+      nextUp: 'A seguir',
       hidden: 'Títulos ocultos',
       homeRows: 'Fileiras do início',
       trackChoices: 'Escolha de faixas',
@@ -16,6 +17,7 @@ const account: typeof en = {
       metadataLanguage: 'Idioma dos metadados',
       webTheme: 'Tema do player web',
       audioRegion: 'Região do áudio',
+      sound: 'Som',
       sharedLinks: 'Links compartilhados',
       reminders: 'Lembretes',
       import: 'Importar de outro servidor',
@@ -58,6 +60,17 @@ const account: typeof en = {
         'pt-BR': 'Português (Brasil)',
         'pt-PT': 'Português (Portugal)',
       },
+    },
+    sound: {
+      help: 'Duas formas de deixar seus vídeos mais altos e mais uniformes do que seus aplicativos os reproduzem, cada uma com seu custo. Elas valem a partir da sua próxima reprodução.',
+      boostVolume: 'Aumentar o volume no player web',
+      boostVolumeHelp:
+        'Deixa os vídeos mais altos no player web, em um navegador e nos aplicativos Jellyfin para Android e iOS: cerca de 8 dB nas passagens calmas e 5 dB nas altas, com um compressor contendo os picos, e o volume do player continua funcionando. Seu navegador faz o trabalho, mas para que ele alcance as transmissões dos complementos, o servidor envia ele mesmo essas transmissões ao seu player web em vez de mandá-lo à fonte delas, o que usa a banda do servidor. Não alcança os players próprios dos aplicativos, nem as transmissões que um iPhone ou iPad reproduz como HLS. O menu de configurações do player também o liga e desliga.',
+      convertSound: 'Converter o som para equalizá-lo',
+      convertSoundHelp:
+        'O servidor converte o áudio dos seus vídeos e canais e o equaliza em -16 LUFS, com a imagem copiada, para que todo aplicativo o reproduza mais alto e uniforme. O custo: nada é reproduzido diretamente, cada reprodução usa um pouco do processador do servidor, e o som surround chega a um receiver convertido em vez de como a faixa original.',
+      saved: 'Som salvo.',
+      group: 'Seu grupo define estas opções: um administrador as altera na página dele.',
     },
     taste: {
       help: 'O que o Polyfin aprendeu do seu gosto a partir dos filmes e séries que você terminou, reviu, largou cedo, curtiu, não curtiu, marcou como favoritos e ocultou, os mais recentes contando mais. Quando conhece você o suficiente, ele ordena Escolhas para você, os títulos semelhantes e as sugestões. Ele fica no servidor: só você o vê.',
@@ -125,6 +138,21 @@ const account: typeof en = {
       hiddenEmpty: 'Nenhum título oculto',
       hiddenEmptyHelp: 'Oculte um título pelo menu ⋮ dele no player web.',
       hiddenOn: 'Oculto',
+      nextUpHelp:
+        'O próximo episódio de cada série que você está assistindo, como seus aplicativos mostram A seguir. Remover tira uma série de A seguir sem alterar o que você assistiu, até você reproduzir um dos episódios dela ou sair um novo; a página dela continua abrindo no próximo episódio. No player web, o menu ⋮ de um cartão de A seguir faz o mesmo.',
+      nextUpRemoveLabel: (name: string) => `Remover ${name} de A seguir`,
+      nextUpRemoved: (name: string) => `${name} foi removido de A seguir.`,
+      nextUpEmpty: 'Nada a seguir',
+      nextUpEmptyHelp: 'As séries que você está assistindo aparecem aqui com o próximo episódio.',
+      nextUpRemovedList: 'Séries removidas de A seguir',
+      nextUpRemovedOn: 'Removida',
+      nextUpShowLabel: (name: string) => `Mostrar ${name} em A seguir novamente`,
+      nextUpShown: (name: string) => `${name} voltou para A seguir.`,
+      withResume: 'Remover de Continuar assistindo também tira a série de A seguir',
+      withResumeHelp:
+        'Tirar um episódio de Continuar assistindo passa a tirar também a série dele de A seguir, do mesmo jeito, até você reproduzir um dos episódios dela ou sair um novo.',
+      withResumeOn: 'Remover de Continuar assistindo agora também tira a série de A seguir.',
+      withResumeOff: 'Remover de Continuar assistindo não tira mais a série de A seguir.',
       kinds: {
         movie: 'Filme',
         series: 'Série',
@@ -608,6 +636,10 @@ const account: typeof en = {
         `${name} não está configurado neste servidor: um administrador precisa primeiro adicionar o aplicativo ${name}.`,
       appRefused: (name: string) =>
         `${name} recusou o aplicativo deste servidor. Um administrador precisa verificar as credenciais em Configurações › Acompanhamento.`,
+      traktCodeEnded:
+        'O código expirou, ou o Trakt o recusou. Se o Trakt recusou seu acesso, verifique duas coisas: se um administrador adicionou seu nome de usuário do Trakt ao aplicativo Trakt deste servidor, em Members; e, com uma conta gratuita do Trakt, se não há outro aplicativo conectado, pois o Trakt só permite um (desconecte-o no Trakt, em Settings › Connected apps, ou use o Trakt VIP). Depois obtenha um novo código.',
+      traktAppRefused:
+        'O Trakt recusou este acesso. Verifique se um administrador adicionou seu nome de usuário do Trakt ao aplicativo Trakt deste servidor, em Members, e se sua conta gratuita do Trakt não tem outro aplicativo conectado, pois o Trakt só permite um. Caso contrário, um administrador precisa verificar as credenciais do aplicativo em Configurações › Acompanhamento.',
       history: {
         toggle: (name: string) => `Importar meu histórico do ${name}`,
         toggleHelp: (name: string, every: string) =>
@@ -718,6 +750,7 @@ const account: typeof en = {
       'Tema do player web: O do servidor, a menos que seu administrador tenha escolhido o seu',
     audioRegion: 'Região do áudio: Nenhuma',
     homeRows: 'Fileiras do início: todas as fileiras voltam a aparecer',
+    nextUpWithResume: 'Remover de Continuar assistindo: deixa A seguir como está',
     trackChoices: 'Escolha de faixas: esquecida para cada série e filme',
     appPreferences:
       'As preferências que os apps Jellyfin salvaram na sua conta: idiomas e modo do áudio e das legendas, preferências da tela inicial e de exibição',

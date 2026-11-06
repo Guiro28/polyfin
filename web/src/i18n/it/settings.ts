@@ -7,14 +7,16 @@ const settings: typeof en = {
       description:
         'Ogni utente può collegare i propri account Trakt, Simkl, MDBList, PublicMetaDB, AniList e MyAnimeList dalla pagina Il mio account, e Polyfin comunica a questi servizi cosa guarda; Last.fm e ListenBrainz ricevono i brani che ascolta. Trakt, Simkl, AniList, MyAnimeList e Last.fm richiedono prima un’applicazione di questo server, da configurare qui. MDBList, PublicMetaDB e ListenBrainz non richiedono nulla.',
       traktSetup:
-        'Crea un’applicazione su trakt.tv, in Settings, Your API Apps, New application. Dalle un nome qualsiasi, poi copia qui il suo client ID e il suo client secret.',
+        'Crea un’applicazione su developer.trakt.tv, in My Apps: collega il tuo account GitHub, che Trakt chiede a ogni sviluppatore, poi crea un’applicazione di tipo Development, con un nome qualsiasi e il redirect URI qui sotto. Nei suoi Members, aggiungi il nome utente Trakt di ogni utente che si collegherà, fino a 16 (tu puoi sempre accedere). Poi copia qui il suo client ID, e il suo client secret se Trakt ne mostra uno.',
+      traktOlderApps:
+        'Le applicazioni create prima di ottobre 2026 continuano a funzionare con il loro client secret e il loro redirect URI, urn:ietf:wg:oauth:2.0:oob; collegale al tuo account GitHub entro il 1° gennaio 2027, altrimenti Trakt non farà più accedere gli utenti. Un account Trakt gratuito collega una sola app della community alla volta: un utente che ne ha già collegata un’altra deve scollegarla su Trakt, in Settings › Connected apps, oppure usare Trakt VIP.',
       redirectUri: 'Redirect URI da inserire nell’applicazione',
       traktClientId: 'Client ID Trakt',
       traktClientIdHelp:
-        'Lascia vuoto per disattivare Trakt. Gli utenti possono collegarsi una volta salvati sia il client ID sia il client secret.',
+        'Lascia vuoto per disattivare Trakt. Gli utenti possono collegarsi una volta salvato il client ID.',
       traktClientSecret: 'Client secret Trakt',
       traktClientSecretHelp:
-        'Mostrato nella pagina dell’applicazione su trakt.tv, sotto il client ID.',
+        'Facoltativo: solo le applicazioni create prima di ottobre 2026 ne hanno uno.',
       simklSetup:
         'Crea un’applicazione su simkl.com, in Settings, Developer, Create new app, di tipo «TV, devices & command line» (AUTH V2 di Simkl; non richiede un redirect URI, e i client ID delle vecchie applicazioni AUTH V1 vengono rifiutati). Dalle un nome qualsiasi, poi copia qui il suo client ID.',
       simklClientId: 'Client ID Simkl',
@@ -38,7 +40,7 @@ const settings: typeof en = {
       myAnimeListSetup:
         'Crea un’applicazione su myanimelist.net, in Account Settings, API, Create ID, di tipo «web». Dalle un nome qualsiasi e, come redirect URL, l’indirizzo qui sotto: MyAnimeList vi rimanda i browser degli utenti dopo che hanno autorizzato Polyfin. Basta che lo raggiungano i loro browser. Poi copia qui il suo client ID e il suo client secret.',
       myAnimeListRedirectHelp:
-        'L’indirizzo pubblico di questo server in Impostazioni › Generali, altrimenti l’indirizzo che stai usando ora.',
+        'L’indirizzo pubblico di questo server in Impostazioni › Notifiche, altrimenti l’indirizzo che stai usando ora.',
       myAnimeListClientId: 'Client ID MyAnimeList',
       myAnimeListClientIdHelp:
         'Lascia vuoto per disattivare MyAnimeList. Gli utenti possono collegarsi una volta salvati sia il client ID sia il client secret.',
@@ -66,6 +68,9 @@ const settings: typeof en = {
     updateCheck: 'Controlla nuove versioni',
     updateCheckHelp:
       'Una volta al giorno, e poco dopo l’avvio, Polyfin chiede a GitHub la sua ultima release, inviando solo la propria versione. Una versione più recente compare nella Home e in Sistema › Stato di salute, e viene inviata alle notifiche Nuova versione. Se disattivato, Polyfin non contatta mai GitHub.',
+    includePrereleases: 'Includi le versioni preliminari',
+    includePrereleasesHelp:
+      'La ricerca di nuove versioni e gli aggiornamenti di Polyfin Desktop considerano anche le versioni preliminari, come 1.4.0-rc.1: una più recente compare nella Home e in Sistema › Stato di salute, e Polyfin Desktop propone di installarla. Le versioni preliminari servono a provare ciò che arriva e possono avere bug. Se disattivato, contano solo le release.',
     restartConfirmed: 'Polyfin viene riavviato quando si ferma',
     restartConfirmedHelp:
       'Attivalo quando il container di Polyfin ha una politica di riavvio che lo riavvia, come unless-stopped, always o on-failure, o quando lo fa il suo gestore di servizi. Senza il socket Docker, che non riceve mai, Polyfin non vede la politica di riavvio del suo container: finché è disattivato, Riavvia nella Home avverte che Polyfin potrebbe non tornare.',
@@ -89,9 +94,9 @@ const settings: typeof en = {
         'Disattivato per impostazione predefinita. Riprodurre un torrent lo scarica da altri peer e condivide quanto scaricato finché il limite di upload lo consente: sei tu a rispondere di ciò che questo server scarica e condivide. Gli utenti devono anche avere Può riprodurre stream torrent, nella loro pagina in Utenti. Richiede un percorso.',
       route: 'Percorso',
       routeHelp:
-        'Ogni socket dei torrent, per peer, tracker e DHT, passa solo da qui. Quando non è disponibile, le versioni torrent vengono saltate, anche durante una riproduzione, e Sistema › Stato di salute ne indica il motivo.',
+        'Ogni socket dei torrent, per peer, tracker e DHT, passa solo da qui. Quando non è disponibile, le versioni torrent restano elencate ma non partono: una riproduzione le salta, e un torrent già in riproduzione continua durante una breve interruzione. Sistema › Stato di salute ne indica il motivo.',
       routeHelpNoInterface:
-        'Ogni socket dei torrent, per peer, tracker e DHT, passa solo da qui. Questo sistema non vincola socket a un’interfaccia di rete, cosa che fa solo Linux, come in Polyfin Desktop per Windows e macOS: un proxy SOCKS5 o un tunnel WireGuard trasporta i torrent. Quando non è disponibile, le versioni torrent vengono saltate, anche durante una riproduzione, e Sistema › Stato di salute ne indica il motivo.',
+        'Ogni socket dei torrent, per peer, tracker e DHT, passa solo da qui. Questo sistema non vincola socket a un’interfaccia di rete, cosa che fa solo Linux, come in Polyfin Desktop per Windows e macOS: un proxy SOCKS5 o un tunnel WireGuard trasporta i torrent. Quando non è disponibile, le versioni torrent restano elencate ma non partono: una riproduzione le salta, e un torrent già in riproduzione continua durante una breve interruzione. Sistema › Stato di salute ne indica il motivo.',
       routes: {
         interface: 'Interfaccia di rete',
         proxy: 'Proxy SOCKS5',
@@ -257,7 +262,7 @@ const settings: typeof en = {
       `Quando un’applicazione riproduce un titolo senza scegliere una versione, Polyfin prova le versioni in ordine finché una funziona, ma ne analizza al massimo questo numero. Vengono provate anche le versioni già analizzate, perché non costano nulla. Un numero più alto trova più spesso una versione funzionante, ma un titolo che non si riproduce impiega più tempo a segnalarlo. Da ${r.min} a ${r.max}; ${r.default} per impostazione predefinita.`,
     preferDirectPlay: 'Preferisci le versioni che l’applicazione riproduce senza conversione',
     preferDirectPlayHelp:
-      'Quando un’applicazione riproduce un titolo senza scegliere una versione, Polyfin sceglie la prima versione che l’applicazione riproduce così com’è o semplicemente reimpacchettata, anziché la prima che si riproduce comunque. La primissima riproduzione di un titolo può essere un po’ più lenta, perché potrebbero essere analizzate più versioni; non cambia nulla una volta che sono note.',
+      'Quando un’applicazione riproduce un titolo senza scegliere una versione, Polyfin sceglie la prima versione che l’applicazione riproduce così com’è o semplicemente reimpacchettata, anziché la prima che si riproduce comunque. Una volta che un’applicazione ha riprodotto qualcosa dall’avvio del server, anche i suoi menu delle versioni elencano prima queste versioni, così la riproduzione parte dalla versione che il menu mostra. Gli utenti con «Riproduci prima i file locali» mantengono prima i loro file locali. La primissima riproduzione di un titolo può essere un po’ più lenta, perché potrebbero essere analizzate più versioni; non cambia nulla una volta che sono note.',
     versionsOffered: 'Versioni offerte',
     versionsOfferedHelp:
       'Tutte le release elenca tutte le versioni fornite dagli addon. 4K, 1080p e 720p ne offre tre: la migliore di ogni qualità nell’ordine delle versioni. Una qualità mancante viene presa prima da quella inferiore, poi da quella superiore, mai due volte la stessa versione; le qualità oltre il gruppo di qualità dell’utente vengono escluse. In ogni caso, il nome di una versione riporta la sua dimensione dopo il nome del suo addon.',
@@ -283,7 +288,7 @@ const settings: typeof en = {
       `Il server passa già interamente da WARP (indirizzo visto: ${ip}): non serve un proxy, scegli «Tramite il server» sugli addon.`,
     nameHowVersionsPlay: 'Indica nei nomi delle versioni come vengono riprodotte',
     nameHowVersionsPlayHelp:
-      'I nomi delle versioni terminano con il modo in cui l’applicazione riproduce ciascuna: «(riproduzione diretta)», «(stream diretto)» quando viene copiata senza conversione, «(convertita: motivo)» con la richiesta dell’applicazione, HDR, il limite di qualità, i sottotitoli, il video o l’audio come motivo, oppure «(non riproducibile qui)». Polyfin lo stabilisce in base al profilo del dispositivo inviato dall’applicazione alla sua ultima riproduzione, quindi i nomi non indicano nulla prima della prima riproduzione di un dispositivo o dopo un riavvio, né per una versione non ancora analizzata o descritta da RemuxDB. I nomi sono nella lingua dei nomi generati. Per questo non viene letto nulla.',
+      'I nomi delle versioni terminano con il modo in cui l’applicazione riproduce ciascuna: «(riproduzione diretta)», «(stream diretto)» quando viene copiata senza conversione, «(convertita: motivo)» con la richiesta dell’applicazione, HDR, il limite di qualità, i sottotitoli, il video o l’audio come motivo, oppure «(non riproducibile qui)». Polyfin lo stabilisce in base al profilo del dispositivo inviato dall’applicazione alla sua ultima riproduzione o, prima, nelle capacità della sua sessione, quindi i nomi non indicano nulla prima della prima riproduzione di un dispositivo, a meno che le sue capacità portassero un profilo, o dopo un riavvio, né per una versione non ancora analizzata o descritta da RemuxDB. I nomi sono nella lingua dei nomi generati. Per questo non viene letto nulla.',
     versionOrderGroup: 'Ordine delle versioni',
     versionOrder: {
       label: 'Ordina le versioni per',
@@ -292,6 +297,8 @@ const settings: typeof en = {
       add: 'Aggiungi un criterio',
       remove: (name: string) => `Rimuovi «${name}»`,
       criterion: (position: number) => `Criterio ${position}`,
+      sourceTiesOnly: (position: number) =>
+        `«Origine, nell’ordine sottostante» è il criterio ${position}: ordina solo le versioni a pari merito per i criteri sopra, quindi le versioni di una cartella in cima all’ordine delle origini possono comunque venire dopo altre. Spostalo al criterio 1 per mettere per prime le versioni di un’origine.`,
       criteria: {
         language: 'Lingua audio preferita',
         'resolution-high': 'Risoluzione, prima la più alta',
@@ -465,6 +472,9 @@ const settings: typeof en = {
       subtitleOcrTracks: 'Tracce di sottotitoli in immagini lette contemporaneamente',
       subtitleOcrTracksHelp: (r: RangeText) =>
         `Ogni traccia viene letta da un processo Tesseract che usa un core del processore. Da ${r.min} a ${r.max}; ${r.default} per impostazione predefinita.`,
+      subtitleOcrDownload: 'Scarica automaticamente i dati delle lingue mancanti',
+      subtitleOcrDownloadHelp:
+        'La prima volta che una traccia è in una lingua per cui Tesseract non ha dati, Polyfin scarica il file della lingua dai dati ufficiali di Tesseract nella cartella indicata da POLYFIN_TESSDATA_DIR, lo verifica e poi legge la traccia. Un download non riuscito viene ritentato non prima di un’ora, e Sistema › Stato di salute indica il motivo. Disattivata, Stato di salute offre un pulsante Scarica per ogni lingua mancante.',
       hardwareAcceleration: 'Scheda grafica usata per la conversione',
       hardwareAccelerationHelp:
         'Una scheda grafica (GPU) converte i video molto più velocemente del processore. Ogni sistema offre le proprie: NVIDIA e VAAPI su Linux, VideoToolbox su macOS, NVIDIA, Intel e AMD su Windows. Senza una scheda funzionante, converte il processore. Una modifica si applica appena salvata, senza riavvio.',
@@ -629,7 +639,18 @@ const settings: typeof en = {
       },
       downmixBoost: 'Volume nel missaggio in stereo',
       downmixBoostHelp: (r: RangeText) =>
-        `I missaggi stereo spesso suonano più bassi: il volume viene moltiplicato per questo numero. Da ${r.min} a ${r.max}; ${r.default} (nessuna modifica) come predefinito. Jellyfin usa 2.`,
+        `I missaggi stereo spesso suonano più bassi: il volume viene moltiplicato per questo numero, e 1 non cambia nulla. Da ${r.min} a ${r.max}; ${r.default} come predefinito, come in Jellyfin. Sopra 1, un limitatore evita che le scene forti distorcano.`,
+      normalizeConvertedAudio: 'Uniforma il volume dei video convertiti',
+      normalizeConvertedAudioHelp:
+        'Porta l’audio dei film, degli episodi e dei canali che il server converte allo stesso volume percepito, -16 LUFS, così i titoli bassi suonano più forte e quelli forti più piano, con un limitatore dopo. Se attivato, il volume nel missaggio in stereo non cambia più il livello. La riproduzione diretta, l’audio inviato così com’è e la musica non cambiano mai. Disattivato per impostazione predefinita.',
+      dynamicRangeCompression: 'Gamma dinamica dell’audio Dolby convertito',
+      dynamicRangeCompressionHelp:
+        'Come le tracce AC-3 ed E-AC-3 (Dolby Digital e Dolby Digital Plus) che il server converte applicano la compressione che contengono, che alza i passaggi tenui e abbassa quelli forti. «Come codificata» è il modo in cui FFmpeg e Jellyfin le decodificano. La riproduzione diretta e l’audio inviato così com’è restano all’applicazione.',
+      dynamicRangeCompressions: {
+        encoded: 'Come codificata',
+        none: 'Nessuna (gamma completa)',
+        night: 'Notte (passaggi tenui più forti)',
+      },
       maxAudioChannels: 'Numero massimo di canali audio',
       maxAudioChannelsHelp:
         'L’audio convertito mantiene al massimo questo numero di canali, anche se l’applicazione ne accetta di più.',
@@ -690,7 +711,7 @@ const settings: typeof en = {
       'Una collezione di un add-on senza locandina, e una lista intelligente mostrata come collezione, mostrano le locandine dei loro primi titoli con il loro nome, disegnate da Polyfin dopo averne letto i titoli. Gli utenti con controllo parentale o generi bloccati non le vedono. Se disattivato, non mostrano alcuna immagine. Le librerie impostate su un’immagine generata la mantengono.',
     tmdbKey: 'Chiave API TMDB',
     tmdbKeyHelp:
-      'Facoltativa. Con una chiave API o un token di accesso in lettura di un account TMDB, «Modifica immagini» di jellyfin-web cerca anche su TMDB locandine, sfondi e loghi di un titolo, fotogrammi di un episodio, locandine di una stagione e foto di una persona, che Polyfin inoltra. Le persone vengono inoltre cercate una volta su TMDB: quelle senza foto ricevono la loro, e le loro pagine mostrano biografia, date di nascita e di morte e luogo di nascita. Anche i file di una cartella locale la cui ricerca non riesce presso tutti gli add-on dei metadati vengono cercati su TMDB. Senza chiave, «Modifica immagini» elenca solo le immagini degli add-on e TMDB non viene mai interpellato.',
+      'Facoltativa: Polyfin non include alcuna chiave. Una chiave API o un token di accesso in lettura di un account TMDB porta foto e biografie delle persone, cast e troupe di ogni titolo da TMDB nell’ordine dei titoli di coda con foto, pagine delle persone con ogni titolo delle librerie in cui compaiono e i titoli per cui TMDB le conosce meglio, oltre le librerie, locandine di film e serie il cui add-on non ne fornisce, cofanetti nelle app di Silo e immagini di TMDB in «Modifica immagini» di jellyfin-web, che Polyfin inoltra. Cerca anche su TMDB i file di una cartella locale la cui ricerca non riesce presso tutti gli add-on dei metadati. Senza chiave, TMDB non viene mai interpellato.',
     waitDigitalRelease: 'Attendi l’uscita digitale',
     waitDigitalReleaseHelp:
       'Un film dei cataloghi degli addon compare solo quando è disponibile a casa: la sua prima uscita digitale o fisica, secondo TMDB, altrimenti 90 giorni dopo l’uscita al cinema. Fino ad allora non compare nelle librerie, nelle righe della home, nelle ricerche, nei titoli simili e nelle pagine delle persone, non ha versioni e non si riproduce; le liste intelligenti con una regola di titoli in arrivo lo mostrano, con quel giorno. Un film che TMDB non conosce, o uscito da più di un anno, resta visibile. Richiede la chiave API TMDB.',
@@ -777,7 +798,7 @@ const settings: typeof en = {
     serverImports:
       'Gli utenti possono importare la cronologia di visione da un altro server o applicazione',
     serverImportsHelp:
-      'In Il mio account, ogni utente può importare i film e gli episodi visti, i punti di ripresa e i preferiti da un server Jellyfin o Emby, o dal proprio account Stremio o Nuvio, accedendovi con le proprie credenziali. Se disattivato, queste sezioni sono nascoste. Un amministratore può comunque importare per conto di un utente, in Utenti.',
+      'In Il mio account, ogni utente può importare i film e gli episodi visti, i punti di ripresa e i preferiti da un server Jellyfin, Emby o Plex, o dal proprio account Stremio o Nuvio, accedendovi con le proprie credenziali, e i film visti da un’esportazione di Letterboxd. Se disattivato, queste sezioni sono nascoste. Un amministratore può comunque importare per conto di un utente, in Utenti.',
     importEveryMinutes: 'Importa gli account collegati ogni',
     importEveryMinutesHelp:
       'Ogni quanto Polyfin importa di nuovo gli account Stremio e Nuvio a cui gli utenti restano collegati e le cronologie di visione che importano dai servizi di tracciamento. Una modifica si applica subito: ogni importazione successiva avviene a questa distanza dall’ultima. Ogni importazione rilegge l’intero account, quindi un intervallo breve invia più richieste a quei servizi e, per Stremio, i cui termini vietano l’estrazione automatizzata, rende più marcata quella zona grigia. 6 ore per impostazione predefinita.',
@@ -796,7 +817,7 @@ const settings: typeof en = {
       `Le applicazioni Jellyfin non usate per questo numero di giorni vengono disconnesse e devono accedere di nuovo. Il controllo avviene ogni ora. L’accesso a questa pagina di amministrazione non è interessato. Da ${r.min} a ${r.max}.`,
     knownProxies: 'Proxy conosciuti',
     knownProxiesHelp: (r: RangeText) =>
-      `I reverse proxy davanti a Polyfin, uno per riga: un indirizzo IP, una rete come 172.18.0.0/16 o un nome host come il nome di un container su una rete Docker (traefik), fino a ${r.max}. Un nome viene risolto ogni minuto e ogni indirizzo a cui corrisponde è considerato attendibile, quindi elenca solo nomi risolti dalla tua rete. Una richiesta da uno di essi proviene dal client indicato dalla sua intestazione X-Forwarded-For o X-Real-IP: è quell’indirizzo che limita gli accessi non riusciti, compare nei dispositivi e determina la rete locale. Le intestazioni inoltrate da qualsiasi altro indirizzo vengono ignorate. Lascia vuoto se davanti a Polyfin non c’è nulla.`,
+      `I reverse proxy davanti a Polyfin, uno per riga: un indirizzo IP, una rete come 172.18.0.0/16 o un nome host come il nome di un container su una rete Docker (traefik), fino a ${r.max}. Un nome viene risolto ogni minuto e ogni indirizzo a cui corrisponde è considerato attendibile, quindi elenca solo nomi risolti dalla tua rete. Una richiesta da uno di essi proviene dal client indicato dalla sua intestazione X-Forwarded-For o X-Real-IP: è quell’indirizzo che limita gli accessi non riusciti, compare nei dispositivi e determina la rete locale. Da qualsiasi altro indirizzo, le intestazioni X-Forwarded-For e X-Real-IP vengono ignorate. Lascia vuoto se davanti a Polyfin non c’è nulla.`,
     provider: {
       title: 'Provider di identità',
       intro:

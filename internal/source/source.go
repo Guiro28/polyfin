@@ -140,12 +140,24 @@ func (e *finalError) Error() string { return e.err.Error() }
 
 func (e *finalError) Unwrap() error { return e.err }
 
+// RouteFailure is the error of a route that carries a source's requests,
+// as the proxy or the tunnel of torrents (see torrent.RouteError): it
+// tells nothing of the source, which was not asked.
+type RouteFailure interface {
+	error
+	RouteFailure()
+}
+
 // Answer describes what a source answered to make a request fail, for
 // logs: its status, the range ignored, an answer cut short, or none. Never
-// the source's URL.
+// the source's URL. A route failure tells the route: the source was not
+// asked.
 func Answer(err error) string {
 	var status *StatusError
+	var route RouteFailure
 	switch {
+	case errors.As(err, &route):
+		return "the route for torrents does not answer"
 	case errors.As(err, &status) && status.Reply != nil:
 		return "HTTP " + strconv.Itoa(status.Status) + ", " + status.Reply.String()
 	case errors.As(err, &status):
@@ -566,10 +578,8 @@ func (c *Cache) touch(key chunkKey) {
 }
 
 // stored accounts for bytes written to a chunk, and evicts chunks until the
-// cache fits its limit (see fit).
+// cache fits its limit (see fit). The cache's lock is held.
 func (c *Cache) stored(key chunkKey, size int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	use := c.chunks[key]
 	if use == nil {
 		use = &chunkUse{}
@@ -1119,7 +1129,10 @@ func (s *Source) sizeUnknown() bool {
 // store keeps a fetched block and wakes the readers waiting for it. last
 // marks the final, short block of a source whose size was unknown. A
 // source discarded writes nothing: discard waits for the write under way,
-// so that no file is written in its folder once it is removed.
+// so that no file is written in its folder once it is removed. The cache
+// counts the block (see stored) under its lock, taken before the readers
+// are woken: whatever a reader of the block does next, as closing the
+// cache, which keeps the chunks it counts (see keep), finds it counted.
 func (s *Source) store(block int64, data []byte, last bool) error {
 	index := block / s.cache.chunkBlocks
 	s.writing.RLock()
@@ -1135,6 +1148,8 @@ func (s *Source) store(block int64, data []byte, last bool) error {
 	if err != nil {
 		return err
 	}
+	s.cache.mu.Lock()
+	defer s.cache.mu.Unlock()
 	s.mu.Lock()
 	added := 0
 	if !s.has(block) {
@@ -1166,7 +1181,8 @@ func (s *Source) store(block int64, data []byte, last bool) error {
 	s.unsynced[index] = true
 	s.cache.saveLater(s)
 	s.mu.Unlock()
-	// A source discarded meanwhile keeps nothing: its folder is gone.
+	// A source halted meanwhile, under the cache's lock, keeps nothing
+	// more: its folder is gone, or its state was saved without the block.
 	if added > 0 && s.ctx.Err() == nil {
 		s.cache.stored(chunkKey{s.id, index}, int64(added))
 	}

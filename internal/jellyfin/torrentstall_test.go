@@ -3,11 +3,13 @@ package jellyfin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -48,15 +50,30 @@ func (p torrentPlay) playHLS(t *testing.T, picked string) string {
 	return answer.ErrorCode
 }
 
-// playsWaiting counts the goroutines of plays still waiting for their
-// versions.
-func playsWaiting() int {
+// countedGoroutines labels the goroutine of t, and so every goroutine it
+// starts from now on, and those they start in turn, such as its test
+// server's: playsWaiting counts them alone among the goroutines of the
+// test binary.
+func countedGoroutines(t *testing.T) {
+	pprof.SetGoroutineLabels(pprof.WithLabels(t.Context(), pprof.Labels("counted", t.Name())))
+}
+
+// playsWaiting counts the goroutines that t labeled (see
+// countedGoroutines) of plays still waiting for their versions.
+func playsWaiting(t *testing.T) int {
+	// The goroutines are listed by stack and labels, each with its count:
+	// "N @ addresses", then "# labels: {...}" and one "#" line by frame.
+	labels := fmt.Sprintf("%q:%q", "counted", t.Name())
 	var dump strings.Builder
-	_ = pprof.Lookup("goroutine").WriteTo(&dump, 2)
+	_ = pprof.Lookup("goroutine").WriteTo(&dump, 1)
 	n := 0
-	for _, goroutine := range strings.Split(dump.String(), "\n\n") {
-		if strings.Contains(goroutine, "jellyfin.(*Handler).choose") {
-			n++
+	for _, goroutines := range strings.Split(dump.String(), "\n\n") {
+		header, frames, _ := strings.Cut(goroutines, "\n# labels: ")
+		count, _, _ := strings.Cut(header[strings.LastIndex(header, "\n")+1:], " @")
+		label, frames, _ := strings.Cut(frames, "\n")
+		if strings.Contains(label, labels) && strings.Contains(frames, "jellyfin.(*Handler).choose") {
+			counted, _ := strconv.Atoi(count)
+			n += counted
 		}
 	}
 	return n
@@ -106,11 +123,12 @@ func TestATorrentReadAPlayGaveUpOnGoesOnForTheNext(t *testing.T) {
 }
 
 // Plays that gave up waiting for a torrent version leave no goroutine
-// behind them, waiting for its analysis: the analysis goes on alone.
-//
-// It stays sequential: it counts the goroutines of every play in the test
-// binary, which the tests running in parallel would add to.
+// behind them, waiting for its analysis: the analysis goes on alone. The
+// goroutines are those of the test's own server, labeled: the plays of
+// the tests running alongside are not counted.
 func TestPlaysThatGaveUpLeaveNoGoroutineBehind(t *testing.T) {
+	t.Parallel()
+	countedGoroutines(t)
 	ffmpeg, tor := slowTorrent(t)
 	seeder := torrenttest.Seed(t, tor, "127.0.0.1")
 	tracker := torrenttest.HTTPTracker(t, "127.0.0.1", seeder.Address())
@@ -124,15 +142,24 @@ func TestPlaysThatGaveUpLeaveNoGoroutineBehind(t *testing.T) {
 	for range 2 {
 		go func() { answered <- p.playHLS(t, picked) }()
 	}
+	// The plays are counted while they wait, for the start and a piece's
+	// wait: the count sees the test's goroutines.
+	for playsWaiting(t) == 0 {
+		select {
+		case code := <-answered:
+			t.Fatalf("PlaybackInfo answered %q before its play was counted waiting", code)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 	for range 2 {
 		if code := <-answered; code != "RateLimitExceeded" {
 			t.Fatalf("PlaybackInfo answered %q", code)
 		}
 	}
 	// The analysis still waits for the held pieces for a while.
-	for deadline := time.Now().Add(10 * time.Second); playsWaiting() > 0; time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(10 * time.Second); playsWaiting(t) > 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
-			t.Fatalf("%d goroutines of the plays that gave up still wait", playsWaiting())
+			t.Fatalf("%d goroutines of the plays that gave up still wait", playsWaiting(t))
 		}
 	}
 }
@@ -183,5 +210,126 @@ func TestATorrentWhosePiecesKeepComingPlaysAtItsFirstPlay(t *testing.T) {
 	seeder.Delay(400 * time.Millisecond)
 	if code := p.playHLS(t, picked); code != "" {
 		t.Fatalf("over a slow swarm whose pieces keep coming, PlaybackInfo answered %q", code)
+	}
+}
+
+// hlsURL asks PlaybackInfo for the version picked as playHLS does, and
+// returns the address of the HLS stream it answers.
+func (p torrentPlay) hlsURL(t *testing.T, picked string) string {
+	t.Helper()
+	query := url.Values{"UserId": {p.user.ID.String()}, "IsPlayback": {"true"}, "MediaSourceId": {picked}}
+	status, body := p.call(http.MethodPost, "/Items/"+p.movie+"/PlaybackInfo?"+query.Encode(), app("web", p.token),
+		map[string]any{"DeviceProfile": json.RawMessage(hlsOnlyProfile)})
+	var answer playbackAnswer
+	if status != http.StatusOK || json.Unmarshal(body, &answer) != nil || answer.ErrorCode != "" || len(answer.MediaSources) == 0 ||
+		answer.MediaSources[0].TranscodingUrl == "" {
+		t.Fatalf("PlaybackInfo: %d %s", status, body)
+	}
+	return answer.MediaSources[0].TranscodingUrl
+}
+
+// allSegments reads the HLS stream at transcoding as a player does, its
+// playlists then each of its segments, failing the test on any answer
+// that is not a success.
+func allSegments(t *testing.T, s testServer, transcoding string) {
+	t.Helper()
+	status, master := s.call(http.MethodGet, transcoding, "", nil)
+	if status != http.StatusOK {
+		t.Fatalf("master playlist: %d %s", status, master)
+	}
+	base := transcoding[:strings.Index(transcoding, "master.m3u8")]
+	uris := func(playlist []byte) []string {
+		var listed []string
+		for line := range strings.Lines(string(playlist)) {
+			if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+				if !strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "http") {
+					line = base + line
+				}
+				listed = append(listed, line)
+			}
+		}
+		return listed
+	}
+	media := uris(master)
+	if len(media) == 0 {
+		t.Fatalf("master playlist: %s", master)
+	}
+	status, playlist := s.call(http.MethodGet, media[0], "", nil)
+	segments := uris(playlist)
+	if status != http.StatusOK || len(segments) < 3 {
+		t.Fatalf("media playlist: %d %s", status, playlist)
+	}
+	for n, segment := range segments {
+		if status, data := s.call(http.MethodGet, segment, "", nil); status != http.StatusOK || len(data) == 0 {
+			t.Fatalf("segment %d: %d, %d bytes", n, status, len(data))
+		}
+	}
+}
+
+// A torrent version played over HLS plays on while its proxy answers no
+// new connection, for longer than a handshake's timeout: the torrent keeps
+// its peer, and PlaybackInfo, as the app asks again after a seek or a
+// change of track, its playlists and every segment answer meanwhile.
+func TestATorrentPlaysOverHLSThroughAProxyStall(t *testing.T) {
+	t.Parallel()
+	ffmpeg, tor := slowTorrent(t)
+	seeder := torrenttest.Seed(t, tor, "127.0.0.1")
+	tracker := torrenttest.HTTPTracker(t, "127.0.0.1", seeder.Address())
+	p := newTorrentPlay(t, filepath.Join(filepath.Dir(ffmpeg), "ffprobe"), 0, []*torrenttest.Torrent{tor}, []string{tracker.URL()})
+	picked := p.details(t)
+	fetchSegments(t, p.testServer, p.hlsURL(t, picked), 0)
+
+	p.proxy.Stall()
+	defer p.proxy.Answer()
+	// A check of the route, once the last one's answer is stale, waits
+	// out the proxy's handshake and fails.
+	deadline := time.Now().Add(time.Minute)
+	for !torrent.RouteFailure(p.engine.Ready(t.Context())) {
+		if time.Now().After(deadline) {
+			t.Fatal("the route's check passes during the stall")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	allSegments(t, p.testServer, p.hlsURL(t, picked))
+	if hash, _ := torrent.ParseHash(tor.HashHex()); !p.engine.Running(hash) {
+		t.Fatal("the torrent stopped during the stall")
+	}
+}
+
+// A torrent version whose proxy freezes for 40 seconds, longer than a
+// piece's wait, as its first play's analysis reads it, plays once the
+// proxy answers again: the play waits on while the torrent waits for its
+// route within its grace, as it does while pieces come.
+func TestATorrentWhoseProxyFreezesAtItsFirstPlayPlaysOnceItAnswers(t *testing.T) {
+	t.Parallel()
+	ffmpeg, tor := slowTorrent(t)
+	seeder := torrenttest.Seed(t, tor, "127.0.0.1")
+	tracker := torrenttest.HTTPTracker(t, "127.0.0.1", seeder.Address())
+	// A start of 5 seconds: the play's first wait ends 35 seconds in, and
+	// it waits at most 70 seconds.
+	p := newTorrentPlay(t, filepath.Join(filepath.Dir(ffmpeg), "ffprobe"), 5*time.Second, []*torrenttest.Torrent{tor}, []string{tracker.URL()})
+	picked := p.details(t)
+	// One block of 16 KiB every 100 ms: the head and the index of the file
+	// take several seconds. The proxy freezes as the first block comes.
+	seeder.Delay(100 * time.Millisecond)
+	answered, done := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { <-done })
+	go func() {
+		defer close(done)
+		for deadline := time.Now().Add(time.Minute); seeder.Sent() == 0 && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		p.proxy.Freeze()
+		time.Sleep(40 * time.Second)
+		p.proxy.Answer()
+		close(answered)
+	}()
+	if code := p.playHLS(t, picked); code != "" {
+		t.Fatalf("with the proxy frozen during the play's analysis, PlaybackInfo answered %q", code)
+	}
+	select {
+	case <-answered:
+	default:
+		t.Fatal("the play answered before the proxy did: the freeze did not hold its analysis")
 	}
 }

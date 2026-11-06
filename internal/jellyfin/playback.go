@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -233,9 +234,18 @@ func (h *Handler) title(ctx context.Context, user accounts.User, opened accounts
 	return item, err
 }
 
+// errNoSources is played's answer for an item the user sees that plays
+// nothing itself: a folder, a series, a season, a collection or a library.
+// It is library.ErrNotFound to every caller, but PlaybackInfo and the
+// stream answer it 400, as Jellyfin answers an item without media sources:
+// GetStaticMediaSources throws ArgumentException for it
+// (MediaSourceManager.cs at v12.4, lines 383-393), which the exception
+// middleware answers 400 (ExceptionMiddleware.cs, line 127).
+var errNoSources = fmt.Errorf("%w: the item has no media sources", library.ErrNotFound)
+
 // played resolves what a player opens: a movie, an episode, a replay, a
 // channel, a recording, a track or an audiobook, by its own identifier or
-// by one of its versions'.
+// by one of its versions'; errNoSources for an item of another kind.
 func (h *Handler) played(ctx context.Context, user accounts.User, opened accounts.ID) (library.Item, error) {
 	item, err := h.Library.Item(ctx, user, opened)
 	if errors.Is(err, library.ErrNotFound) {
@@ -248,12 +258,21 @@ func (h *Handler) played(ctx context.Context, user accounts.User, opened account
 	if err != nil {
 		return library.Item{}, err
 	}
-	switch item.Kind {
+	if !hasSources(item.Kind) {
+		return library.Item{}, errNoSources
+	}
+	return item, nil
+}
+
+// hasSources reports whether items of kind play, with versions of their
+// own: Jellyfin's IHasMediaSources.
+func hasSources(kind library.Kind) bool {
+	switch kind {
 	case library.KindMovie, library.KindVideo, library.KindEpisode, library.KindReplay, library.KindChannel, library.KindTrack, library.KindAudiobook,
 		library.KindExtra, library.KindThemeSong:
-		return item, nil
+		return true
 	}
-	return library.Item{}, library.ErrNotFound
+	return false
 }
 
 // looseInt reads a number that apps send as a JSON number or string.
@@ -300,6 +319,10 @@ type playbackInfoRequest struct {
 	// than Polyfin for a DLNA device or a guest: the direct-play check
 	// still runs, and gives DirectPlayError (see playback.Options).
 	directPlayOff bool
+	// convertSound converts the audio of the user's videos and channels,
+	// evened, the video copied where it would play as it is (see
+	// soundConverted).
+	convertSound bool
 }
 
 // playbackInfo answers what an app needs to play an item: its version's
@@ -337,6 +360,11 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.directPlayOff = request.EnableDirectPlay != nil && !*request.EnableDirectPlay
+	// The Jellyfin iOS app's native player gets over HLS what Jellyfin
+	// would stream it as one file (see iosNativeOverHLS).
+	if iosNativePlayer(r, request.DeviceProfile) {
+		request.DeviceProfile = iosNativeOverHLS(request.DeviceProfile)
+	}
 	user, ok := h.viewer(w, r, b, notFoundProblem)
 	if !ok {
 		return
@@ -353,11 +381,21 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 		h.refusePlay(w, r, user, item, "RateLimitExceeded", plays.FailedLimit)
 		return
 	}
+	// Whether the device's profile was known before this request: item
+	// details then listed the versions for it (see appOrder).
+	_, _, profileKnown := h.knownPlay(r.Context(), user)
 	h.rememberPlay(r.Context(), request)
 	limitBitrate(&request, user)
 	h.limitHeight(&request, user)
+	request.convertSound = user.ConvertSound
 	request.progressive = h.downloadsConverted(user)
 	item, err := h.played(r.Context(), user, opened)
+	// Jellyfin cannot process the request for an item without media
+	// sources, such as a folder (see errNoSources).
+	if errors.Is(err, errNoSources) {
+		processingError(w, http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		h.browseError(w, r, err)
 		return
@@ -453,8 +491,14 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 	// is the first that plays without conversion, as it is or repackaged
 	// with its tracks copied, among those analyzed now; else the first that
 	// plays at all. Jellyfin 12.2 keeps the version opened first however
-	// it plays: the setting departs from it, and is off by default.
-	prefer := settings.PreferDirectPlay && !explicit
+	// it plays: the setting departs from it, and is off by default. The
+	// title's own identifier asks for no version, but for a device whose
+	// profile was known: its version menu was ordered for it, the versions
+	// it plays without conversion first (see appOrder), so the identifier,
+	// which it sends for the version the menu shows first, picked or not,
+	// names a version Play keeps even when it needs a conversion.
+	menuPick := request.MediaSourceId != "" && !explicit && profileKnown
+	prefer := settings.PreferDirectPlay && !explicit && !menuPick
 	c := plan(p.versions)
 	choice := h.choose(r, user, p, opened, request, c, prefer)
 	unstarted := choice.unstarted || p.unstarted
@@ -466,7 +510,7 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		unstarted = unstarted || h.unstartedTorrent(versions)
-		p.versions = h.offered(r.Context(), user, versions)
+		p.versions = h.offered(r.Context(), user, item, versions)
 		c = plan(p.versions)
 		choice = h.choose(r, user, p, opened, request, c, prefer)
 		unstarted = unstarted || choice.unstarted
@@ -487,7 +531,13 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 	chosen, unreadable, versions, at := choice.decided, choice.unreadable, p.versions, openedIndex(opened, p.versions)
 	picked = &chosen.version
 	h.choseVersion(callerFrom(r.Context()).Device.ID, h.titleOf(item.ID), chosen.version.ID)
-	session := h.Playback.Signer().Sign(playback.Grant{Version: chosen.version.ID, User: user.ID, Relay: mustRelay(r, chosen.version)})
+	// The Jellyfin app for Android's integrated player plays a version
+	// as it is only when it is described as a file (see asFile); before
+	// 2.6.3, it fetches that file with its play session alone, which then
+	// asks Polyfin to relay it.
+	asFile, tokenless := integratedPlayer(r, request)
+	session := h.Playback.Signer().Sign(playback.Grant{Version: chosen.version.ID, User: user.ID, Device: callerFrom(r.Context()).Device.ID,
+		Relay: tokenless || mustRelay(r, chosen.version)})
 	chosenSource := h.decidedSource(r, p, *chosen, request, session)
 	// Every version listed is named for the profile sent: the one chosen
 	// from its decision, the others from what is known of them.
@@ -499,6 +549,9 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 		// The bytes of the segment the play begins with are read while the
 		// app reads the answer.
 		h.Playback.Warm(chosen.version, time.Duration(request.StartTimeTicks.value)*100)
+	}
+	if asFile {
+		h.asFile(r.Context(), &chosenSource, chosen.version)
 	}
 	// An app that named a version, the title's own identifier included,
 	// gets the version chosen alone, as from Jellyfin.
@@ -536,6 +589,9 @@ func (h *Handler) playbackInfo(w http.ResponseWriter, r *http.Request) {
 			// their quality group, is not offered as it is.
 			if described.Bitrate != nil && overUserLimit(request.userLimit, *described.Bitrate) || !user.FitsGroup(h.versionHeight(r.Context(), other)) {
 				described.SupportsDirectPlay, described.SupportsDirectStream = false, false
+			}
+			if asFile {
+				h.asFile(r.Context(), &described, other)
 			}
 			sources = append(sources, described)
 		}
@@ -635,14 +691,16 @@ type decided struct {
 // unconverted reports whether the app plays a version without conversion:
 // as it is, or repackaged with its tracks copied, which needs its keyframe
 // index. A version above the user's bitrate limit never does: decide
-// refuses it unless its video is converted down to the limit.
+// refuses it unless its video is converted down to the limit. For a user
+// who has their sound converted, audio converted with the video copied
+// counts as copied: their every version converts it.
 func (h *Handler) unconverted(ctx context.Context, d decided, request playbackInfoRequest) bool {
 	switch {
 	case beyondUserLimit(request, d.analysis.Bitrate, d.decision):
 		return false
 	case d.decision.DirectPlay:
 		return true
-	case !d.decision.Streamed() || d.decision.Video != nil || d.decision.Audio != nil:
+	case !d.decision.Streamed() || d.decision.Video != nil || d.decision.Audio != nil && !request.convertSound:
 		return false
 	case d.decision.Progressive:
 		return true
@@ -673,13 +731,21 @@ func (h *Handler) decide(r *http.Request, p playable, index int, version library
 	// cannot be read, which nothing could stream.
 	if request.DeviceProfile != nil && decision.HLS {
 		plan, err := h.Playback.Plan(r.Context(), version)
+		// The sound converted alone needs the index too: a version that
+		// plays for others without it plays as for them.
+		if err != nil && request.convertSound && r.Context().Err() == nil {
+			request.convertSound = false
+			if usual, usualOptions, _ := h.trackDecision(p, version, source.MediaStreams, analysis, request, allowed, named); !usual.HLS {
+				decision, options, err = usual, usualOptions, nil
+			}
+		}
 		if err != nil {
 			if r.Context().Err() == nil {
 				h.Logger.Info("A version cannot be streamed over HLS", "addon", version.Addon, "error", err)
 			}
 			return decided{unstarted: version.Torrent != nil && playback.TorrentUnstarted(err)}, false
 		}
-		if plan.Grid() && decision.Video == nil {
+		if decision.HLS && plan.Grid() && decision.Video == nil {
 			var ok bool
 			if decision, ok = gridDecision(request, described, options); !ok {
 				return decided{}, false
@@ -715,9 +781,42 @@ func gridDecision(request playbackInfoRequest, described playback.MediaSource, o
 // the app asked for when named, else those the user's preferences choose.
 // It reads nothing, leaving to decide whether the version can be cut into
 // HLS segments. options are those the decision was made with, and
-// described the version as it saw it.
+// described the version as it saw it. For a user who has their sound
+// converted, the version is decided as for others, then with its audio
+// converted and evened, which plays when soundConverted lets it.
 func (h *Handler) trackDecision(p playable, version library.Version, streams []playback.MediaStream, analysis media.Analysis,
 	request playbackInfoRequest, allowed accounts.Conversions, named bool) (playback.Decision, playback.Options, playback.MediaSource) {
+	decision, options, described := h.decideTracks(p, version, streams, analysis, request, allowed, named, false)
+	if !request.convertSound || request.DeviceProfile == nil {
+		return decision, options, described
+	}
+	converted, convertedOptions, _ := h.decideTracks(p, version, streams, analysis, request, allowed, named, true)
+	if soundConverted(converted, decision, h.Playback.GridPlanned(version, analysis), allowed) {
+		return converted, convertedOptions, described
+	}
+	return decision, options, described
+}
+
+// soundConverted reports whether converted, a version's decision with its
+// audio converted and evened for a user who asked for it (see
+// accounts.User.ConvertSound), plays in place of usual, the decision
+// others get: it converts the audio, which the user may have converted,
+// and keeps the subtitle usual shows; and it converts the video only where
+// usual does, so that the sound never costs a video conversion, as a
+// subtitle burned in would, or a file cut on a fixed grid over HLS, which
+// grid tells (see playback.Service.GridPlanned).
+func soundConverted(converted, usual playback.Decision, grid bool, allowed accounts.Conversions) bool {
+	videoConverted := func(d playback.Decision) bool { return d.Video != nil || d.HLS && grid }
+	return converted.Streamed() && converted.Audio != nil && permitted(allowed, converted) &&
+		(!videoConverted(converted) || videoConverted(usual)) && converted.SubtitleStreamIndex == usual.SubtitleStreamIndex
+}
+
+// decideTracks is trackDecision, its audio converted and evened, never
+// played as it is, when sound is set: converted with the app's channels,
+// through the normalization of converted audio whatever the settings say
+// (see playback.Tuning.Normalize).
+func (h *Handler) decideTracks(p playable, version library.Version, streams []playback.MediaStream, analysis media.Analysis,
+	request playbackInfoRequest, allowed accounts.Conversions, named, sound bool) (playback.Decision, playback.Options, playback.MediaSource) {
 	notFile := h.Playback.ReadsInput(version)
 	options := playback.Options{
 		MaxStreamingBitrate: request.MaxStreamingBitrate.value,
@@ -732,15 +831,20 @@ func (h *Handler) trackDecision(p playable, version library.Version, streams []p
 		Progressive:         request.progressive,
 		Can:                 h.Playback.Capabilities(),
 	}
+	if sound {
+		convertSound(&options)
+	}
 	// Like Jellyfin, chosen tracks only count with the version they belong
 	// to. The user's preferences choose the others. A decision plays the
 	// audio track flagged default, else the first, by itself: another
-	// preferred one is passed as if asked, so that the decision checks it.
+	// preferred one is passed as if asked, so that the decision checks it,
+	// and so is the track that plays when none is flagged (see
+	// flaggedAudio).
 	audio := p.tracks.audio(streams)
 	if named && request.AudioStreamIndex.set {
 		audio = new(int(request.AudioStreamIndex.value))
 		options.AudioStreamIndex = audio
-	} else if audio != nil && *audio != *defaultAudio(streams) {
+	} else if audio != nil && (*audio != *defaultAudio(streams) || !flaggedAudio(streams)) {
 		options.AudioStreamIndex = audio
 	}
 	if named && request.SubtitleStreamIndex.set {
@@ -806,9 +910,17 @@ func (h *Handler) trackDecision(p playable, version library.Version, streams []p
 	// convertible lets through, leaves no room for it at the limit.
 	if decision.Progressive && (!permitted(allowed, decision) || decision.Video != nil && !h.Playback.MayConvertAlone()) {
 		request.progressive = false
-		return h.trackDecision(p, version, streams, analysis, request, allowed, named)
+		return h.decideTracks(p, version, streams, analysis, request, allowed, named, sound)
 	}
 	return decision, options, described
+}
+
+// convertSound has options convert the audio and even it, never playing
+// the source as it is: the refusal is Polyfin's, as a disc's, and the
+// app's own direct-play check is not run (see playback.Options).
+func convertSound(options *playback.Options) {
+	options.EnableDirectPlay, options.DirectPlayOff, options.ConvertAudio = false, false, true
+	options.Can.Tuning.Normalize = true
 }
 
 // unplayable reports whether a decision does not play a version on the app:
@@ -1155,7 +1267,13 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := h.played(r.Context(), user, opened)
 	if err != nil {
-		processingError(w, http.StatusNotFound)
+		// An item without media sources is a request Jellyfin cannot
+		// process (see errNoSources).
+		status := http.StatusNotFound
+		if errors.Is(err, errNoSources) {
+			status = http.StatusBadRequest
+		}
+		processingError(w, status)
 		return
 	}
 	// The version: the one the app names by its ETag or media source id,
@@ -1178,7 +1296,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	// lately left out, and those the version rules or the user's quality
 	// group hide (see firstWorkingVersion).
 	if wanted == item.ID && versioned(item.Kind) {
-		wanted = h.firstWorkingVersion(r.Context(), user, item)
+		wanted = h.firstWorkingVersion(h.mediaContext(r, servedToAnyone, user), user, item)
 	}
 	version, err := h.version(r.Context(), user, item, wanted)
 	if err != nil {
@@ -1385,7 +1503,8 @@ const trackWait = 2 * time.Minute
 // sourceVersion is the version a subtitle URL names, for a signed-in
 // caller: the URL carries the caller's token, as Jellyfin writes
 // DeliveryUrls. The title's own identifier stands for the version its
-// first media source describes (see firstWorkingVersion).
+// first media source describes (see firstWorkingVersion), as the app
+// asking is offered them, with the user's track choices on the title.
 func (h *Handler) sourceVersion(r *http.Request, item accounts.ID) (library.Version, bool) {
 	user, _, signedIn := h.streamAccess(r, servedToAnyone)
 	wanted, ok := parseGUID(r.PathValue("mediaSourceId"))
@@ -1393,7 +1512,11 @@ func (h *Handler) sourceVersion(r *http.Request, item accounts.ID) (library.Vers
 		return library.Version{}, false
 	}
 	if wanted == item {
-		wanted = h.firstWorkingVersion(r.Context(), user, library.Item{ID: item})
+		title, err := h.title(r.Context(), user, item)
+		if err != nil {
+			return library.Version{}, false
+		}
+		wanted = h.firstWorkingVersion(h.mediaContext(r, servedToAnyone, user), user, title)
 	}
 	version, err := h.Library.Version(r.Context(), user, item, wanted)
 	return version, err == nil

@@ -240,7 +240,7 @@ func (h *Handler) ContinueWatching(ctx context.Context, user accounts.User) ([]l
 
 // NextUp lists what Next Up lists user.
 func (h *Handler) NextUp(ctx context.Context, user accounts.User) ([]library.Item, error) {
-	return h.nextUpItems(ctx, user, nil, nil, nil, true)
+	return h.nextUpItems(ctx, user, nil, nil, nil, true, false)
 }
 
 // dlnaRequest is the PlaybackInfo request a DLNA device stands for: its
@@ -403,7 +403,7 @@ func (h *Handler) chooseDLNA(w http.ResponseWriter, r *http.Request, play dlna.P
 			w.WriteHeader(http.StatusNotFound)
 			return dlnaChosen{}, false
 		}
-		p.versions = h.offered(ctx, play.User, versions)
+		p.versions = h.offered(ctx, play.User, play.Item, versions)
 		choice = h.choose(r, play.User, p, play.Item.ID, request, candidatesOf(p.versions), settings.PreferDirectPlay)
 	}
 	if choice.decided == nil || !choice.decided.decision.DirectPlay && !choice.decided.decision.HLS {
