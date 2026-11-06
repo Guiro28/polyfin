@@ -251,7 +251,7 @@ function HomeRowEntry({
         ) : undefined
       }
       meta={
-        <span className="truncate">
+        <span className="min-w-0 break-words">
           {[
             source,
             text.places[row.place],
@@ -260,8 +260,16 @@ function HomeRowEntry({
           ].join(' · ')}
         </span>
       }
+      // Edit, Delete and Move on the right of the row, as other rows keep their actions, rather
+      // than on a line of their own under it.
       trailing={
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-2 max-md:gap-1">
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            {text.edit}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+            {text.delete}
+          </Button>
           <MoveButtons
             name={row.name}
             index={index}
@@ -269,12 +277,6 @@ function HomeRowEntry({
             disabled={moving}
             onMove={onMove}
           />
-          <Button variant="ghost" size="sm" onClick={onEdit}>
-            {text.edit}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
-            {text.delete}
-          </Button>
           <ConfirmDialog
             open={confirming}
             onClose={() => {
@@ -428,7 +430,7 @@ function HomeRowModal({
               setKind(value)
               follow(value, catalog, collection)
             }}
-            className="max-w-xs"
+            className="max-w-[23.75rem]"
           />
         </Field>
         {kind === 'catalog' &&
@@ -483,7 +485,7 @@ function HomeRowModal({
             value={place}
             options={places.map((value) => ({ value, label: text.places[value] }))}
             onValue={setPlace}
-            className="max-w-xs"
+            className="max-w-[23.75rem]"
           />
         </Field>
         <Field label={text.shownTo} error={missingUser ? text.noUser : undefined}>
@@ -523,7 +525,7 @@ function HomeRowModal({
           </div>
           <Switch checked={library} onChange={setLibrary} labelledBy={`${formId}-library`} />
         </div>
-        <fieldset className="space-y-4 border-t border-line pt-5">
+        <fieldset className="space-y-4 pt-3">
           <legend className="sr-only">{text.schedule}</legend>
           <div>
             <p className="text-control font-medium text-ink" aria-hidden="true">
@@ -664,7 +666,7 @@ function HomeRowPreviewModal({ users, onClose }: { users: User[]; onClose: () =>
               ...users.map((user) => ({ value: user.id, label: user.name })),
             ]}
             onValue={setUserId}
-            className="max-w-xs"
+            className="max-w-[23.75rem]"
           />
         </Field>
         {userId === '' ? (
@@ -688,8 +690,8 @@ function HomeRowPreviewModal({ users, onClose }: { users: User[]; onClose: () =>
                 {rows
                   .filter((row) => row.place === place)
                   .map((row) => (
-                    <div key={row.id} className="space-y-2">
-                      <p className="text-control font-medium text-ink">{row.name}</p>
+                    <div key={row.id} className="space-y-3">
+                      <p className="text-body font-semibold text-ink">{row.name}</p>
                       <ul className="flex gap-3 overflow-x-auto pb-2">
                         {row.titles.map((title) => (
                           <li key={title.id} className="w-24 shrink-0">
@@ -719,9 +721,9 @@ function PreviewPoster({ title }: { title: HomeRowPreviewTitle }) {
     return (
       <span
         aria-hidden="true"
-        className="grid aspect-[2/3] w-full place-items-center rounded-check border border-line-2 bg-s2 text-ink-3"
+        className="grid aspect-[2/3] w-full place-items-center rounded-check bg-s2 text-ink-3"
       >
-        <KindIcon size={20} />
+        <KindIcon size="1.25rem" />
       </span>
     )
   }
@@ -731,7 +733,7 @@ function PreviewPoster({ title }: { title: HomeRowPreviewTitle }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="aspect-[2/3] w-full rounded-check object-cover ring-1 ring-ink/8"
+      className="aspect-[2/3] w-full rounded-check bg-s2 object-cover"
     />
   )
 }

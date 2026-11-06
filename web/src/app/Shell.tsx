@@ -1,19 +1,22 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { SessionUser } from '@/api'
 import { useI18n } from '@/i18n'
+import { useSkin } from '@/theme'
+import { cx } from '@/ui'
+import { AuroraFrame } from './AuroraFrame'
 import { Brand, LanguageSwitch } from './Brand'
 import { CommandPaletteProvider } from './palette/CommandPalette'
 import { SessionContext } from './session'
-import { Sidebar } from './Sidebar'
+import { pageFrame } from './shellParts'
 import { ThemeToggle } from './ThemeToggle'
-import { TopBar, useWebClient } from './TopBar'
+import { TopBar } from './TopBar'
 
 function SkipLink() {
   const { t } = useI18n()
   return (
     <a
       href="#main"
-      className="fixed top-[-48px] left-4 z-[70] rounded-field bg-accent px-3 py-2 text-control font-medium text-white transition-[top] duration-160 focus:top-3"
+      className="lit fixed top-[-5rem] left-4 z-[70] rounded-[0.875rem] px-[1.125rem] py-3 font-[650] transition-[top] duration-160 focus:top-4 focus-visible:outline-none"
     >
       {t.nav.skipToContent}
     </a>
@@ -21,67 +24,61 @@ function SkipLink() {
 }
 
 /**
- * The signed-in frame, as Stremfin's: the sidebar on the left, and beside it the top bar over the
- * page, in a column of 1320 px at most, and the command palette. Below 1024 px the sidebar
- * slides in from the top bar's menu button; Escape closes it. It provides the session to
- * `useSessionUser`.
+ * The signed-in frame: the top row, the page in the 1280 px column, and the command palette. It
+ * provides the session to `useSessionUser`.
  */
 export function AppShell({ user, children }: { user: SessionUser; children: ReactNode }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const webClient = useWebClient()
-  useEffect(() => {
-    if (!menuOpen) return
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [menuOpen])
+  const skin = useSkin()
   return (
     <SessionContext value={user}>
       <CommandPaletteProvider>
         <SkipLink />
-        <div className="aurora-shell">
-          <Sidebar
-            user={user}
-            webClient={webClient}
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-          />
-          <div className="min-w-0">
-            <TopBar user={user} menuOpen={menuOpen} onMenu={() => setMenuOpen((open) => !open)} />
+        {skin === 'aurora' ? (
+          <AuroraFrame user={user}>{children}</AuroraFrame>
+        ) : (
+          <>
+            <TopBar user={user} />
             <main
               id="main"
               tabIndex={-1}
-              className="w-full max-w-[1320px] px-9 pt-8 pb-24 outline-none max-xl:px-7 max-md:px-4 max-md:pt-6 max-md:pb-16"
+              className={cx(
+                pageFrame,
+                'pt-[1.875rem] pb-[7.5rem] outline-none max-md:pt-4 max-md:pb-20',
+              )}
             >
               {children}
             </main>
-          </div>
-        </div>
+          </>
+        )}
       </CommandPaletteProvider>
     </SessionContext>
   )
 }
 
-/** The frame without a session (setup, sign-in, loading): the logo, the language, one column. */
+/** The frame without a session (setup, sign-in, loading): the logo and name, the language. */
 export function PublicShell({ children }: { children: ReactNode }) {
+  const skin = useSkin()
   return (
     <div className="flex min-h-dvh flex-col">
       <SkipLink />
-      <header className="border-b border-line">
-        <div className="mx-auto flex h-topbar w-full max-w-page items-center justify-between gap-4 px-14 max-xl:px-8 max-md:px-5">
-          <Brand link={false} />
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <LanguageSwitch />
-          </div>
+      <header
+        className={cx(
+          pageFrame,
+          'flex h-[6.25rem] items-center justify-between gap-4 pt-[1.375rem] max-md:h-[4.75rem] max-md:pt-3',
+        )}
+      >
+        <Brand link={false} />
+        <div className="flex items-center gap-2">
+          {skin === 'aurora' && <ThemeToggle />}
+          <LanguageSwitch />
         </div>
       </header>
+      {/* The public pages' frame: in px, like the signed-in page's, so it keeps its width at every
+          density; the column inside it scales. */}
       <main
         id="main"
         tabIndex={-1}
-        className="mx-auto w-full max-w-[880px] flex-1 animate-rise px-5 py-12 outline-none max-md:py-8"
+        className="mx-auto w-full max-w-[880px] flex-1 animate-rise px-5 pt-5 pb-20 outline-none max-md:pt-7"
       >
         {children}
       </main>

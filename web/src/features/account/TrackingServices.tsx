@@ -23,6 +23,7 @@ import {
   type TrackingServiceName,
 } from '@/api'
 import { useSessionUser } from '@/app/session'
+import { ServiceLogo } from './serviceLogos'
 import { dateTime, errorMessage, relativeTime } from '@/format'
 import { useI18n, type Messages } from '@/i18n'
 import {
@@ -36,13 +37,12 @@ import {
   SecretField,
   SkeletonRows,
   StatusPill,
-  Switch,
+  SettingRow,
   TextInput,
   TextLink,
   useToast,
   type StatusTone,
 } from '@/ui'
-import { ServiceLogo } from './serviceLogos'
 
 const serviceNames: Record<TrackingServiceName, string> = {
   trakt: 'Trakt',
@@ -104,7 +104,7 @@ export default function TrackingServices() {
     )
   }
   return (
-    <ul className="overflow-hidden rounded-panel border border-line-2 bg-s1">
+    <ul className="flex flex-col gap-2">
       {tracking.data.services.map((service) => (
         <ServiceRow
           key={service.service}
@@ -354,7 +354,7 @@ function ServiceRow({
     const expiry = relativeTime(code.expiresAt, language, t.time.justNow)
     body = (
       <>
-        <div className="flex flex-col gap-4 rounded-row border border-line bg-bg px-[18px] py-4 max-sm:p-3.5">
+        <div className="flex flex-col gap-4 rounded-row bg-s2 px-6 py-5 max-sm:px-4">
           {paste ? (
             <>
               <p className="text-control text-ink">
@@ -387,7 +387,7 @@ function ServiceRow({
               <div className="flex flex-wrap items-center gap-3">
                 <p
                   aria-label={text.codeLabel}
-                  className="rounded-field border border-accent/50 bg-s2 px-5 py-2 font-mono text-[26px] font-semibold tracking-[0.2em] text-ink select-all"
+                  className="rounded-field bg-s3 px-5 py-2 font-mono text-[1.625rem] font-semibold tracking-[0.2em] text-ink select-all"
                 >
                   {code.userCode}
                 </p>
@@ -408,7 +408,7 @@ function ServiceRow({
         {service.account !== null ? (
           <>
             {text.connectedAs}
-            <span className="font-mono text-ink">{service.account}</span>
+            <span className="font-semibold text-ink">{service.account}</span>
           </>
         ) : service.connection === 'key' ? (
           text.connectedWithKey
@@ -503,20 +503,25 @@ function ServiceRow({
     <li
       aria-labelledby={headingId}
       className={cx(
-        'grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-x-4 px-[22px] py-5 [&+&]:border-t [&+&]:border-line',
-        'max-sm:grid-cols-[40px_minmax(0,1fr)] max-sm:gap-x-3.5 max-sm:px-4 max-sm:py-[18px]',
+        'grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-4 rounded-row bg-s1 px-6 py-5',
+        'max-sm:grid-cols-[2.5rem_minmax(0,1fr)] max-sm:gap-x-3.5 max-sm:px-4 max-sm:py-[1.125rem]',
       )}
     >
-      <ServiceLogo
-        service={service.service}
-        letters={monograms[service.service]}
-        muted={!service.available}
-      />
+      {service.available ? (
+        <ServiceLogo service={service.service} letters={monograms[service.service]} muted={false} />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="inline-grid size-10 place-items-center rounded-[0.875rem] bg-s3 text-small font-semibold text-ink-3"
+        >
+          {monograms[service.service]}
+        </span>
+      )}
       <div className="min-w-0">
         <h3
           id={headingId}
           className={cx(
-            'flex h-10 items-center text-[15px] font-semibold tracking-[-0.01em]',
+            'flex h-10 items-center text-h3 font-semibold',
             service.available ? 'text-ink' : 'text-ink-2',
           )}
         >
@@ -681,8 +686,6 @@ function HistoryImport({
 }) {
   const { t } = useI18n()
   const text = t.account.tracking.history
-  const labelId = useId()
-  const helpId = useId()
   const toggle = useMutation({
     mutationFn: (change: {
       importHistory?: boolean
@@ -691,10 +694,6 @@ function HistoryImport({
     }) => setTrackingImport(service.service, change),
     onSuccess: store,
   })
-  const watchlistLabelId = useId()
-  const watchlistHelpId = useId()
-  const ratingsLabelId = useId()
-  const ratingsHelpId = useId()
   const importing = service.importHistory || service.importWatchlist || service.syncRatings
   const list =
     service.service in text.watchlist.lists
@@ -708,82 +707,57 @@ function HistoryImport({
   const busy = toggle.isPending || now.isPending
   const failed = toggle.error ?? now.error
   return (
-    <div className="rounded-row border border-line bg-bg px-[18px] py-4 max-sm:p-3.5">
-      <div className="flex items-start justify-between gap-6 max-sm:gap-4">
-        <div className="min-w-0">
-          <p id={labelId} className="text-control font-medium text-ink">
-            {service.ratings ? text.listsToggle(name) : text.toggle(name)}
-          </p>
-          <p id={helpId} className="mt-0.5 text-small text-ink-3">
-            {(service.ratings ? text.listsToggleHelp : text.toggleHelp)(
-              name,
-              t.account.importEvery(importEveryMinutes),
-            )}
-          </p>
-        </div>
-        <Switch
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
+        <SettingRow
+          kind="switch"
+          nested
+          label={service.ratings ? text.listsToggle(name) : text.toggle(name)}
+          help={(service.ratings ? text.listsToggleHelp : text.toggleHelp)(
+            name,
+            t.account.importEvery(importEveryMinutes),
+          )}
           checked={service.importHistory}
           disabled={busy}
-          labelledBy={labelId}
-          describedById={helpId}
           onChange={(on) => {
             now.reset()
             toggle.mutate({ importHistory: on })
           }}
-          className="mt-0.5"
         />
-      </div>
-      {service.watchlist && (
-        <div className="mt-3 flex items-start justify-between gap-6 border-t border-line pt-3 max-sm:gap-4">
-          <div className="min-w-0">
-            <p id={watchlistLabelId} className="text-control font-medium text-ink">
-              {text.watchlist.toggle(name, list)}
-            </p>
-            <p id={watchlistHelpId} className="mt-0.5 text-small text-ink-3">
-              {text.watchlist.toggleHelp(name, list)}
-            </p>
-          </div>
-          <Switch
+        {service.watchlist && (
+          <SettingRow
+            kind="switch"
+            nested
+            label={text.watchlist.toggle(name, list)}
+            help={text.watchlist.toggleHelp(name, list)}
             checked={service.importWatchlist}
             disabled={busy}
-            labelledBy={watchlistLabelId}
-            describedById={watchlistHelpId}
             onChange={(on) => {
               now.reset()
               toggle.mutate({ importWatchlist: on })
             }}
-            className="mt-0.5"
           />
-        </div>
-      )}
-      {service.ratings && (
-        <div className="mt-3 flex items-start justify-between gap-6 border-t border-line pt-3 max-sm:gap-4">
-          <div className="min-w-0">
-            <p id={ratingsLabelId} className="text-control font-medium text-ink">
-              {text.ratings.toggle}
-            </p>
-            <p id={ratingsHelpId} className="mt-0.5 text-small text-ink-3">
-              {text.ratings.toggleHelp(name)}
-            </p>
-          </div>
-          <Switch
+        )}
+        {service.ratings && (
+          <SettingRow
+            kind="switch"
+            nested
+            label={text.ratings.toggle}
+            help={text.ratings.toggleHelp(name)}
             checked={service.syncRatings}
             disabled={busy}
-            labelledBy={ratingsLabelId}
-            describedById={ratingsHelpId}
             onChange={(on) => {
               now.reset()
               toggle.mutate({ syncRatings: on })
             }}
-            className="mt-0.5"
           />
-        </div>
-      )}
+        )}
+      </div>
       {importing && (
-        <div className="mt-3 flex items-center justify-between gap-4 border-t border-line pt-3 max-sm:flex-col max-sm:items-start">
+        <div className="flex items-center justify-between gap-4 rounded-row bg-s2 px-6 py-5 max-sm:flex-col max-sm:items-start max-sm:px-4">
           <p role="status" className="flex min-w-0 items-start gap-2 text-control text-ink-2">
             <ClockCounterClockwiseIcon
-              size={16}
+              size="1rem"
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-ink-3"
             />
@@ -831,12 +805,10 @@ function HistoryImport({
         </div>
       )}
       {importing && !service.importing && last?.problem && (
-        <Notice tone="warn" className="mt-3">
-          {text.problem[last.problem](name)}
-        </Notice>
+        <Notice tone="warn">{text.problem[last.problem](name)}</Notice>
       )}
       {failed && (
-        <Notice tone="danger" live className="mt-3">
+        <Notice tone="danger" live>
           {errorMessage(t, failed)}
         </Notice>
       )}

@@ -7,38 +7,19 @@ import {
   type AudioRegion,
 } from '@/api'
 import { errorMessage } from '@/format'
-import { useI18n } from '@/i18n'
-import { Field, InlineError, Select, SkeletonRows, useToast } from '@/ui'
+import { useI18n, type Messages } from '@/i18n'
+import { InlineError, SettingRow, SkeletonRows, useToast } from '@/ui'
 
-/** A choice of audio region: None, then the regions offered, by name, in the server's order. */
-export function AudioRegionSelect({
-  value,
-  regions,
-  onValue,
-  disabled,
-}: {
-  value: string
-  regions: readonly string[]
-  onValue: (region: string) => void
-  disabled: boolean
-}) {
-  const { t } = useI18n()
+/** The choices of audio region: None, then the regions offered, by name, in the server's order. */
+function audioRegionOptions(regions: readonly string[], t: Messages) {
   const text = t.account.audioRegion
-  return (
-    <Select
-      value={value}
-      options={[
-        { value: '', label: text.none },
-        ...regions.map((region) => ({ value: region, label: text.regions[region] ?? region })),
-      ]}
-      onValue={onValue}
-      disabled={disabled}
-      className="max-w-xs"
-    />
-  )
+  return [
+    { value: '', label: text.none },
+    ...regions.map((region) => ({ value: region, label: text.regions[region] ?? region })),
+  ]
 }
 
-/** My account › Audio region: the regional dub the user prefers, saved as it changes. */
+/** My account › Audio region: the regional dub the user prefers, a setting row saved as it changes. */
 export function OwnAudioRegion() {
   const { t } = useI18n()
   const text = t.account.audioRegion
@@ -66,17 +47,15 @@ export function OwnAudioRegion() {
     )
   }
   return (
-    <Field
+    <SettingRow
+      kind="choice"
       label={text.label}
-      hideLabel
+      help={text.help}
+      value={current.data.region}
+      options={audioRegionOptions(current.data.regions, t)}
+      onChange={(chosen) => save.mutate(chosen)}
+      disabled={save.isPending}
       error={save.isError ? errorMessage(t, save.error) : undefined}
-    >
-      <AudioRegionSelect
-        value={current.data.region}
-        regions={current.data.regions}
-        onValue={(chosen) => save.mutate(chosen)}
-        disabled={save.isPending}
-      />
-    </Field>
+    />
   )
 }

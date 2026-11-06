@@ -13,13 +13,14 @@ import {
 import NotFoundRoute from '@/features/home/NotFoundRoute'
 import { errorMessage } from '@/format'
 import { useI18n, type Messages } from '@/i18n'
+import { useSkin } from '@/theme'
 import {
   EmptyState,
   InlineError,
   Row,
   RowList,
   searchable,
-  TextInput,
+  SectionNav,
   Skeleton,
   SkeletonText,
 } from '@/ui'
@@ -45,6 +46,7 @@ function SettingsPage({ section }: { section: SettingsSectionId }) {
     queryKey: queryKeys.settings,
     queryFn: ({ signal }) => fetchSettings(signal),
   })
+  const skin = useSkin()
   const [search, setSearch] = useState('')
   const location = useLocation()
 
@@ -64,7 +66,9 @@ function SettingsPage({ section }: { section: SettingsSectionId }) {
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     target.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' })
     target
-      .querySelector<HTMLElement>('input, textarea, [role="combobox"], button[role="switch"]')
+      .querySelector<HTMLElement>(
+        '[data-setting-head], input, textarea, [role="combobox"], button[role="switch"]',
+      )
       ?.focus({ preventScroll: true })
     target.dataset.flash = ''
     const timer = setTimeout(() => delete target.dataset.flash, flashFor)
@@ -81,24 +85,27 @@ function SettingsPage({ section }: { section: SettingsSectionId }) {
     <PageLayout
       title={t.settings.title}
       lede={t.settings.description}
-      actions={
-        // The sidebar lists the sections, as Stremfin's does: the page keeps their search.
-        <div className="w-[300px] max-md:w-full">
-          <TextInput
-            type="search"
-            size="sm"
-            icon={MagnifyingGlassIcon}
-            value={search}
-            onValue={setSearch}
-            placeholder={text.searchPlaceholder}
-            aria-label={text.searchPlaceholder}
-            aria-describedby="settings-search-hint"
-            className="h-9"
-          />
-          <p id="settings-search-hint" className="sr-only">
-            {text.searchHint}
-          </p>
-        </div>
+      className="aurora-settings"
+      nav={
+        <SectionNav
+          label={t.nav.settingsSectionsLabel}
+          // Aurora's sidebar lists the sections: the column keeps their search and the unsaved dock.
+          items={
+            skin === 'aurora'
+              ? []
+              : settingsSections.map((item) => ({
+                  id: item.id,
+                  label: t.nav.settingsSections[item.key],
+                  to: settingsPath(item.id),
+                }))
+          }
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: text.searchPlaceholder,
+            hint: text.searchHint,
+          }}
+        />
       }
     >
       {search.trim() !== '' && (
@@ -106,19 +113,20 @@ function SettingsPage({ section }: { section: SettingsSectionId }) {
       )}
       <div hidden={search.trim() !== ''}>
         <header className="max-md:pt-6">
-          <h2 className="text-h2 text-ink">{t.nav.settingsSections[current.key]}</h2>
+          <h2 className="text-h1 text-ink max-md:text-[2.125rem] max-md:leading-tight">
+            {t.nav.settingsSections[current.key]}
+          </h2>
           {lede !== undefined && (
-            <p className="mt-1.5 max-w-[68ch] text-[14.5px] text-ink-2">{lede}</p>
+            <p className="mt-4 max-w-[60ch] text-[1.3125rem] leading-normal text-ink-2 max-md:text-[1.09375rem]">
+              {lede}
+            </p>
           )}
         </header>
         {settings.isPending ? (
-          <div aria-busy="true" aria-label={t.common.loading} className="mt-8 space-y-8">
-            {[0, 1, 2].map((index) => (
-              <div key={index} className="space-y-3">
-                <Skeleton className="h-4 w-56" />
-                <SkeletonText lines={2} />
-                <Skeleton className="h-10 w-full max-w-sm" />
-              </div>
+          <div aria-busy="true" aria-label={t.common.loading} className="mt-10 space-y-2">
+            <SkeletonText lines={1} className="mb-4 w-56" />
+            {[0, 1, 2, 3].map((index) => (
+              <Skeleton key={index} className="h-[5.125rem] w-full rounded-row" />
             ))}
           </div>
         ) : settings.isError ? (

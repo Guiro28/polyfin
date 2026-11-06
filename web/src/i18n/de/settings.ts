@@ -708,6 +708,9 @@ const settings: typeof en = {
     tmdbKey: 'TMDB-API-Schlüssel',
     tmdbKeyHelp:
       'Optional: Polyfin liefert keinen Schlüssel mit. Ein API-Schlüssel oder ein Lesezugriffstoken eines TMDB-Kontos bringt Fotos und Biografien von Personen, Besetzung und Stab jedes Titels von TMDB in der Reihenfolge des Abspanns mit Fotos, Personenseiten mit jedem Bibliothekstitel, in dem sie genannt werden, und den Titeln, für die TMDB sie am besten kennt, über die Bibliotheken hinaus, Poster für Filme und Serien, deren Add-on keines liefert, Box-Sets in den Apps von Silo und TMDB-Bilder in „Bilder bearbeiten“ von jellyfin-web, die Polyfin weiterleitet. Außerdem werden Dateien eines lokalen Ordners, deren Suche bei allen Metadaten-Add-ons fehlschlägt, auf TMDB gesucht. Ohne Schlüssel wird TMDB nie abgefragt.',
+    skinLabel: 'Aussehen',
+    skinHelp:
+      'Das Aussehen der Verwaltung, in diesem Browser. Aurora hat eine Seitenleiste, Nachtblau, Karten und einen hellen Modus; Salon ist das ursprüngliche Aussehen von Polyfin, dunkel.',
     onlyReleased: 'Nur was erschienen ist (VOD, DVD oder TV)',
     onlyReleasedHelp:
       'Auch eine Ausstrahlung im Fernsehen zählt, und eine Serie erscheint erst, wenn der Tag ihrer Erstausstrahlung vorbei ist, sofern ihr Addon ihn nennt.',

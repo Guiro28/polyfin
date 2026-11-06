@@ -1,17 +1,16 @@
 import {
   ArrowLeftIcon,
-  CaretDownIcon,
   GithubLogoIcon,
-  ListIcon,
   MagnifyingGlassIcon,
+  MonitorPlayIcon,
   SignOutIcon,
 } from '@phosphor-icons/react'
 import { useQuery } from '@tanstack/react-query'
-import { useLocation } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { fetchStatus, queryKeys, userImageUrl, type SessionUser } from '@/api'
 import { languages, useI18n } from '@/i18n'
+import { setSkin, skinChoices, useSkin } from '@/theme'
 import { webPlayerInPlace, webPlayerLink } from '@/jellyfinApps'
-import { setTheme, themeChoices, useTheme } from '@/theme'
 import {
   Avatar,
   cx,
@@ -23,9 +22,16 @@ import {
   MenuSeparator,
   modKey,
 } from '@/ui'
-import { repositoryUrl } from './Brand'
-import { ThemeToggle } from './ThemeToggle'
-import { accountPages, adminSidebar, memberSidebar, whereIs } from './navigation'
+import { Brand, repositoryUrl } from './Brand'
+import { pageFrame, ProblemCount, topControl } from './shellParts'
+import { MobileMenu } from './MobileMenu'
+import {
+  accountPages,
+  adminSections,
+  isCurrent,
+  memberSections,
+  type NavSection,
+} from './navigation'
 import { useOpenPalette } from './palette/CommandPalette'
 import { useSignOut } from './session'
 
@@ -40,119 +46,152 @@ export function useWebClient(): boolean {
 }
 
 /**
- * The bar on top of every signed-in page, beside the sidebar, as in Stremfin: below 1024 px the
- * button that opens the sidebar, the trail of the page (Administration / Content / Sources),
- * then search, the way back to the web player when opened from it, the theme and the account
- * menu. `data-top-bar` marks it for the lists of `Select` and `SuggestInput`, which stay under it.
+ * The top row of every signed-in page, which scrolls away with it: the logo, the five area words
+ * (a member's own pages instead), then Search with ⌘K, the web player and the account. The area
+ * words are 24 px, 22 under 1400 px and 20 under 1100 px; below 1180 px, where German ones
+ * no longer fit, they move into the full-screen menu, behind the menu button. The account's name
+ * gives way first when the row is short of room. `data-top-bar` marks it for the lists of
+ * `Select` and `SuggestInput`, which stay under it.
+ *
+ * Opened from the web player or inside a Jellyfin app, the web player opens in place, and a
+ * phone shows a back arrow to it before the logo, where jellyfin-web's dashboard has its own.
  */
-export function TopBar({
-  user,
-  menuOpen,
-  onMenu,
-}: {
-  user: SessionUser
-  menuOpen: boolean
-  onMenu: () => void
-}) {
+export function TopBar({ user }: { user: SessionUser }) {
   const { t } = useI18n()
   const { pathname } = useLocation()
   const openPalette = useOpenPalette()
   const webClient = useWebClient()
   const inPlace = webPlayerInPlace()
-  const { section, page } = whereIs(user.isAdministrator ? adminSidebar : memberSidebar, pathname)
-  const trail = [
-    user.isAdministrator ? t.nav.adminArea : t.nav.memberArea,
-    section?.label(t),
-    page?.label(t),
-  ].filter((part): part is string => part !== undefined)
+  const sections = user.isAdministrator ? adminSections : memberSections
 
   return (
-    <header data-top-bar className="aurora-header">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <button
-          type="button"
-          onClick={onMenu}
-          aria-label={t.nav.menu}
-          aria-expanded={menuOpen}
-          aria-controls="sidebar"
-          className="inline-grid size-9 shrink-0 cursor-pointer place-items-center rounded-field text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-ink/8 hover:text-ink lg:hidden"
-        >
-          <ListIcon size={20} aria-hidden="true" />
-        </button>
-        <p className="aurora-trail">
-          {trail.map((part, index) => (
-            <span key={index} aria-current={index === trail.length - 1 ? 'page' : undefined}>
-              {part}
-            </span>
-          ))}
-        </p>
-      </div>
-      <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          onClick={openPalette}
-          aria-label={t.nav.searchShortcut(`${modKey} K`)}
-          aria-keyshortcuts="Meta+K Control+K /"
-          className={cx(
-            'flex h-9 cursor-pointer items-center gap-2.5 rounded-field border border-line-2 bg-s2 pr-1.5 pl-3 text-control text-ink-3 transition-[background-color,border-color] duration-160 ease-nuit hover:border-line-3 hover:bg-s3',
-            'w-[248px] max-xl:w-auto max-md:w-9 max-md:justify-center max-md:border-transparent max-md:bg-transparent max-md:p-0 max-md:text-ink-2',
-          )}
-        >
-          <MagnifyingGlassIcon size={16} aria-hidden="true" className="shrink-0" />
-          <span className="flex-1 text-left max-xl:hidden">{t.nav.search}</span>
-          <Kbd className="max-md:hidden">{modKey === '⌘' ? '⌘K' : 'Ctrl K'}</Kbd>
-        </button>
+    <header data-top-bar className="relative z-30">
+      <div
+        className={cx(
+          pageFrame,
+          'flex h-[6.25rem] items-center gap-7 pt-[1.625rem] max-[1400px]:gap-5 max-[1180px]:h-[4.5rem] max-[1180px]:gap-2.5 max-[1180px]:pt-3.5',
+        )}
+      >
         {webClient && inPlace && (
           <a
             {...webPlayerLink(true)}
+            aria-label={t.nav.backToWebPlayer}
             title={t.nav.backToWebPlayer}
-            className="inline-flex h-9 items-center gap-2 rounded-field px-3 text-control font-medium whitespace-nowrap text-ink-2 transition-[background-color,color] duration-160 ease-nuit hover:bg-s2 hover:text-ink"
+            className={cx(topControl, 'size-12 justify-center bg-transparent min-[1180px]:hidden')}
           >
-            <ArrowLeftIcon size={16} aria-hidden="true" />
-            <span className="max-lg:sr-only">{t.nav.backToWebPlayer}</span>
+            <ArrowLeftIcon size="1.375rem" aria-hidden="true" />
           </a>
         )}
-        <ThemeToggle />
-        <AccountMenu user={user} />
+        <Brand />
+        <nav aria-label={t.nav.label} className="shrink-0 max-[1180px]:hidden">
+          <ul className="flex gap-1.5 max-[1400px]:gap-0.5">
+            {sections.map((section) => (
+              <li key={section.id}>
+                <AreaWord section={section} current={isCurrent(section, pathname)} />
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="ml-auto flex min-w-0 items-center gap-3.5 max-[1180px]:gap-2">
+          <button
+            type="button"
+            onClick={openPalette}
+            aria-label={t.nav.searchShortcut(`${modKey} K`)}
+            aria-keyshortcuts="Meta+K Control+K /"
+            className={cx(
+              topControl,
+              'h-[3.25rem] w-[16.25rem] gap-3 px-5 text-control text-ink-3 focus-visible:[--lift:1.03] max-[1400px]:w-[13.125rem]',
+              'max-xl:w-[3.25rem] max-xl:justify-center max-xl:px-0 max-[1180px]:size-12',
+            )}
+          >
+            <MagnifyingGlassIcon
+              size="1.375rem"
+              aria-hidden="true"
+              className="shrink-0 text-ink-2"
+            />
+            <span className="max-xl:hidden">{t.nav.search}</span>
+            <Kbd className="ml-auto max-xl:hidden">{modKey === '⌘' ? '⌘K' : 'Ctrl K'}</Kbd>
+          </button>
+          {webClient && (
+            <a
+              {...webPlayerLink(inPlace)}
+              aria-label={
+                inPlace ? t.nav.backToWebPlayer : `${t.nav.webPlayer}: ${t.nav.webPlayerHint}`
+              }
+              title={inPlace ? t.nav.backToWebPlayer : t.nav.webPlayer}
+              className={cx(topControl, 'size-[3.25rem] justify-center max-[1180px]:hidden')}
+            >
+              {inPlace ? (
+                <ArrowLeftIcon size="1.5rem" aria-hidden="true" />
+              ) : (
+                <MonitorPlayIcon size="1.5rem" aria-hidden="true" />
+              )}
+            </a>
+          )}
+          <AccountMenu user={user} />
+          <div className="min-[1180px]:hidden">
+            <MobileMenu user={user} webClient={webClient} inPlace={inPlace} />
+          </div>
+        </div>
       </div>
     </header>
   )
 }
 
+/** One of the top row's area words, with the red count of Health's problems beside System. */
+function AreaWord({ section, current }: { section: NavSection; current: boolean }) {
+  const { t } = useI18n()
+  return (
+    <Link
+      to={section.to}
+      aria-current={current ? 'page' : undefined}
+      className={cx(
+        'focus-lit group relative flex items-center rounded-choice px-5 pt-2.5 pb-3 text-area whitespace-nowrap text-ink-3 hover:bg-s1 hover:text-ink [--lift:1.05]',
+        'max-[1400px]:px-4 max-[1100px]:px-3 max-[1100px]:pt-2 max-[1100px]:pb-2.5',
+        'aria-[current=page]:text-ink aria-[current=page]:after:absolute aria-[current=page]:after:bottom-0.5 aria-[current=page]:after:left-1/2 aria-[current=page]:after:h-1 aria-[current=page]:after:w-[1.375rem] aria-[current=page]:after:-translate-x-1/2 aria-[current=page]:after:rounded-full aria-[current=page]:after:bg-current',
+      )}
+    >
+      {section.label(t)}
+      {section.id === 'system' && <ProblemCount />}
+    </Link>
+  )
+}
+
 /**
- * The account button and its menu: who is signed in, an administrator's own pages, the
- * language, the theme, the source code and signing out.
+ * The account button (the avatar, and the name from 1280 px) and its raised panel of big rows:
+ * who is signed in, an administrator's own pages (a member has them in the top row), the
+ * language, the source code and signing out.
  */
 function AccountMenu({ user }: { user: SessionUser }) {
+  const skin = useSkin()
   const { language, setLanguage, t } = useI18n()
-  const theme = useTheme().choice
   const signOut = useSignOut()
   return (
     <Menu
       label={t.nav.accountMenu}
       align="end"
-      width={264}
+      width={320}
+      className="min-w-0"
       trigger={(props) => (
         <button
           {...props}
           aria-label={t.nav.accountOf(user.name)}
-          className="flex h-9 cursor-pointer items-center gap-1.5 rounded-field pr-1.5 pl-1 text-ink-3 transition-colors duration-160 ease-nuit hover:bg-s2 aria-expanded:bg-s2"
+          className="focus-lit flex max-w-[15rem] min-w-0 cursor-pointer items-center gap-3 rounded-full py-1 pr-[1.125rem] pl-1 text-[1.1875rem] font-semibold text-ink hover:bg-s1 aria-expanded:bg-s1 [--lift:1.04] max-xl:p-1 max-[1180px]:p-0.5"
         >
-          <Avatar name={user.name} image={userImageUrl(user)} />
-          <CaretDownIcon size={14} aria-hidden="true" />
+          <Avatar name={user.name} image={userImageUrl(user)} size="md" />
+          <span className="min-w-0 truncate max-xl:hidden">{user.name}</span>
         </button>
       )}
     >
       <MenuHeader>
-        <Avatar name={user.name} image={userImageUrl(user)} />
+        <Avatar name={user.name} image={userImageUrl(user)} size="md" />
         <div className="min-w-0">
-          <p className="truncate text-body font-semibold text-ink">{user.name}</p>
-          <p className="text-[12.5px] text-ink-3">
+          <p className="truncate text-[1.25rem] font-semibold text-ink">{user.name}</p>
+          <p className="text-small text-ink-3">
             {user.isAdministrator ? t.nav.administrator : t.nav.member}
           </p>
         </div>
       </MenuHeader>
-      <MenuSeparator />
       {user.isAdministrator && (
         <>
           {accountPages.map((page) => (
@@ -164,6 +203,12 @@ function AccountMenu({ user }: { user: SessionUser }) {
         </>
       )}
       <MenuChoice
+        label={t.nav.skin}
+        value={skin}
+        onChange={setSkin}
+        options={skinChoices.map((choice) => ({ value: choice, label: t.nav.skins[choice] }))}
+      />
+      <MenuChoice
         label={t.nav.language}
         value={language}
         onChange={setLanguage}
@@ -172,15 +217,6 @@ function AccountMenu({ user }: { user: SessionUser }) {
           label: t.language[code].short,
           title: t.language[code].name,
           lang: code,
-        }))}
-      />
-      <MenuChoice
-        label={t.nav.theme}
-        value={theme}
-        onChange={setTheme}
-        options={themeChoices.map((choice) => ({
-          value: choice,
-          label: { auto: t.nav.themeAuto, light: t.nav.themeLight, dark: t.nav.themeDark }[choice],
         }))}
       />
       <MenuSeparator />

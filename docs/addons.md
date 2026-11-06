@@ -14,7 +14,7 @@ Any addon that speaks the standard Stremio protocol works. Music addons are on [
 A server addon is shared with every user. To add one:
 
 1. Open **Content › Sources**, then **Add a source**.
-2. Keep the **Stremio addon** tab.
+2. Under **Kind of source**, keep **Stremio addon**, the first choice.
 3. Paste its **Manifest address**, copied from the addon's configure page.
 4. In **Content › Libraries**, choose which of its catalogs become libraries in Jellyfin apps.
 
@@ -191,7 +191,7 @@ Anime databases make each season, or part of a season, an entry of its own. Its 
 
 Manifest addresses usually hold your addon settings or keys. Polyfin never shows them in full. To change one, use **Replace the address** in the source's more-actions menu.
 
-Each source has its own page, from **Open its page** on its row. The page shows its details, an **Active** switch and its place in the order. **Remove** asks first.
+Each source has its own page: select its row in **Content › Sources** or **My sources**, and the page opens beside the list, with the row lit. The page shows its details, the **Enabled** switch, **Used by** and its place in the order. **Remove**, in the more-actions menu, asks first.
 
 ## Addons that fail
 

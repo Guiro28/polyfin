@@ -67,10 +67,14 @@ export function AvatarButton({
   user,
   name,
   image,
+  size = 'lg',
+  className,
 }: {
   user: string | null
   name: string
   image?: string
+  size?: 'lg' | 'xl'
+  className?: string
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -83,7 +87,7 @@ export function AvatarButton({
         aria-label={t.users.avatar.change}
         className="group relative inline-grid cursor-pointer rounded-row"
       >
-        <Avatar name={name} image={image} size="lg" />
+        <Avatar name={name} image={image} size={size} className={className} />
         <span className="absolute inset-0 grid place-items-center rounded-row bg-black/55 text-white opacity-0 transition-opacity duration-160 group-hover:opacity-100 group-focus-visible:opacity-100">
           <PencilSimpleIcon size={16} aria-hidden="true" />
         </span>

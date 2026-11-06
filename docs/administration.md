@@ -21,22 +21,22 @@ A user signed in to the web player arrives signed in, as that user. The admin ap
 
 ### The top bar
 
-A bar at the top holds the sections, for administrators:
+A row of big words at the top of every page holds the areas, for administrators:
 
 - **Home** (`/admin/`): what plays now and what needs a look;
 - **Content**: **Sources** (`/admin/sources`), **Libraries** (`/admin/libraries`), **Live TV** (`/admin/live-tv`) and **Versions** (`/admin/versions`);
 - **Users** (`/admin/users`);
-- **System**: **Health**, **Statistics**, **Schedule**, **Logs** and **API keys** (`/admin/system/…`);
+- **System**: **Health**, **Statistics**, **Schedule**, **Logs** and **API keys** (`/admin/system/…`), with a red count beside it while Health finds problems;
 - **Settings**, one page per section (`/admin/settings/general`, `/admin/settings/content`…).
 
-The account menu, on the right, holds **My account**, **My sources** and **Quick Connect** (`/admin/me/…`), the language, a link to Polyfin's source code on GitHub, and **Sign out**.
+The pages of Content and System show as smaller words under the page's title. The account, on the right after **Search** and the web player, opens a panel with **My account**, **My sources** and **Quick Connect** (`/admin/me/…`), the language, a link to Polyfin's source code on GitHub, and **Sign out**.
 
-![The admin app's top bar with the account menu open, numbered 1 to 3](images/top-bar-account-menu.webp)
+![The admin app's top bar with the account panel open, numbered 1 to 3](images/top-bar-account-menu.webp)
 
-1: the sections. 2: **Search**, with the web player link beside it. 3: the account menu.
+1: the areas. 2: **Search**, with the web player link beside it. 3: the account panel.
 
-- **Members** see a shorter bar: **Home**, **My sources**, **My account** and **Quick Connect**. The other pages tell them they may not open them.
-- On a phone, the bar keeps the logo, the search and a menu button. The menu opens all of these, the web player first.
+- **Members** see shorter words: **Home**, **My sources**, **My account** and **Quick Connect**. The other pages tell them they may not open them.
+- On a phone, the row keeps the logo, search, the account and a menu button. The menu fills the screen: the account, search, the areas with their pages, then the account's pages, the web player, the language and **Sign out**.
 
 ### The web player link
 
@@ -54,7 +54,7 @@ In the Jellyfin apps, Android's **Back** button and the iOS app's **Home** tab l
 The admin app is in English, French, German, Spanish, Italian and Brazilian Portuguese.
 
 - It starts in the first of these the browser prefers. Any Portuguese means Brazilian Portuguese; no match means English.
-- To change it for this browser, use the language list at the top of the sign-in and setup pages, or **Language** in the account menu.
+- To change it for this browser, use the language list at the top of the sign-in and setup pages, or **Language** in the account panel.
 
 ### My account
 
@@ -101,41 +101,36 @@ Addresses from before this layout, such as `/admin/health` or `/admin/settings#s
 
 ## Home
 
-**Home** greets you by name. On the right of the greeting, it shows:
+**Home** greets you by name, with how many playbacks are under way and how many things need a look. Below, it shows:
 
-- the version Polyfin runs;
-- **Restart**, in red;
-- **Update now**, while an update tool is set (see [Restart and updates](updates-and-restarts.md#restart-and-updates)).
+- **Now playing**, updated every 3 seconds (see [Now playing](#now-playing)). The playback under the keyboard or the mouse tints the top of the page with the colour of its poster.
+- Then two columns:
+  - on the left, **To look at**: a new version, when one is out, with **Release notes**, and **Update now** while an update tool is set (see [New versions](updates-and-restarts.md#new-versions)), then each problem [Health](health.md) found, with a link to the page that fixes it. Under it, **Recent activity**: the [activity log](#activity-log), which you can filter by kind and search. Its list scrolls in its own box, and loads older events as you reach its end.
+  - on the right, **Bandwidth**: what every playback sends to apps and receives from sources, then the video conversions under way. Then **Get started**, until each step of a good setup is done or you dismiss it (see [The Get started card](getting-started.md#the-get-started-card)). Then **Server state**: the graphics card, the cache and the database, each opening Health, how long Polyfin has run and its version, with **Restart**, and **Update now** while an update tool is set (see [Restart and updates](updates-and-restarts.md#restart-and-updates)).
 
-Below, it shows these sections:
+Below 1024 pixels wide, Home is one column, in the same order, with **Recent activity** last.
 
-- A notice of a new version, when one is out, with **Release notes**, and **Update now** while an update tool is set (see [New versions](updates-and-restarts.md#new-versions)).
-- **Get started**, until each step of a good setup is done or you dismiss it (see [The Get started card](getting-started.md#the-get-started-card)).
-- **Now playing**, updated every 3 seconds (see [Now playing](#now-playing)).
-- **To look at**: the problems [Health](health.md) found, with a link to it.
-- **Server state**: version, database, cache and GPU.
-- **Recent activity**: the [activity log](#activity-log), which you can filter by kind and search. Its list scrolls in its own box, and loads older events as you reach its end.
-
-The layout follows the window's width:
-
-| Window | Layout |
-|---|---|
-| 1280 pixels wide or more | Two columns. On the left: the new version notice, **Get started**, **Now playing**, **To look at** and **Server state**. On the right: **Recent activity** from the top, as tall as the window lets it be and at least 420 pixels, so it shows whole as the page opens. |
-| Narrower | One column, in the same order, **Recent activity** last |
-
-The greeting, the version, **Restart** and **Update now** stay across the top.
+A member's **Home** greets them too, then shows what they play now, as a wide tile on its poster with where it is read from and their quality group, while they play. Under it come **Quick Connect**, where they type a device's code to approve it, **My sources**, with **Use the server's sources**, and **My account**, with the server's status under it. A member sees their own playbacks only, never another user's, and cannot stop them or send them a message from there.
 
 **Compared with Jellyfin**
 
-- Jellyfin's dashboard also puts its activity log in a column beside the server's information, its running tasks and its devices, from 900 pixels wide, with alerts and paths in a third column from 1536 pixels ([index.tsx, lines 109 to 132](https://github.com/jellyfin/jellyfin-web/blob/v12.4/src/apps/dashboard/routes/index.tsx#L109-L132)). Polyfin's playbacks need more width than Jellyfin's devices, hence its wider breakpoint.
+- Jellyfin's dashboard puts its activity log in a column beside the server's information, its running tasks and its devices, from 900 pixels wide, with alerts and paths in a third column from 1536 pixels ([index.tsx, lines 109 to 132](https://github.com/jellyfin/jellyfin-web/blob/v12.4/src/apps/dashboard/routes/index.tsx#L109-L132)). Polyfin puts its playbacks first, across the page, and the rest in two columns under them.
 
 ### Now playing
 
-**Now playing** shows each playback under way. A playback leaves it when its app reports nothing for five minutes, as when a tab closes while it plays (see [Playbacks](statistics.md#playbacks)). For each playback you see:
+**Now playing** shows each playback under way as a tile on its poster. A playback leaves it when its app reports nothing for five minutes, as when a tab closes while it plays (see [Playbacks](statistics.md#playbacks)). For each playback you see:
 
 - the user, the device and the app, the title and the position;
 - **How it plays**: **Direct play**, **Remux** (repackaged without conversion) or **Conversion**;
-- **Details**: Jellyfin's reasons, the user's quality group, the resolution and bitrate sent, and whether the GPU or the CPU encodes.
+- what the play moves now, and since when it plays.
+
+The tile under the keyboard or the mouse opens wide and shows its buttons; the arrow keys move between tiles:
+
+- **Details**: Jellyfin's reasons, the user's quality group, the resolution and bitrate sent, and whether the GPU or the CPU encodes, inside the tile;
+- **Send a message**, shown on the device for 10 seconds;
+- **Stop**, after you confirm it.
+
+Apps that take no remote control show no message or stop button, and the wide tile tells why.
 
 ![Home with two playbacks in Now playing, one with Details open](images/home-now-playing.webp)
 
@@ -154,7 +149,7 @@ A [converted download](transcoding.md#converted-downloads) shows there too, labe
 
 ### Bandwidth
 
-Each row of **Now playing** tells, under **How it plays**, what the play moves now. It is averaged over the last 10 seconds and shown as a bitrate, in two directions:
+Each tile of **Now playing** tells, under its progress, what the play moves now. It is averaged over the last 10 seconds and shown as a bitrate, in two directions:
 
 - what Polyfin sends the app;
 - what the version's source sends Polyfin.

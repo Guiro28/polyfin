@@ -1,4 +1,6 @@
-// The « Nuit » design system. Import from '@/ui'; see README.md for which component to use when.
+// The « Salon » design system. Import from '@/ui'; see README.md for which component to use when.
+export { AlertTile, type AlertTone } from './AlertTile'
+export { ArtShelf, ArtTile } from './ArtTile'
 export { Badge, Count, StatusPill, type BadgeTone, type StatusTone } from './Badge'
 export {
   Button,
@@ -11,7 +13,7 @@ export {
   type ButtonVariant,
 } from './Button'
 export { Checkbox, type CheckboxProps } from './Checkbox'
-export { cx, searchable } from './cx'
+export { cx, rem, scaledPx, searchable } from './cx'
 export { ConfirmDialog, Modal, type ConfirmDialogProps, type ModalProps } from './Dialog'
 export { describedBy, Field, FieldError, useField, type FieldProps } from './Field'
 export {
@@ -23,6 +25,7 @@ export {
   type TextareaProps,
   type TextInputProps,
 } from './Input'
+export { FigureTile } from './FigureTile'
 export { isApple, Kbd, modKey } from './Kbd'
 export {
   Menu,
@@ -38,7 +41,7 @@ export { Panel, PanelFooter, PanelSection, type PanelProps } from './Panel'
 export { Avatar, ProgressBar, type ProgressVariant } from './ProgressBar'
 export { IconTile, Row, RowList, type RowListVariant, type RowProps } from './RowList'
 export { RelativeTime } from './RelativeTime'
-export { SaveBar } from './SaveBar'
+export { DockSlotContext, SaveBar } from './SaveBar'
 export {
   Select,
   SuggestInput,
@@ -46,8 +49,19 @@ export {
   type SelectProps,
   type SuggestInputProps,
 } from './Select'
+export { OpenRow } from './OpenRow'
 export { SecretField, type SecretFieldProps } from './SecretField'
+export { useScrollFade } from './scroll'
 export { SectionNav, type SectionNavItem, type SectionNavProps } from './SectionNav'
+export {
+  SettingRow,
+  type ChoiceSetting,
+  type NumberSetting,
+  type SecretSetting,
+  type SettingRowProps,
+  type SwitchSetting,
+  type TextSetting,
+} from './SettingRow'
 export { Segmented, type SegmentedOption, type SegmentedProps } from './Segmented'
 export { Spinner } from './Spinner'
 export {
@@ -59,7 +73,7 @@ export {
   SkeletonText,
   type NoticeTone,
 } from './States'
-export { Switch, type SwitchProps } from './Switch'
+export { Switch, SwitchTrack, type SwitchProps } from './Switch'
 export { Table } from './Table'
 export { Tabs, type TabItem, type TabsProps } from './Tabs'
 export { ToastProvider, useToast, type ToastOptions, type ToastTone } from './Toast'

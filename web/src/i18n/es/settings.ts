@@ -708,6 +708,9 @@ const settings: typeof en = {
     tmdbKey: 'Clave API de TMDB',
     tmdbKeyHelp:
       'Opcional: Polyfin no incluye ninguna clave. Una clave API o un token de acceso de lectura de una cuenta de TMDB aporta fotos y biografías de las personas, el reparto y el equipo de cada título desde TMDB en el orden de los créditos con fotos, páginas de personas con cada título de las bibliotecas en que aparecen y los títulos por los que TMDB mejor las conoce, más allá de las bibliotecas, pósteres de películas y series cuya extensión no da ninguno, colecciones en las apps de Silo e imágenes de TMDB en «Edit images» de jellyfin-web, que Polyfin transmite. También busca en TMDB los archivos de una carpeta local cuya búsqueda falla en todas las extensiones de metadatos. Sin clave, nunca se consulta TMDB.',
+    skinLabel: 'Apariencia',
+    skinHelp:
+      'La apariencia de la administración, en este navegador. Aurora tiene barra lateral, azul noche, tarjetas y modo claro; Salon es la apariencia original de Polyfin, oscura.',
     onlyReleased: 'Solo lo que ya ha salido (VOD, DVD o TV)',
     onlyReleasedHelp:
       'Un estreno en televisión también cuenta, y una serie solo aparece una vez pasado el día de su primera emisión, si su addon lo indica.',

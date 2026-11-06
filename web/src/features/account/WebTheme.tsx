@@ -9,48 +9,28 @@ import {
   type WebThemes,
 } from '@/api'
 import { errorMessage } from '@/format'
-import { useI18n } from '@/i18n'
-import { Field, InlineError, Notice, Select, SkeletonRows, useToast } from '@/ui'
+import { useI18n, type Messages } from '@/i18n'
+import { InlineError, Notice, SettingRow, SkeletonRows, useToast } from '@/ui'
 
 /**
- * A choice of web player theme: The server's, naming it, then the themes offered. A theme no longer
- * offered, such as Custom once its texts are emptied, stays listed while it is the one chosen.
+ * The choices of web player theme: The server's, naming it, then the themes offered. A theme no
+ * longer offered, such as Custom once its texts are emptied, stays listed while it is the one
+ * chosen.
  */
-export function WebThemeSelect({
-  value,
-  themes,
-  onValue,
-  disabled,
-  'aria-describedby': describedBy,
-}: {
-  value: UserWebTheme
-  themes: WebThemes
-  onValue: (theme: UserWebTheme) => void
-  disabled: boolean
-  'aria-describedby'?: string
-}) {
-  const { t } = useI18n()
+function webThemeOptions(value: UserWebTheme, themes: WebThemes, t: Messages) {
   const text = t.account.webTheme
   const offered =
     value === '' || themes.themes.includes(value) ? themes.themes : [...themes.themes, value]
-  return (
-    <Select<UserWebTheme>
-      value={value}
-      options={[
-        { value: '', label: text.server(text.choices[themes.serverTheme]) },
-        ...offered.map((theme) => ({ value: theme, label: text.choices[theme] })),
-      ]}
-      onValue={onValue}
-      disabled={disabled}
-      aria-describedby={describedBy}
-      className="max-w-xs"
-    />
-  )
+  return [
+    { value: '' as const, label: text.server(text.choices[themes.serverTheme]) },
+    ...offered.map((theme) => ({ value: theme, label: text.choices[theme] })),
+  ]
 }
 
 /**
- * My account › Web player theme: the theme the user's web player shows on every browser, saved as
- * it changes; read only, with why, while the administrator keeps them from changing it.
+ * My account › Web player theme: the theme the user's web player shows on every browser, a
+ * setting row saved as it changes; read only, with why, while the administrator keeps them from
+ * changing it.
  */
 export function OwnWebTheme() {
   const { t } = useI18n()
@@ -80,20 +60,17 @@ export function OwnWebTheme() {
   }
   const { webTheme, locked } = current.data
   return (
-    <div className="space-y-4">
-      <Field
-        label={text.label}
-        hideLabel
-        error={save.isError ? errorMessage(t, save.error) : undefined}
-      >
-        <WebThemeSelect
-          value={webTheme}
-          themes={current.data}
-          onValue={(chosen) => save.mutate(chosen)}
-          disabled={locked || save.isPending}
-        />
-      </Field>
-      {locked && <Notice>{text.locked}</Notice>}
-    </div>
+    <SettingRow<UserWebTheme>
+      kind="choice"
+      label={text.label}
+      help={text.help}
+      value={webTheme}
+      options={webThemeOptions(webTheme, current.data, t)}
+      onChange={(chosen) => save.mutate(chosen)}
+      disabled={locked || save.isPending}
+      error={save.isError ? errorMessage(t, save.error) : undefined}
+    >
+      {locked ? <Notice>{text.locked}</Notice> : undefined}
+    </SettingRow>
   )
 }

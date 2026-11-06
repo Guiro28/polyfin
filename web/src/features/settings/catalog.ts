@@ -42,6 +42,13 @@ export const settingEntries: readonly SettingEntry[] = [
   // General
   {
     section: 'general',
+    anchor: 'skin',
+    label: (t) => s(t).skinLabel,
+    help: (t) => s(t).skinHelp,
+    keywords: ['Aurora', 'Salon', 'theme', 'thème', 'look', 'sidebar'],
+  },
+  {
+    section: 'general',
     anchor: 'server-name',
     label: (t) => s(t).serverName,
     help: (t, r) => s(t).serverNameHelp(r('serverName')),

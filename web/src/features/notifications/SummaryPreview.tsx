@@ -19,15 +19,15 @@ export default function SummaryPreview() {
   const [shown, setShown] = useState<{ event: SummaryEvent; user: string } | null>(null)
   const users = useQuery({ queryKey: ['users'], queryFn: ({ signal }) => fetchUsers(signal) })
   return (
-    <div className="flex flex-col gap-4">
-      <p className="max-w-[60ch] text-small text-ink-3">{text.help}</p>
+    <div className="flex flex-col gap-5">
+      <p className="max-w-[66ch] text-small text-ink-2">{text.help}</p>
       <div className="flex flex-wrap items-end gap-4">
         <Field label={text.summary}>
           <Select
             value={event}
             options={summaries.map((value) => ({ value, label: text.summaries[value] }))}
             onValue={setEvent}
-            className="max-w-[14rem]"
+            className="max-w-[16.625rem]"
           />
         </Field>
         <Field label={text.of}>
@@ -38,7 +38,7 @@ export default function SummaryPreview() {
               ...(users.data ?? []).map((u) => ({ value: u.id, label: u.name })),
             ]}
             onValue={setUser}
-            className="max-w-[14rem]"
+            className="max-w-[16.625rem]"
           />
         </Field>
         <Button onClick={() => setShown({ event, user })}>{text.show}</Button>
@@ -79,7 +79,7 @@ function PreviewModal({
               title={text.frame}
               sandbox=""
               srcDoc={preview.data.html}
-              className="h-[60vh] w-full rounded-panel border border-line-2 bg-white"
+              className="h-[60vh] w-full rounded-row bg-white"
             />
           </>
         )}

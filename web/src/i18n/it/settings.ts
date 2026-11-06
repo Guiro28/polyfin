@@ -712,6 +712,9 @@ const settings: typeof en = {
     tmdbKey: 'Chiave API TMDB',
     tmdbKeyHelp:
       'Facoltativa: Polyfin non include alcuna chiave. Una chiave API o un token di accesso in lettura di un account TMDB porta foto e biografie delle persone, cast e troupe di ogni titolo da TMDB nell’ordine dei titoli di coda con foto, pagine delle persone con ogni titolo delle librerie in cui compaiono e i titoli per cui TMDB le conosce meglio, oltre le librerie, locandine di film e serie il cui add-on non ne fornisce, cofanetti nelle app di Silo e immagini di TMDB in «Modifica immagini» di jellyfin-web, che Polyfin inoltra. Cerca anche su TMDB i file di una cartella locale la cui ricerca non riesce presso tutti gli add-on dei metadati. Senza chiave, TMDB non viene mai interpellato.',
+    skinLabel: 'Aspetto',
+    skinHelp:
+      'L’aspetto dell’amministrazione, in questo browser. Aurora ha una barra laterale, il blu notte, schede e una modalità chiara; Salon è l’aspetto originale di Polyfin, scuro.',
     onlyReleased: 'Solo ciò che è uscito (VOD, DVD o TV)',
     onlyReleasedHelp:
       'Conta anche un’uscita in televisione, e una serie appare solo dopo il giorno della sua prima messa in onda, se il suo addon lo indica.',

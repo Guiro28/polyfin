@@ -11,7 +11,12 @@ import type { SectionFormApi } from './SectionForm'
  * not, through Cloudflare's trace page, and a search for WARP's local proxy, which fills the field
  * when it finds one.
  */
-export default function StreamProxyRow({ form, update, error, limits }: SectionFormApi) {
+export default function StreamProxyRow({
+  form,
+  update,
+  error,
+  limits,
+}: Pick<SectionFormApi, 'form' | 'update' | 'error' | 'limits'>) {
   const { t } = useI18n()
   const s = t.settings
   const check = useMutation({ mutationFn: (address: string) => checkStreamProxy(address) })

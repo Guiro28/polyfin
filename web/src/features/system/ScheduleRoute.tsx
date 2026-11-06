@@ -6,7 +6,6 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query'
 import {
-  ArchiveIcon,
   CalendarDotsIcon,
   ListChecksIcon,
   PlayIcon,
@@ -26,6 +25,7 @@ import {
   type Task,
 } from '@/api'
 import { PageLayout } from '@/app/PageLayout'
+import { settingsPath } from '@/app/navigation'
 import {
   Badge,
   Block,
@@ -39,6 +39,7 @@ import {
   SkeletonRows,
   SkeletonText,
   StatusPill,
+  TextLink,
   useToast,
   RelativeTime,
 } from '@/ui'
@@ -90,8 +91,6 @@ type TasksQuery = UseQueryResult<Task[]>
 type TaskAction = { task: Task; action: 'run' | 'stop' }
 type Act = UseMutationResult<void, Error, TaskAction>
 
-const columns = 'md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(8.5rem,auto)]'
-
 function Tasks({ tasks, act }: { tasks: TasksQuery; act: Act }) {
   const { t } = useI18n()
   const text = t.system.schedule
@@ -114,37 +113,30 @@ function Tasks({ tasks, act }: { tasks: TasksQuery; act: Act }) {
             {text.noTasksHint}
           </EmptyState>
         ) : (
-          <div className="space-y-6">
-            <div
-              aria-hidden="true"
-              className={`hidden gap-4 px-[18px] text-small font-medium text-ink-3 md:grid ${columns}`}
-            >
-              <span>{text.task}</span>
-              <span>{text.lastRun}</span>
-              <span>{text.nextRun}</span>
-              <span />
-            </div>
+          <div className="space-y-12 max-md:space-y-9">
             {[...categories].map(([category, list]) => (
               <section key={category} aria-label={category}>
-                <h3 className="mb-2.5 px-1 text-micro font-semibold tracking-[0.06em] text-ink-3 uppercase">
-                  {category}
-                </h3>
-                <ul className="overflow-hidden rounded-panel border border-line-2 bg-s1">
+                <h3 className="mb-4 text-group text-ink max-md:mb-3">{category}</h3>
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                   {list.map((task) => (
+                    // Below 640 px a task is a compact row: its name and Run now side by side,
+                    // then its last and next runs across the row, and its description left to
+                    // screen readers.
                     <li
                       key={task.id}
-                      className={`grid gap-3 px-[18px] py-4 not-first:border-t not-first:border-line md:items-center md:gap-4 max-sm:px-4 ${columns}`}
+                      className="grid gap-x-10 gap-y-4 rounded-row bg-s1 py-5 pr-[1.375rem] pl-7 max-md:px-5 max-md:py-4 max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:gap-x-3 max-sm:gap-y-2 max-sm:py-3.5 max-sm:pr-3.5 max-sm:pl-4 lg:grid-cols-[minmax(0,1fr)_minmax(13.0625rem,auto)_auto] lg:items-center"
                     >
-                      <div className="min-w-0">
-                        <p className="text-[14.5px] font-medium text-ink">{task.name}</p>
-                        <p className="mt-0.5 text-small text-ink-3">{task.description}</p>
-                      </div>
-                      <div className="text-small">
-                        <p className="text-ink-3 md:sr-only">{text.lastRun}</p>
+                      <div className="min-w-0 max-sm:contents">
+                        <p className="text-h3 break-words hyphens-auto text-ink max-md:text-[1.125rem] max-sm:col-start-1 max-sm:row-start-1 max-sm:self-center">
+                          {task.name}
+                        </p>
+                        <p className="mt-1 max-w-[66ch] text-small text-ink-2 max-md:text-[1rem] max-sm:sr-only">
+                          {task.description}
+                        </p>
                         <LastRun task={task} />
                       </div>
                       <NextRun task={task} />
-                      <div className="flex gap-2 md:justify-end">
+                      <div className="flex max-sm:col-start-2 max-sm:row-start-1 max-sm:self-start lg:justify-end">
                         <TaskButton task={task} act={act} />
                       </div>
                     </li>
@@ -192,49 +184,62 @@ function NextRun({ task }: { task: Task }) {
   const { language, t } = useI18n()
   const text = t.system.schedule
   return (
-    <div className="text-small tabular-nums">
-      <p className="text-ink-3 md:sr-only">{text.nextRun}</p>
+    <div className="text-small text-ink-2 figures max-sm:col-span-full max-sm:flex max-sm:flex-wrap max-sm:gap-x-2 lg:text-right">
+      <p>{text.nextRun}</p>
       {task.next !== null ? (
-        <p className="text-ink">
+        <p className="text-lead text-ink max-md:text-[1.125rem] max-sm:text-small">
           <RelativeTime iso={task.next} />
         </p>
       ) : (
-        <p className="text-ink-3">{text.byHandOnly}</p>
+        <p className="text-lead text-ink max-md:text-[1.125rem] max-sm:text-small">
+          {text.byHandOnly}
+        </p>
       )}
-      {task.interval > 0 && (
-        <p className="text-ink-3">{text.every(formatSpan(task.interval, language))}</p>
-      )}
-      {task.daily !== null && (
-        <p className="text-ink-3">{text.daily(formatHour(task.daily, language))}</p>
-      )}
+      {task.interval > 0 && <p>{text.every(formatSpan(task.interval, language))}</p>}
+      {task.daily !== null && <p>{text.daily(formatHour(task.daily, language))}</p>}
     </div>
   )
 }
 
+/** How the task's last run went, under its description. */
 function LastRun({ task }: { task: Task }) {
   const { language, t } = useI18n()
   const text = t.system.schedule
+  const label = <span className="text-ink-2">{text.lastRun}</span>
   if (task.state !== 'Idle') {
     return (
-      <StatusPill tone="live">
-        <span className="motion-safe:animate-pulse">
-          {task.state === 'Running' ? text.running : text.cancelling}
-        </span>
-      </StatusPill>
+      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-small max-sm:col-span-full max-sm:mt-0">
+        {label}
+        <StatusPill tone="live">
+          <span className="motion-safe:animate-pulse">
+            {task.state === 'Running' ? text.running : text.cancelling}
+          </span>
+        </StatusPill>
+      </p>
     )
   }
-  if (task.last === null) return <p className="text-ink-3">{text.notRunYet}</p>
+  if (task.last === null) {
+    return (
+      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-small max-sm:col-span-full max-sm:mt-0">
+        {label}
+        <span className="text-ink">{text.notRunYet}</span>
+      </p>
+    )
+  }
   const last = task.last
   const tone = last.status === 'Completed' ? 'ok' : last.status === 'Failed' ? 'danger' : 'muted'
   return (
-    <div>
-      <StatusPill tone={tone}>{text.results[last.status] ?? last.status}</StatusPill>
-      <p className="mt-0.5 text-ink-3 tabular-nums">
-        <RelativeTime iso={last.end} />
-        {' · '}
-        {text.took(formatSpan((Date.parse(last.end) - Date.parse(last.start)) / 1000, language))}
+    <div className="mt-3 text-small max-sm:col-span-full max-sm:mt-0">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {label}
+        <StatusPill tone={tone}>{text.results[last.status] ?? last.status}</StatusPill>
+        <span className="text-ink-2 figures">
+          <RelativeTime iso={last.end} />
+          {' · '}
+          {text.took(formatSpan((Date.parse(last.end) - Date.parse(last.start)) / 1000, language))}
+        </span>
       </p>
-      {last.error !== '' && <p className="mt-0.5 break-words text-danger">{last.error}</p>}
+      {last.error !== '' && <p className="mt-1 break-words text-danger">{last.error}</p>}
     </div>
   )
 }
@@ -274,9 +279,12 @@ function Backups({ tasks, act }: { tasks: Task[] | undefined; act: Act }) {
             {errorMessage(t, health.error)}
           </InlineError>
         ) : health.data.backup === null ? (
-          <EmptyState icon={ArchiveIcon} title={t.system.health.backupTitle}>
-            {t.system.health.backupOff}
-          </EmptyState>
+          <div className="space-y-3">
+            <p className="max-w-[66ch] text-small text-ink-2">{t.system.health.backupOff}</p>
+            <TextLink to={settingsPath('backups')} className="-ml-3">
+              {t.system.health.checks.openSettings}
+            </TextLink>
+          </div>
         ) : (
           <BackupStatus backup={health.data.backup} />
         )}

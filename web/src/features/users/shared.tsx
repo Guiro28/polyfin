@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   ApiError,
@@ -13,23 +13,51 @@ import {
   type User,
   type UserPatch,
 } from '@/api'
+import { SubAreaContext } from '@/app/PageLayout'
 import { useSessionUser } from '@/app/session'
 import { useI18n } from '@/i18n'
-import { Switch, Tabs } from '@/ui'
+import { scaledPx, StatusPill, Tabs } from '@/ui'
 
-/** Users › Users and Users › Groups, above the two lists. */
-export function UsersTabs() {
+/** PageLayout claims the words; there is nothing to show above a page in their place. */
+const noClaim = () => () => {}
+
+/**
+ * The pages of Users › Users and Users › Groups: their PageLayout shows the sub-area words Users ·
+ * Groups under its title, as Content's and System's pages show theirs.
+ */
+export function UsersArea({ children }: { children: ReactNode }) {
   const { t } = useI18n()
-  return (
-    <Tabs
-      label={t.groups.tabsLabel}
-      items={[
-        { id: 'users', label: t.users.title, to: '/users', end: true },
-        { id: 'groups', label: t.groups.title, to: '/users/groups', end: true },
-      ]}
-      className="mb-8 max-md:mb-6"
-    />
+  const subArea = useMemo(
+    () => ({
+      words: (
+        <Tabs
+          label={t.groups.tabsLabel}
+          items={[
+            { id: 'users', label: t.users.title, to: '/users', end: true },
+            { id: 'groups', label: t.groups.title, to: '/users/groups', end: true },
+          ]}
+        />
+      ),
+      claim: noClaim,
+    }),
+    [t],
   )
+  return <SubAreaContext value={subArea}>{children}</SubAreaContext>
+}
+
+/** The state of an account, as an icon and a word: Active, Disabled, Ended or Blocked until… */
+export function UserState({ user }: { user: User }) {
+  const { t, language } = useI18n()
+  if (user.isDisabled) return <StatusPill tone="muted">{t.users.disabled}</StatusPill>
+  if (user.ended) return <StatusPill tone="muted">{t.users.ended}</StatusPill>
+  if (user.blockedUntil !== null) {
+    return (
+      <StatusPill tone="warn">
+        {t.users.blockedUntil(clockTime(user.blockedUntil, language))}
+      </StatusPill>
+    )
+  }
+  return <StatusPill tone="ok">{t.users.active}</StatusPill>
 }
 
 /** Puts a user returned by the server into the cached list. */
@@ -165,49 +193,6 @@ export function useRestrictions(user: User): string[] {
 }
 
 /**
- * One setting of a panel: its title and help on the left, a switch on the right (like the
- * settings rows of the mockup).
- */
-export function SwitchRow({
-  title,
-  help,
-  checked,
-  onChange,
-  disabled,
-}: {
-  title: string
-  help?: ReactNode
-  checked: boolean
-  onChange: (checked: boolean) => void
-  disabled?: boolean
-}) {
-  const titleId = useId()
-  const helpId = useId()
-  return (
-    <div className="flex items-start justify-between gap-6 py-4 not-first:border-t not-first:border-line">
-      <div className="min-w-0">
-        <p id={titleId} className="text-control font-medium text-ink">
-          {title}
-        </p>
-        {help !== undefined && (
-          <p id={helpId} className="mt-1 text-small text-ink-3">
-            {help}
-          </p>
-        )}
-      </div>
-      <Switch
-        checked={checked}
-        onChange={onChange}
-        labelledBy={titleId}
-        describedById={help !== undefined ? helpId : undefined}
-        disabled={disabled}
-        className="mt-0.5"
-      />
-    </div>
-  )
-}
-
-/**
  * The id of the section in view, for a SectionNav of anchors. The last section counts once the
  * page is scrolled to its end.
  */
@@ -216,12 +201,13 @@ export function useSectionInView(ids: readonly string[], ready: boolean) {
   const key = ids.join(' ')
   useEffect(() => {
     if (!ready) return
-    const sections = key
-      .split(' ')
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null)
+    const ids = key.split(' ')
     function update() {
-      const line = 140
+      // Looked up each time: a section drawn again (after a save or a reset) is a new element.
+      const sections = ids
+        .map((id) => document.getElementById(id))
+        .filter((el): el is HTMLElement => el !== null)
+      const line = scaledPx(140)
       let found = sections[0]?.id
       for (const section of sections) {
         if (section.getBoundingClientRect().top <= line) found = section.id
